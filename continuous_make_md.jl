@@ -8,6 +8,7 @@ using FileWatching
 
 cd("examples")
 
+files = glob("Example*jl")
 
 while true 
     for file in files

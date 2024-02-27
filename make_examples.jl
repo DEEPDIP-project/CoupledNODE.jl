@@ -3,13 +3,15 @@ using Glob
 
 cd("examples")
 
-files = glob("Example*")
+files = glob("Example*jl")
 
 for f in files
-    Literate.notebook(f ; execute = false)
+    println("MD for $(f)")
     Literate.markdown(
         f ;
         flavor = Literate.CommonMarkFlavor(),
         codefence = "```julia" => "```",
     )
+    println("NB for $(f)")
+    Literate.notebook(f ; execute = false)
 end
