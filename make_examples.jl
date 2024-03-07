@@ -3,7 +3,7 @@ using Glob
 
 cd("examples")
 
-files = glob("Example*jl")
+files = glob("*-*.jl")
 overwrite_nb = false
 autorun_notebooks = false
 
