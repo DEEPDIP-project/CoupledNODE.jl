@@ -48,8 +48,6 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
         NN_closure = Parallel(nothing, NN_u, NN_v)
         # And use it to close the CNODE
         return Chain(
-            # layer that casts to f32
-            uv -> f32(uv),
             Upscaler,
             # For the nn I want u and v concatenated in the channel dimension
             uv -> let u = uv[1], v = uv[2]
