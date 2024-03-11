@@ -1,3 +1,33 @@
+# Random a priori loss function
+# You can use this to train the closure term to reproduce the right hand side
+function mean_squared_error(f, st, x, y, θ, λ) 
+    prediction = Array(f(x, θ, st)[1])
+    #total_loss = sum(abs2, prediction - y)
+    #return total_loss, nothing
+    total_loss = sum(abs2, prediction - y) / sum(abs2, y)
+    return total_loss + λ *norm(θ), nothing
+    ## Add a regularization for the parameters that are weakly used
+    #reg_term = 0.0
+    #for θ_i in θ
+    #    if abs(θ_i) < 0.1
+    #        reg_term += abs(θ_i)
+    #    end
+    #end
+    #return total_loss + λ *reg_term, nothing
+end
+# the loss functions are randomized by selecting a subset of the data, because it would be too expensive to use the entire dataset at each iteration
+function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(ubar, 2), λ=1.0f-4)
+    d = ndims(GS_data)
+    nsample = size(GS_data, d)
+    function randloss(θ)
+        i = Zygote.@ignore sort(shuffle(1:nsample)[1:nuse])
+        x_use = Zygote.@ignore ArrayType(selectdim(GS_data, d, i))
+        y_use = Zygote.@ignore ArrayType(selectdim(FG_target, d, i))
+        mean_squared_error(f, st, x_use, y_use, θ, λ)
+    end
+end
+
+
 
 # auxiliary function to solve the NeuralODE, given parameters p
 function predict_u_CNODE(uv0,θ,tg_size)
@@ -20,7 +50,7 @@ function predict_u_CNODE(uv0,θ,tg_size)
     return sol
 end
 # This is the function to create the loss
-function create_randloss_MulDtO(target; nunroll, nintervals, nsamples, λ)
+function create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ)
     # Get the number of time steps 
     d = ndims(target)
     nt = size(target, d)

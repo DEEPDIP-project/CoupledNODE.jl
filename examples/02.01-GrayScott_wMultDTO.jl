@@ -69,13 +69,13 @@ G_v(u,v,grid) = D_v*Laplacian(v,grid.dvx,grid.dvy) .+ u.*v.^2 .- (f+k).*v
 
 # CNODE definition
 f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed=false);
-θ_0, st_0 = Lux.setup(rng, f_CNODE);
+θ, st = Lux.setup(rng, f_CNODE);
 
 # Burnout run
 trange_burn = (0.0f0, 1.0f0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE, trange_burn, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
-burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
+burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ, st)[1]);
 # Second burnout with larger timestep
 trange_burn = (0.0f0, 500.0f0)
 dt, saveat = (1/(4*max(D_u,D_v)), 100)
@@ -87,25 +87,19 @@ uv0 = burnout_CNODE_solution[:,:,end];
 trange = (0.0f0, 7000.0f0)
 trange = (0.0f0, 2000.0f0)
 dt, saveat = (1/(4*max(D_u,D_v)), 1)
-#dt, saveat = (1/(4*max(D_u,D_v)), 0.5)
-#dt, saveat = (0.1, 0.1)
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
-GS_sim = Array(GS_CNODE(uv0, θ, st)[1])
-u = reshape(GS_sim[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(GS_sim,2), :);
-v = reshape(GS_sim[grid.Nu+1:end, :, :], grid.nvx, grid.nvy, size(GS_sim,2), :);
-
-# I can also store a collection of right hand sides to do derivative fitting
-uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2)* size(GS_sim, 3))
-FG_target = Array(f_CNODE(uv_data, θ, st)[1])
+GS_data = Array(GS_CNODE(uv0, θ, st)[1])
+u = reshape(GS_data[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(GS_data,2), :);
+v = reshape(GS_data[grid.Nu+1:end, :, :], grid.nvx, grid.nvy, size(GS_data,2), :);
 
 
 # ### Training a CNODE to learn the GS model
 # To learn the GS model, we will use the following CNODE
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u + \theta_{u,1} uv^2 + \theta_{u,2} u +\theta_{u,3} v +\theta_{u,4}  \\ \frac{dv}{dt} = D_v \nabla v + \theta_{v,1} uv^2 + \theta_{v,2} u +\theta_{v,3} v +\theta_{v,4} \end{cases} \end{equation}
+# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \nabla v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
 # So in this example the deterministic force is only the diffusion, while the model has to learn the interaction between the fields and the source terms.
 # Then the deterministic force is
-F_u_open(u,v,grid) = Zygote.@ignore D_u*Laplacian(u,grid.dux,grid.duy) 
-G_v_open(u,v,grid) = Zygote.@ignore D_v*Laplacian(v,grid.dvx,grid.dvy) 
+F_u(u,v,grid) = Zygote.@ignore D_u*Laplacian(u,grid.dux,grid.duy) 
+G_v(u,v,grid) = Zygote.@ignore D_v*Laplacian(v,grid.dvx,grid.dvy) 
 # where we are telling Zygote to ignore this tree branch for the gradient propagation.
 
 
@@ -120,10 +114,10 @@ end
 # We also need to specify how to initialize its parameters and states. 
 # This custom layer does not have any hidden states (RNGs) that are modified.
 Lux.initialparameters(rng::AbstractRNG, (; init_weight)::GSLayer) = (;
-    gs_weights = init_weight(rng, 4),
+    gs_weights = init_weight(rng, 5),
 )
 Lux.initialstates(::AbstractRNG, ::GSLayer) = (;)
-Lux.parameterlength((; )::GSLayer) = 4
+Lux.parameterlength((; )::GSLayer) = 5
 Lux.statelength(::GSLayer) = 0
 
 # We now define how to pass inputs through GSlayer, assuming the
@@ -137,8 +131,7 @@ function ((;)::GSLayer)(x, params, state)
     u = x[:,:,1,:]
     v = x[:,:,2,:]
 
-    out = params.gs_weights[1] .* u .* v .^ 2 .+ params.gs_weights[2] .* u .+ params.gs_weights[3] .* v .+ params.gs_weights[4]
-    #out = 0 .* u
+    out = params.gs_weights[1] .* u .* u .* v .+ params.gs_weights[2] .* u .* v .* v .+ params.gs_weights[3] .* u .+ params.gs_weights[4] .* v .+ params.gs_weights[5]
 
     ## The layer does not modify state
     out, state
@@ -155,27 +148,25 @@ NN_u = create_GS_model()
 NN_v = create_GS_model()
 
 # We can now close the CNODE with the Neural Network
-include("coupling_functions/functions_NODE.jl")
-f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed=true) 
+f_closed_CNODE = create_f_CNODE(F_u, G_v, grid, NN_u, NN_v; is_closed=true) 
 θ, st = Lux.setup(rng, f_closed_CNODE);
 print(θ)
 
-# Check that the closed CNODE can reproduce the GS model if the parameters are set to the correct values 
-correct_w_u = [-1.0, -f, 0, f ]
-correct_w_v = [1.0, 0, -(f+k), 0 ]
-θ_correct = ComponentArray(θ)
-θ_correct.layer_3.layer_1.gs_weights= correct_w_u
-θ_correct.layer_3.layer_2.gs_weights = correct_w_v
-# Notice that they are the same within a tolerance of 1e-7
-isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol = 1e-7, rtol = 1e-7)
-# but now with a tolerance of 1e-8
-isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol = 1e-8, rtol = 1e-8)
-# in a chaotic system like GS, this would be enough to produce different dynamcis, so be careful about this
-
 # ### Design the **loss function**
-# For this example, we use *a priori* fitting. So we basically tell `Zygote` to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
-include("coupling_functions/functions_CNODE_loss.jl")
-myloss = create_randloss_derivative(uv_data, FG_target, f_closed_CNODE, st; nuse = 64, λ=0)
+# For this example, we use *multishooting a posteriori* fitting (MulDtO), where we tell `Zygote` to compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
+nunroll = 20   
+nintervals = 5
+nsamples = 3
+# We also define this auxiliary NODE that will be used for training
+# We can use smaller time steps for the training 
+dt_train = 1
+# but we have to sample at the same rate as the data
+saveat_train = saveat
+t_train_range = (0.0f0, saveat_train*(nunroll+0)) # it has to be as long as unroll
+training_CNODE = NeuralODE(f_closed_CNODE, t_train_range, Tsit5(), adaptive=false, dt=dt_train, saveat=saveat_train);
+
+# * Create the loss
+myloss = create_randloss_MulDtO(GS_data, nunroll=nunroll, nintervals=nintervals, nsamples=nsamples, λ=0);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 
@@ -193,36 +184,23 @@ optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
-ClipAdam = OptimiserChain(Adam(1.0f-2), ClipGrad(1));
+ClipAdam = OptimiserChain(Adam(1.0f-3), ClipGrad(1));
 
 # Finally we can train the NODE
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
     callback = callback,
-    maxiters = 500
+    maxiters = 50
     );
 pinit = result_neuralode.u;
-θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training)
 
 
-# Compare the learned weights to the values that you expect
-gs_w_u = θ.layer_3.layer_1.gs_weights
-gs_w_v = θ.layer_3.layer_2.gs_weights
-p1 = scatter(gs_w_u, label="learned", title="Comparison NN_u coefficients", xlabel="Index", ylabel="Value")
-scatter!(p1, correct_w_u, label="correct")
-p2 = scatter(gs_w_v, label="learned", title="Comparison NN_v coefficients", xlabel="Index", ylabel="Value")
-scatter!(p2, correct_w_v, label="correct")
-p = plot(p1, p2, layout = (2, 1))
-display(p)
-
-# ### Final comparison
-# Now, we can finally solve the trained CNODE and compare with the exact solution
-trange = (0.0f0, 1000)
-dt, saveat = (1, 10)
+# and finally I use the trained CNODE to compare the solution with the target
+trange = (0.0f0, saveat*nunroll)
 trained_CNODE = NeuralODE(f_closed_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
-trained_CNODE_solution = Array(trained_CNODE(GS_sim[:,1:3,1], θ, st)[1]);
+trained_CNODE_solution = Array(trained_CNODE(GS_data[:,1:3,1], θ, st)[1]);
 u_trained = reshape(trained_CNODE_solution[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(trained_CNODE_solution,2), :);
 v_trained = reshape(trained_CNODE_solution[grid.Nu+1:end, :, :], grid.nvx, grid.nvy, size(trained_CNODE_solution,2), :);
 anim = Animation()
@@ -247,7 +225,7 @@ fig = plot(layout = (2, 5), size = (750, 300))
     frame(anim, fig)
 end
 if isdir("./plots")
-    gif(anim, "./plots/02.01-trained_GS.gif", fps=10)
+    gif(anim, "./plots/02.01-trained_GS.gif", fps=5)
 else
-    gif(anim, "examples/plots/02.01-trained_GS.gif", fps=10)
+    gif(anim, "examples/plots/02.01-trained_GS.gif", fps=5)
 end

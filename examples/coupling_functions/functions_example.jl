@@ -25,7 +25,7 @@ callback = function (p, l, pred; doplot = true)
         # plot rolling average of loss, every 10 steps
         if l_l%10 == 0
             plot()
-            fig = plot(; xlabel = "Iterations", title = "Loss")
+            fig = plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
             plot!(fig, 1:10:length(lhist), [mean(lhist[i:min(i+9, length(lhist))]) for i in 1:10:length(lhist)], label = "")
             display(fig)
         end
