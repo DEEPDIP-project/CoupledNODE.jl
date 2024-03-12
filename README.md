@@ -36,7 +36,10 @@ We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{d
 Coupled Neural ODEs (C-NODEs) are defined as:
 
 $$
-\begin{pmatrix} \dfrac{du}{dt}\\ \dfrac{dv}{dt} \end{pmatrix} = \begin{pmatrix} f(u,v,t)\\g(u,v,t) \end{pmatrix} + \begin{pmatrix}NN_f(u,v|\theta_f) \\NN_g(u,v|\theta_g) \end{pmatrix}.
+\begin{pmatrix} \dfrac{du}{dt} \\
+\dfrac{dv}{dt} \end{pmatrix} = \begin{pmatrix} f(u,v,t)\\
+g(u,v,t) \end{pmatrix} + \begin{pmatrix}NN_f(u,v|\theta_f) \\
+NN_g(u,v|\theta_g) \end{pmatrix}.
 $$
 
 Let's check with an example how this works.
