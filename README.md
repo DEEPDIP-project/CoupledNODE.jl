@@ -20,21 +20,15 @@ To motivate the usefulness of this repo, we will start answering two questions:
 # (1) What are NODEs?
 
 This is a generic differential equation (DE):
-$$
-\begin{cases}
-\frac{du}{dt} = f(t,u) \\
-u(t=0) = u_0
-\end{cases}
-\tag{1.0}
-$$
+$$ \begin{cases} \frac{du}{dt} = f(t,u) \\ u(t=0) = u_0 \end{cases} \tag{1.0} $$
 where we look for the time-dependent solution $u(t)$, given its initial condition $u_0$ and the force $f(t,u)$ acting on it.
 In general, we have an ordinary differential equation (ODE) when $$\frac{du}{dt} = f(u, t)$$ contains a single independent variable $u$
 
 We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{du}{dt} = f(u,t) + NN(u |\theta),$$ so there is an extra force terms that depends on some extra parameters $\theta$ that are not part of the solution. This term is called $NN$ because it can be a neural network. So overall a NODE problem is a data-driven method, that aims to model the solution $u(t)$ when the ODE can not be solved exactly, or even if $f$ is unknown. Let's look at the details with an example.
 
-#### Example 1: Logistic equation
+#### Example 01.00: Logistic equation
 
-**Link**
+* *Link 01.00*
 
 
 # (2) What are C-NODEs?
@@ -43,8 +37,17 @@ Coupled Neural ODEs (C-NODEs) are defined as:
 $$ \begin{pmatrix} \dfrac{du}{dt}\\ \dfrac{dv}{dt} \end{pmatrix} = \begin{pmatrix} f(u,v,t)\\g(u,v,t) \end{pmatrix} + \begin{pmatrix}NN_f(u,v|\theta_f) \\NN_g(u,v|\theta_g) \end{pmatrix}. $$
 Let's with an example how this works.
 
-#### Example 2: Gray-Scott model
-* Link: Gray-Scott as CNODE
+#### Example 02.00: Gray-Scott model
+* *Link 02.00* 
+
+### How can we train a CNODE? 
+A priori fitting 
+#### Example 02.01: Learning the Gray-Scott model
+* *Link 02.01* 
+  
+A posteriori fitting
+#### Example 02.02: Learning the Gray-Scott model
+* *Link 02.02* 
 
 # (3) Why coupled NODEs? 
 Two main explanations:
