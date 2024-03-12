@@ -1,3 +1,17 @@
+name = "SciMLModelCoupling"
+uuid = "88291d29-22ea-41b1-bc0b-03785bffce48"
+authors = ["Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com> and contributors"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
+
 [deps]
 BlockDiagonals = "0a1fb500-61f7-11e9-3c65-f5ef3456f9f0"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
