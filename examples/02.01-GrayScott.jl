@@ -224,7 +224,7 @@ display(p)
 # The learned weights look perfect, but let's check what happens if we use them to solve the GS model.
 
 
-# We solve the system with the trained CNODE and compare with the exact solution
+# We solve the system, for two different set of parameters, with the trained CNODE and compare with the exact solution
 trange = (0.0f0, 500);
 dt, saveat = (1, 5);
 trained_CNODE = NeuralODE(f_closed_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
