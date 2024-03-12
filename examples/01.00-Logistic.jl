@@ -31,7 +31,7 @@ plot(t, Pt, label="P(t)", xlabel="t", ylabel="P(t)")
 
 
 # Let's say that we want to use the logistic equation to model an experiment like the activation energy of a neuron. We run the experiment and we observe the following:
-u_experiment = observation.()
+u_experiment = observation()
 plot(t, Pt, label="Best P(t) fit")
 plot!(t, u_experiment[:], label="Observation(t)")
 
@@ -47,7 +47,11 @@ plot!(t, u_experiment[:], label="Observation(t)")
 
 # * We create the NN using `Lux`. In this example we do not discuss the structure of the NN, but we leave it as a black box that can be designed by the user. We will show later how to take inspiration from the physics of the problem to design optimal NN.
 
-NN = create_nn()
+NN = Chain(
+    SkipConnection(
+        Dense(1, 3), 
+        (out, u) -> u * out[1] .+ u .* u .* out[2] .+ u .* log.(abs.(u)) .* out[3])
+    )
 
 
 # * We define the force $f(u)$ compatibly with SciML. 
@@ -63,7 +67,7 @@ f_NODE = create_f_NODE(NN, f_u; is_closed=true);
 trange = (0.0f0, 6.0f0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive=false, dt=0.001, saveat=0.2);
-# we also solve it, using the zero-initialized parameters
+# We also solve it, using the zero-initialized parameters
 untrained_NODE_solution = Array(full_NODE(u0, θ, st)[1]);
 
 
@@ -98,6 +102,8 @@ ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
 # Finally we can train the NODE
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
+    # Commented out the line that uses a custom callback to track loss over time
+    #callback = callback,
     maxiters = 100
     )
 pinit = result_neuralode.u;

@@ -1,5 +1,4 @@
-
-# I define the NeuralODE using ResNet skip blocks to add the closure
+# Define the NeuralODE using ResNet skip blocks to add the closure
 function create_f_NODE(NN, f_u; is_closed=false)
     return Chain(
         SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)),
@@ -8,6 +7,7 @@ end
 
 # NeuralODE representing the experimental observation
 function create_NODE_obs()
+    f_o(u) = @. u.*(0.0.-0.8.*log.(u))
     return Chain( 
         u -> f_o(u),
     )
@@ -131,7 +131,26 @@ function upscale_v(grid, resize_v=false)
     end
 end
 
-# This object contains the grid information
+"""
+    struct Grid
+
+This object contains the grid information.
+
+Fields:
+- `dux::Float64`: The grid spacing in the x-direction for u.
+- `duy::Float64`: The grid spacing in the y-direction for u.
+- `nux::Int`: The number of grid points in the x-direction for u.
+- `nuy::Int`: The number of grid points in the y-direction for u.
+- `dvx::Float64`: The grid spacing in the x-direction for v.
+- `dvy::Float64`: The grid spacing in the y-direction for v.
+- `nvx::Int`: The number of grid points in the x-direction for v.
+- `nvy::Int`: The number of grid points in the y-direction for v.
+- `Nu::Int`: The total number of elements for u.
+- `Nv::Int`: The total number of elements for v.
+
+Constructor:
+- `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
+"""
 struct Grid
     dux::Float64
     duy::Float64
@@ -141,7 +160,6 @@ struct Grid
     dvy::Float64
     nvx::Int
     nvy::Int
-    # The constructor function will compute the number of elements for u and v
     Nu::Int
     Nv::Int
 

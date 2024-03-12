@@ -1,4 +1,3 @@
-f_o(u) = @. u.*(0.0.-0.8.*log.(u))
 function observation()
     f_ND = create_NODE_obs()
     trange = (0.0f0, 6.0f0)
@@ -10,12 +9,6 @@ function observation()
 end
 
 
-function create_nn()
-    return Chain(
-        SkipConnection(Dense(1,3), (out, u) -> u*out[1].+u.*u.*out[2].+u.*log.(abs.(u)).*out[3]),
-    )
-end
-
 # Define a callback function to observe training
 callback = function (p, l, pred; doplot = true)
     l_l = length(lhist)
@@ -26,7 +19,7 @@ callback = function (p, l, pred; doplot = true)
         if l_l%10 == 0
             plot()
             fig = plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
-            plot!(fig, 1:10:length(lhist), [mean(lhist[i:min(i+9, length(lhist))]) for i in 1:10:length(lhist)], label = "")
+            plot!(fig, 1:10:length(lhist), [mean(lhist[i:min(i + 9, length(lhist))]) for i in 1:10:length(lhist)], label = "")
             display(fig)
         end
     end
