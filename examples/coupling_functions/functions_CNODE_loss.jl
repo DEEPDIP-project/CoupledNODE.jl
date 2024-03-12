@@ -5,7 +5,8 @@ function mean_squared_error(f, st, x, y, θ, λ)
     #total_loss = sum(abs2, prediction - y)
     #return total_loss, nothing
     total_loss = sum(abs2, prediction - y) / sum(abs2, y)
-    return total_loss + λ *norm(θ), nothing
+#    println(θ)
+    return total_loss + λ *norm(θ, 1), nothing
     ## Add a regularization for the parameters that are weakly used
     #reg_term = 0.0
     #for θ_i in θ
@@ -16,7 +17,7 @@ function mean_squared_error(f, st, x, y, θ, λ)
     #return total_loss + λ *reg_term, nothing
 end
 # the loss functions are randomized by selecting a subset of the data, because it would be too expensive to use the entire dataset at each iteration
-function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(ubar, 2), λ=1.0f-4)
+function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
     d = ndims(GS_data)
     nsample = size(GS_data, d)
     function randloss(θ)
