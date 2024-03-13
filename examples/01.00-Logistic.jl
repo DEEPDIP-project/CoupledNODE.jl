@@ -102,8 +102,8 @@ ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
 # Finally we can train the NODE
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
-    # Commented out the line that uses a custom callback to track loss over time
-    #callback = callback,
+    ## Commented out the line that uses a custom callback to track loss over time
+    ##callback = callback,
     maxiters = 100
     )
 pinit = result_neuralode.u;
