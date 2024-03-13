@@ -1,2 +1,4 @@
 examples/test*
 .vscode
+/docs/Manifest.toml
+/docs/build/
