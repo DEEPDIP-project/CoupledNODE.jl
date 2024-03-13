@@ -6,7 +6,7 @@ using Plots
 using Plots.PlotMeasures
 using Zygote
 using Random
-rng = Random.seed!(1234)
+rng = Random.seed!(1234);
 using OptimizationOptimisers
 using Statistics
 using ComponentArrays
@@ -37,7 +37,7 @@ include("coupling_functions/functions_CNODE_loss.jl")
 
 # ### Solving GS to collect data
 # Definition of the grid
-dux = duy = dvx = dvy = 1.
+dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
@@ -50,8 +50,8 @@ function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations=1)
 end
 U₀ = 0.5    # initial concentration of u
 V₀ = 0.25   # initial concentration of v
-ε_u = 0.05 # magnitude of the perturbation on u
-ε_v = 0.1 # magnitude of the perturbation on v
+ε_u = 0.05  # magnitude of the perturbation on u
+ε_v = 0.1   # magnitude of the perturbation on v
 u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulations=20);
 
 # We can now define the initial condition as a flattened concatenated array
@@ -64,8 +64,8 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand side of the GS model
-F_u(u,v,grid) = D_u*Laplacian(u,grid.dux,grid.duy) .- u.*v.^2 .+ f.*(1.0.-u)
-G_v(u,v,grid) = D_v*Laplacian(v,grid.dvx,grid.dvy) .+ u.*v.^2 .- (f+k).*v
+F_u(u,v,grid) = D_u * Laplacian(u,grid.dux,grid.duy) .- u .* v.^2 .+ f.*(1.0 .- u)
+G_v(u,v,grid) = D_v * Laplacian(v,grid.dvx,grid.dvy) .+ u .* v.^2 .- (f + k) .* v
 
 # CNODE definition
 f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed=false);
@@ -78,34 +78,33 @@ burnout_CNODE = NeuralODE(f_CNODE, trange_burn, Tsit5(), adaptive=false, dt=dt, 
 burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 # Second burnout with larger timestep
 trange_burn = (0.0f0, 500.0f0)
-dt, saveat = (1/(4*max(D_u,D_v)), 100)
+dt, saveat = (1/(4 * max(D_u, D_v)), 100)
 burnout_CNODE = NeuralODE(f_CNODE, trange_burn, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
 burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:,:,end], θ_0, st_0)[1]);
 
 # Data collection run
 uv0 = burnout_CNODE_solution[:,:,end];
-trange = (0.0f0, 7000.0f0)
-trange = (0.0f0, 2000.0f0)
-dt, saveat = (1/(4*max(D_u,D_v)), 1)
+trange = (0.0f0, 2000.0f0);
+dt, saveat = (1/(4*max(D_u,D_v)), 1);
 #dt, saveat = (1/(4*max(D_u,D_v)), 0.5)
 #dt, saveat = (0.1, 0.1)
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
-GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
+GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
 u = reshape(GS_sim[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(GS_sim,2), :);
 v = reshape(GS_sim[grid.Nu+1:end, :, :], grid.nvx, grid.nvy, size(GS_sim,2), :);
 
-# I can also store a collection of right hand sides to do derivative fitting
-uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2)* size(GS_sim, 3))
-FG_target = Array(f_CNODE(uv_data, θ_0, st_0)[1])
+# We can also store a collection of right hand sides to do derivative fitting
+uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2)* size(GS_sim, 3));
+FG_target = Array(f_CNODE(uv_data, θ_0, st_0)[1]);
 
 
 # ### Training a CNODE to learn the GS model
 # To learn the GS model, we will use the following CNODE
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + \theta_{u,1} u +\theta_{u,2} v +\theta_{u,3}  \\ \frac{dv}{dt} = D_v \nabla v + uv^2 + \theta_{v,1} u +\theta_{v,2} v +\theta_{v,3} \end{cases} \end{equation}
-# So in this example the deterministic force contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
-# Then the deterministic force is
-F_u_open(u,v,grid) = Zygote.@ignore D_u*Laplacian(u,grid.dux,grid.duy) .- u.*v.^2
-G_v_open(u,v,grid) = Zygote.@ignore D_v*Laplacian(v,grid.dvx,grid.dvy) .+ u.*v.^2 
+# In this example the deterministic force contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
+# The deterministic force is
+F_u_open(u,v,grid) = Zygote.@ignore D_u * Laplacian(u,grid.dux,grid.duy) .- u .* v.^2;
+G_v_open(u,v,grid) = Zygote.@ignore D_v * Laplacian(v,grid.dvx,grid.dvy) .+ u .* v.^2;
 # where we are telling Zygote to ignore this tree branch for the gradient propagation.
 
 
@@ -127,10 +126,9 @@ Lux.initialstates(::AbstractRNG, ::GSLayer) = (;)
 Lux.parameterlength((; )::GSLayer) = 3
 Lux.statelength(::GSLayer) = 0
 
-# We now define how to pass inputs through GSlayer, assuming the
-# following:
-# - Input size: `(N, N, 2, nsample)`, where the two channel are u and v
-# - Output size: `(N, N, nsample)` where we assumed monochannel output, so we dropped the channel dimension
+# We now define how to pass inputs through GSlayer, assuming the following:
+# - Input size: `(N, N, 2, nsample)`, where the two channels are `u` and `v`.
+# - Output size: `(N, N, nsample)` where we assumed monochannel output, so we dropped the channel dimension.
 
 # This is what each layer does:
 function ((;)::GSLayer)(x, params, state)
@@ -140,19 +138,12 @@ function ((;)::GSLayer)(x, params, state)
 
     out = params.gs_weights[1] .* u .+ params.gs_weights[2] .* v .+ params.gs_weights[3]
 
-    ## The layer does not modify state
+    # The layer does not modify state
     out, state
 end
-# Function to create the model. In this case is just a GS layer wrapped in a Chain, but the model can be as complex as needed.
-function create_GS_model()
-    return Chain(
-        GSLayer(),
-    )
-end
-
-# Here we define the trainable part
-NN_u = create_GS_model()
-NN_v = create_GS_model()
+# We create the trainable models. In this case is just a GS layer wrapped in a Chain, but the model can be as complex as needed.
+NN_u = Chain(GSLayer())
+NN_v = Chain(GSLayer())
 
 # We can now close the CNODE with the Neural Network
 include("coupling_functions/functions_NODE.jl")
@@ -161,16 +152,16 @@ f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed=
 print(θ)
 
 # Check that the closed CNODE can reproduce the GS model if the parameters are set to the correct values 
-correct_w_u = [-f, 0, f ]
-correct_w_v = [0, -(f+k), 0 ]
-θ_correct = ComponentArray(θ)
-θ_correct.layer_3.layer_1.gs_weights= correct_w_u
-θ_correct.layer_3.layer_2.gs_weights = correct_w_v
+correct_w_u = [-f, 0, f ] ;
+correct_w_v = [0, -(f + k), 0 ] ;
+θ_correct = ComponentArray(θ) ;
+θ_correct.layer_3.layer_1.gs_weights = correct_w_u ;
+θ_correct.layer_3.layer_2.gs_weights = correct_w_v ;
 # Notice that they are the same within a tolerance of 1e-7
-isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol = 1e-7, rtol = 1e-7)
-# but now with a tolerance of 1e-8
-isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol = 1e-8, rtol = 1e-8)
-# in a chaotic system like GS, this would be enough to produce different dynamcis, so be careful about this
+isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol=1e-7, rtol=1e-7)
+# but now with a tolerance of 1e-8 this check returns false.
+isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol=1e-8, rtol=1e-8)
+# In a chaotic system like GS, this would be enough to produce different dynamics, so be careful about this
 
 # If you have problem with training the model, you can cheat and start from the solution to check your implementation
 # ``
@@ -182,13 +173,13 @@ isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1]
 # ### Design the **loss function**
 # For this example, we use *a priori* fitting. So we basically tell `Zygote` to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
 include("coupling_functions/functions_CNODE_loss.jl")
-myloss = create_randloss_derivative(uv_data, FG_target, f_closed_CNODE, st; nuse = 64, λ=0)
+myloss = create_randloss_derivative(uv_data, FG_target, f_closed_CNODE, st; nuse=64, λ=0);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 lhist = Float32[];
 # Initialize and trigger the compilation of the model
-pinit = ComponentArray(θ)
-myloss(pinit)  
+pinit = ComponentArray(θ);
+myloss(pinit);
 # [!] Check that the loss does not get type warnings, otherwise it will be slower
 
 
@@ -201,7 +192,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 # Select the training algorithm:
 # In the previous example we have used a classic gradient method like Adam:
 algo = OptimiserChain(Adam(1.0f-3));
-# notice however that CNODES can be trained with any Julia optimizer, including the ones from the `Optimization` package like LBFGS
+# notice however that CNODEs can be trained with any Julia optimizer, including the ones from the `Optimization` package like LBFGS
 using OptimizationOptimJL
 algo = LBFGS();
 # or even gradient-free methods like CMA-ES that we use for this example
@@ -216,26 +207,26 @@ result_neuralode = Optimization.solve(optprob,
     maxiters = 150
     );
 pinit = result_neuralode.u;
-θ = pinit
+θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training, however don't do that with CMA-ES since it will restart from a random initial population)
 
 
-# Compare the learned weights to the values that you expect
-gs_w_u = θ.layer_3.layer_1.gs_weights
-gs_w_v = θ.layer_3.layer_2.gs_weights
+# Let's compare the learned weights to the values that we expect
+gs_w_u = θ.layer_3.layer_1.gs_weights;
+gs_w_v = θ.layer_3.layer_2.gs_weights;
 p1 = scatter(gs_w_u, label="learned", title="Comparison NN_u coefficients", xlabel="Index", ylabel="Value")
 scatter!(p1, correct_w_u, label="correct")
 p2 = scatter(gs_w_v, label="learned", title="Comparison NN_v coefficients", xlabel="Index", ylabel="Value")
 scatter!(p2, correct_w_v, label="correct")
-p = plot(p1, p2, layout = (2, 1))
+p = plot(p1, p2, layout=(2, 1))
 display(p)
-# the learned weights looks perfect, but let's check what happens if we use them to solve the GS model.
+# The learned weights look perfect, but let's check what happens if we use them to solve the GS model.
 
 
-# Here, we finally solve the trained CNODE and compare with the exact solution
-trange = (0.0f0, 500)
-dt, saveat = (1, 5)
+# We solve the system, for two different set of parameters, with the trained CNODE and compare with the exact solution
+trange = (0.0f0, 500);
+dt, saveat = (1, 5);
 trained_CNODE = NeuralODE(f_closed_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
 trained_CNODE_solution = Array(trained_CNODE(GS_sim[:,1:3,1], θ, st)[1]);
 u_trained = reshape(trained_CNODE_solution[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(trained_CNODE_solution,2), :);
@@ -264,7 +255,7 @@ fig = plot(layout = (2, 6), size = (1200, 400))
     p11 = heatmap(u_trained[:,:,2,i], axis=false, cbar=false, aspect_ratio=1, color=:reds, title="Trained")
     p12 = heatmap(v_trained[:,:,2,i], axis=false, cbar=false, aspect_ratio=1, color=:blues)
 
-    fig = plot(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, layout=(2,6), margin =0mm)
+    fig = plot(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, layout=(2, 6), margin=0mm)
 
     frame(anim, fig)
 end
@@ -273,6 +264,6 @@ if isdir("./plots")
 else
     gif(anim, "examples/plots/02.01-trained_GS.gif", fps=10)
 end
-# Notice that even if the a posteriori loss is the order of e-7
+# Notice that even with a posteriori loss of the order of 1e-7
 myloss(θ)
 # this still produces a different dynamics over time!
