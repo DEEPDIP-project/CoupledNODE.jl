@@ -1,5 +1,5 @@
 module SciMLModelCoupling
 
-# Write your package code here.
+include("toy/toyexample.jl")
 
 end

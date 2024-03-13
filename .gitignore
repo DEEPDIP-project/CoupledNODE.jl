@@ -1,4 +1,6 @@
-examples/test*
+examples/*.ipynb
+examples/*.md
 .vscode
+
 /docs/Manifest.toml
 /docs/build/
