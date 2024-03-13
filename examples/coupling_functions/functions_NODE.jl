@@ -55,7 +55,7 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
             end,
             # Apply the right hand side of the CNODE 
             SkipConnection(NN_closure, (f_NN, uv) -> let u = uv[:,:,1,:], v = uv[:,:,2,:]
-                (F_u(u, v, grid_for_force)+f_NN[1], G_v(u, v, grid_for_force) + f_NN[2])
+                (F_u(u, v, grid_for_force) + f_NN[1], G_v(u, v, grid_for_force) + f_NN[2])
             end),
             Downscaler,
             )
