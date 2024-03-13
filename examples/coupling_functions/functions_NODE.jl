@@ -1,5 +1,4 @@
-
-# I define the NeuralODE using ResNet skip blocks to add the closure
+# Define the NeuralODE using ResNet skip blocks to add the closure
 function create_f_NODE(NN, f_u; is_closed=false)
     return Chain(
         SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)),
@@ -8,6 +7,7 @@ end
 
 # NeuralODE representing the experimental observation
 function create_NODE_obs()
+    f_o(u) = @. u.*(0.0.-0.8.*log.(u))
     return Chain( 
         u -> f_o(u),
     )
@@ -37,8 +37,8 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
             uv -> let u = uv[1], v = uv[2]
                 # Return a tuple of the right hand side of the CNODE
                 # remove the placeholder dimension for the channels
-                u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u,4))
-                v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v,4))
+                u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u, 4))
+                v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v, 4))
                 (F_u(u, v, grid_for_force), G_v(u, v, grid_for_force))
             end,
             Downscaler,
@@ -51,11 +51,11 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
             Upscaler,
             # For the nn I want u and v concatenated in the channel dimension
             uv -> let u = uv[1], v = uv[2]
-                cat(u,v,dims=3)
+                cat(u, v, dims=3)
             end,
             # Apply the right hand side of the CNODE 
-            SkipConnection(NN_closure, (f_NN, uv) -> let u = uv[:, :,1,:], v = uv[:,:,2, :]
-                (F_u(u, v, grid_for_force)+f_NN[1], G_v(u, v, grid_for_force)+f_NN[2])
+            SkipConnection(NN_closure, (f_NN, uv) -> let u = uv[:,:,1,:], v = uv[:,:,2,:]
+                (F_u(u, v, grid_for_force) + f_NN[1], G_v(u, v, grid_for_force) + f_NN[2])
             end),
             Downscaler,
             )
@@ -82,7 +82,7 @@ function downscale_v(grid,resize_v=false)
                 # extract only the v component
                 uv -> let v = uv[2]
                     # to apply upsample you need a 4th dumb dimension to represent the channels/batch
-                    v = reshape(v, size(v,1), size(v,2), size(v,3), 1)
+                    v = reshape(v, size(v, 1), size(v, 2), size(v, 3), 1)
                     v
                 end,
                 # to downscale we first have to upscale to twice the target size
@@ -108,8 +108,8 @@ function upscale_v(grid, resize_v=false)
         return Chain(
             uv -> let u = uv[1:grid.Nu, :], v = uv[grid.Nu+1:end, :]
                 # reshape u and v on the grid
-                u = reshape(u, grid.nux, grid.nuy, 1, size(u,2))
-                v = reshape(v, grid.nvx, grid.nvy, 1, size(v,2))
+                u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
+                v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
                 (u,v) 
             end,
         )
@@ -121,17 +121,36 @@ function upscale_v(grid, resize_v=false)
                     v = reshape(v, grid.nvx,grid.nvy, 1, size(v,2))
                     v
                 end,
-                Upsample(:trilinear,size=(grid.nux,grid.nuy)),
+                Upsample(:trilinear, size=(grid.nux,grid.nuy)),
         )
         return Chain(SkipConnection(up_v, (v_up, uv) -> let u = uv[1:grid.Nu, :]
                     # make u on the grid
-                    u = reshape(u, grid.nux, grid.nuy, 1, size(u,2))
+                    u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
                     (u,v_up)
                 end),)
     end
 end
 
-# This object contains the grid information
+"""
+    struct Grid
+
+This object contains the grid information.
+
+Fields:
+- `dux::Float64`: The grid spacing in the x-direction for u.
+- `duy::Float64`: The grid spacing in the y-direction for u.
+- `nux::Int`: The number of grid points in the x-direction for u.
+- `nuy::Int`: The number of grid points in the y-direction for u.
+- `dvx::Float64`: The grid spacing in the x-direction for v.
+- `dvy::Float64`: The grid spacing in the y-direction for v.
+- `nvx::Int`: The number of grid points in the x-direction for v.
+- `nvy::Int`: The number of grid points in the y-direction for v.
+- `Nu::Int`: The total number of elements for u.
+- `Nv::Int`: The total number of elements for v.
+
+Constructor:
+- `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
+"""
 struct Grid
     dux::Float64
     duy::Float64
@@ -141,7 +160,6 @@ struct Grid
     dvy::Float64
     nvx::Int
     nvy::Int
-    # The constructor function will compute the number of elements for u and v
     Nu::Int
     Nv::Int
 

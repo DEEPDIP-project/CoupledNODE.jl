@@ -22,6 +22,7 @@ include("coupling_functions/functions_FDderivatives.jl");
 
 
 #THis contains the final part for the grid discretization to use as example 2.2
+# (only to show grid coarsening)
 
 
 

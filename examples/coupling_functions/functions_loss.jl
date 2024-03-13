@@ -61,11 +61,11 @@ function loss_MulDtO_oneset(trajectory, θ; λ=1e3, nunroll, nintervals)
         if length(pred) < length(real_tr)
             real_tr = real_tr[1:length(pred)]
         end
-        loss += sum(abs2, real_tr.- pred) ./ sum(abs2, real_tr)
+        loss += sum(abs2, real_tr .- pred) ./ sum(abs2, real_tr)
         #loss += sum(abs2, trajectory[1+(i-1)*nunroll:1+i*nunroll] .- pred) ./ sum(abs2, trajectory[1+(i-1)*nunroll:1+i*nunroll])
         #loss += sum(abs2, trajectory[:,:,:,1+(i-1)*nunroll:1+i*nunroll] .- pred) ./ sum(abs2, trajectory[:,:,:,1+(i-1)*nunroll:1+i*nunroll])
         # add continuity term
-        if last_pred != nothing
+        if last_pred !== nothing
             loss += λ * sum(abs, last_pred .- tr_start)
         end
         last_pred = pred[end]
