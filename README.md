@@ -54,7 +54,7 @@ A priori fitting
   
 A posteriori fitting
 #### Example 02.02: Learning the Gray-Scott model
-* [Examples 02.02](examples/02.01-GrayScott_wMultDTO.jl)
+* [Examples 02.02](examples/02.02-GrayScott.jl)
 
 ### (3) Why coupled NODEs? 
 Two main explanations:
