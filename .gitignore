@@ -1,2 +1,4 @@
 examples/test*
+examples/*.ipynb
+examples/*.md
 .vscode
