@@ -1,4 +1,16 @@
-# Define the NeuralODE using ResNet skip blocks to add the closure
+"""
+    create_f_NODE(NN, f_u; is_closed=false)
+
+Create a Neural ODE (NODE) using ResNet skip blocks to add the closure.
+
+# Arguments
+- `NN`: The neural network model.
+- `f_u`: The closure function.
+- `is_closed`: A boolean indicating whether to add the closure or not. Default is `false`.
+
+# Returns
+- The created Neural ODE (NODE) model.
+"""
 function create_f_NODE(NN, f_u; is_closed=false)
     return Chain(
         SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)),
@@ -14,6 +26,22 @@ function create_NODE_obs()
 end
 
 
+"""
+    create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
+
+Create a neural network model for the Coupled Neural ODE (CNODE) approach.
+
+# Arguments
+- `F_u`: Function that defines the right-hand side of the CNODE for the variable `u`.
+- `G_v`: Function that defines the right-hand side of the CNODE for the variable `v`.
+- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
+- `NN_u` (optional): Neural network model for the variable `u`. Default is `nothing`.
+- `NN_v` (optional): Neural network model for the variable `v`. Default is `nothing`.
+- `is_closed` (optional): Boolean indicating whether the CNODE is closed or not. Default is `false`.
+
+# Returns
+- The created CNODE model.
+"""
 function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
     # Since I will be upscaling v, I need to define a new grid to pass to the force
     grid_for_force = Grid(grid.dux, grid.duy, grid.nux, grid.nuy, grid.dux, grid.duy, grid.nux, grid.nuy)
@@ -49,7 +77,7 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
         # And use it to close the CNODE
         return Chain(
             Upscaler,
-            # For the nn I want u and v concatenated in the channel dimension
+            # For the NN I want u and v concatenated in the channel dimension
             uv -> let u = uv[1], v = uv[2]
                 cat(u, v, dims=3)
             end,
@@ -62,11 +90,21 @@ function create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=fa
     end
 end
 
-function downscale_v(grid,resize_v=false)
-    # Generate the layer that downscales v
-    # expects as input a tuple (u,v)
-    # returns their linearized concatenation
 
+"""
+    downscale_v(grid, resize_v=false)
+    
+Generate the layer that downscales `v` and expects as input a tuple (u, v). 
+If `resize_v` is `true`, the layer upscales `v` to twice the target size and applies mean pooling.
+
+Arguments:
+- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
+- `resize_v`: A boolean indicating whether to resize v.
+
+Returns:
+- Function that takes a tuple (u, v) returns the linearized concatenation of `u` and `v`.
+"""
+function downscale_v(grid, resize_v=false)
     if !resize_v
         return Chain(
             uv -> let u = uv[1], v = uv[2]
@@ -74,7 +112,7 @@ function downscale_v(grid,resize_v=false)
                 u = reshape(u, grid.Nu, size(u)[end])
                 v = reshape(v, grid.Nv, size(v)[end])
                 # and concatenate
-                vcat(u,v) 
+                vcat(u, v) 
             end,
         )
     else
@@ -86,7 +124,7 @@ function downscale_v(grid,resize_v=false)
                     v
                 end,
                 # to downscale we first have to upscale to twice the target size
-                Upsample(:trilinear,size=(2*grid.nvx,2*grid.nvy)),
+                Upsample(:trilinear, size=(2*grid.nvx, 2*grid.nvy)),
                 MeanPool((2,2)),
             )
         return Chain(SkipConnection(dw_v, (v_dw, uv) -> let u = uv[1]
@@ -95,10 +133,25 @@ function downscale_v(grid,resize_v=false)
                     u = reshape(u, grid.Nu, nbatch)
                     v = reshape(v_dw, grid.Nv, nbatch)
                     # and concatenate
-                    vcat(u,v) 
+                    vcat(u, v) 
                 end),)
     end
 end
+
+
+"""
+    upscale_v(grid, resize_v=false)
+
+Generate the layer that upscales `v`.
+This function expects as input the linearized concatenation of u and v and returns a tuple (u, v).
+
+Arguments:
+- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
+- `resize_v`: A boolean indicating whether to resize the v component.
+
+Returns:
+- Function that reshapes `u` and `v` on the grid and returns a tuple (u, v)
+"""
 function upscale_v(grid, resize_v=false)
     # Generate the layer that upscales v
     # expects as input the linearized concatenation of u and v
@@ -110,7 +163,7 @@ function upscale_v(grid, resize_v=false)
                 # reshape u and v on the grid
                 u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
                 v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
-                (u,v) 
+                (u, v) 
             end,
         )
     else
@@ -126,10 +179,11 @@ function upscale_v(grid, resize_v=false)
         return Chain(SkipConnection(up_v, (v_up, uv) -> let u = uv[1:grid.Nu, :]
                     # make u on the grid
                     u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
-                    (u,v_up)
+                    (u, v_up)
                 end),)
     end
 end
+
 
 """
     struct Grid

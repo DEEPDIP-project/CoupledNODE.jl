@@ -25,7 +25,7 @@ $$
 where we look for the time-dependent solution $u(t)$, given its initial condition $u_0$ and the force $f(t,u)$ acting on it.
 In general, we have an ordinary differential equation (ODE) when $$\frac{du}{dt} = f(u, t)$$ contains a single independent variable $u$.
 
-We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{du}{dt} = f(u,t) + NN(u |\theta),$$ so there is an extra force terms that depends on extra parameters $\theta$ that are not part of the solution. This term is called $NN$ because it can be a neural network. Overall, a NODE problem is a data-driven method that aims to model the solution $u(t)$ when the ODE can not be solved exactly, or even if $f$ is unknown. Let's look at the details with an example.
+We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{du}{dt} = f(u,t) + NN(u |\theta).$$ Notice the extra force term, named $NN$ because it can be a neural network, that depends on extra parameters $\theta$ that are not part of the solution. Overall, a NODE problem is a data-driven method that aims to model the solution $u(t)$ when the ODE can not be solved exactly, or even if $f$ is unknown. Let's look at the details with an example.
 
 #### Example 01.00: Logistic equation
 
@@ -42,19 +42,12 @@ g(u,v,t) \end{pmatrix} + \begin{pmatrix}NN_f(u,v|\theta_f) \\
 NN_g(u,v|\theta_g) \end{pmatrix}.
 $$
 
-Let's check with an example how this works.
+Let's check with an example of the Gray-Scott model how such C-NODEs could be used.
+In the following, we are going to:
 
-#### Example 02.00: Gray-Scott model
-* [Example 02.00](examples/02.00-GrayScott.jl)
-
-### How can we train a CNODE?
-A priori fitting
-#### Example 02.01: Learning the Gray-Scott model
-* [Example 02.01](examples/02.01-GrayScott.jl)
-  
-A posteriori fitting
-#### Example 02.02: Learning the Gray-Scott model
-* [Examples 02.02](examples/02.02-GrayScott.jl)
+1. [Example 02.00](examples/02.00-GrayScott.jl): Introduce and solve the  model using a explicit solver.
+2. [Example 02.01](examples/02.01-GrayScott.jl): Introduce a Neural operator, train it using **a priori fitting** and solve the Gray-Scott model using it.
+3. [Examples 02.02](examples/02.02-GrayScott.jl): Train another Neural operator using **a posteriori fitting** and solve the Gray-Scott model using it.
 
 ### (3) Why coupled NODEs? 
 Two main explanations:

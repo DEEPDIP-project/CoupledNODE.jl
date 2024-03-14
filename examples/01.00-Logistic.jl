@@ -1,4 +1,3 @@
-# Import the necessary packages
 using Lux
 using NaNMath
 using SciMLSensitivity
@@ -18,6 +17,7 @@ include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
 include("coupling_functions/functions_loss.jl");
 
+# # Logistic equation and NODE
 # Let's study a phenomenon that can be described with the following ODE $$\dfrac{dP}{dt} = rP\left(1-\dfrac{P}{K}\right),$$ which is called the logistic equation. Given $P(t=0)=P_0$ we can solve this problem analytically to get $P(t) = \frac{K}{1+\left(K-P_0\right)/P_0 \cdot e^{-rt}}$. Let's plot the solution for $r=K=2, P_0=0.01$:
 r = 2
 K = 1
@@ -42,8 +42,8 @@ plot!(t, u_experiment[:], label="Observation(t)")
 # There are many simpler alternatives for this example (e.g. Mode Decomposition, SINDY or Bayesian methods), but let's use this exercise to introduce a NODE:   
 # \begin{equation}\dfrac{du}{dt} = \underbrace{ru\left(1-\dfrac{u}{K}\right)}_{f(u)} + NN(u|\theta).\end{equation}
 # In this NODE we are looking for a solution $u(t)$ that reproduces our observation.
-# 
-# We solve this simple 1D NODE using introducing the functionalities of this repository:
+# ## Solve the NODE
+# We solve this 1D NODE using introducing the functionalities of this repository:
 
 # * We create the NN using `Lux`. In this example we do not discuss the structure of the NN, but we leave it as a black box that can be designed by the user. We will show later how to take inspiration from the physics of the problem to design optimal NN.
 
@@ -62,32 +62,30 @@ f_NODE = create_f_NODE(NN, f_u; is_closed=true);
 # and get the parametrs that you want to train
 θ, st = Lux.setup(rng, f_NODE);
 
-
 # * We define the NODE
 trange = (0.0f0, 6.0f0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive=false, dt=0.001, saveat=0.2);
-# We also solve it, using the zero-initialized parameters
+# * And we solve it using the zero-initialized parameters
 untrained_NODE_solution = Array(full_NODE(u0, θ, st)[1]);
 
-
-# We now start training the model. The first thing we have to do is to design the **loss function**. For this example, we use *multishooting a posteriori* fitting (MulDtO), where we tell `Zygote` to compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
+# ## Prepare the model
+# First, we need to design the **loss function**. For this example, we use *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/). Using `Zygote` we compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
 nunroll = 60   
 nintervals = 10
 myloss = create_randloss_MulDtO(u_experiment, nunroll=nunroll, nintervals=nintervals);
 
-# We also define this auxiliary NODE that will be used for training
+# Second, we define this auxiliary NODE that will be used for training
 dt = 0.01 # it has to be as fine as the data
 t_train_range = (0.0f0, dt * (nunroll + 1)) # it has to be as long as unroll
 training_NODE = NeuralODE(f_NODE, t_train_range, Tsit5(), adaptive=false, dt=dt, saveat=dt);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-
 lhist = Float32[];
+
 # Initialize and trigger the compilation of the model
 pinit = ComponentArray(θ);
-myloss(pinit);  # trigger compilation
-
+myloss(pinit); # trigger compilation
 
 # Select the autodifferentiation type
 adtype = Optimization.AutoZygote();
@@ -96,10 +94,12 @@ optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
-# we choose Adam with learning rate 0.1, with gradient clipping
+# We choose Adam with learning rate 0.1, with gradient clipping
 ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
 
-# Finally we can train the NODE
+# ## Train de NODE
+# We are ready to train the NODE.
+# Notice that the block can be repeated to continue training
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
     ## Commented out the line that uses a custom callback to track loss over time
@@ -108,9 +108,9 @@ result_neuralode = Optimization.solve(optprob,
     )
 pinit = result_neuralode.u;
 optprob = Optimization.OptimizationProblem(optf, pinit);
-# (Notice that the block above can be repeated to continue training)
 
-# These are the results that we get
+# ## Analyse the results
+# Visualize the obtained results
 plot()
 plot(t, Pt, label="Best P(t) fit")
 plot!(t, u_experiment[:], label="Observation(t)")
