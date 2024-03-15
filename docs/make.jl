@@ -18,6 +18,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/pabrod/SciMLModelCoupling.jl",
+    repo="github.com/DEEPDIP-project/SciML-model-coupling",
     devbranch="main",
 )
