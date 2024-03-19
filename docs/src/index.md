@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = SciMLModelCoupling
+CurrentModule = CoupledNODE
 ```
 
-# SciMLModelCoupling
+# CoupledNODE
 
-Documentation for [SciMLModelCoupling](https://github.com/pabrod/SciMLModelCoupling.jl).
+Documentation for [CoupledNODE](https://github.com/pabrod/CoupledNODE.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [SciMLModelCoupling]
+Modules = [CoupledNODE]
 ```

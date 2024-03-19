@@ -1,4 +1,4 @@
-using SciMLModelCoupling
+using CoupledNODE
 using Test
 
 @testset "Toy example" begin
@@ -6,6 +6,6 @@ using Test
     @test helloworld("Pablo") == "Hello Pablo!"
 end
 
-@testset "SciMLModelCoupling.jl" begin
+@testset "CoupledNODE.jl" begin
     # Write your tests here.
 end

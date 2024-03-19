@@ -1,4 +1,4 @@
-module SciMLModelCoupling
+module CoupledNODE
 
 include("toy/toyexample.jl")
 
