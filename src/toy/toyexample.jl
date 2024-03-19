@@ -22,6 +22,6 @@ julia> helloworld("Alice")
 julia> helloworld("Bob")
 "Hello Bob!"
 """
-function helloworld(text::String="World")
+function helloworld(text::String = "World")
     return "Hello " * text * "!"
 end
