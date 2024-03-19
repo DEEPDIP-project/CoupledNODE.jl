@@ -31,8 +31,9 @@ include("coupling_functions/functions_CNODE_loss.jl");
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
+# As in the repvious example, we will first use the exact GS model to gather some data and then in the second part we will train a neural network to approximate the GS model using a posteriori fitting.
 
-# ## Solving GS to collect data
+# ## I. Solving GS to collect data
 # Definition of the grid
 dux = duy = dvx = dvy = 1.
 nux = nuy = nvx = nvy = 64
@@ -89,7 +90,7 @@ GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=sav
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
 
 
-# ## Training a CNODE to learn the GS model via a posteriori training
+# ## II. Training a CNODE to learn the GS model via a posteriori training
 # To learn the GS model, we will use the following CNODE
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \nabla v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
