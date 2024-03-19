@@ -14,7 +14,7 @@ Random a priori loss function. Use this function to train the closure term to re
 # Returns:
 - `total_loss`: Mean squared error loss.
 """
-function mean_squared_error(f, st, x, y, θ, λ) 
+function mean_squared_error(f, st, x, y, θ, λ)
     prediction = Array(f(x, θ, st)[1])
     total_loss = sum(abs2, prediction - y) / sum(abs2, y)
     return total_loss + λ * norm(θ, 1), nothing
@@ -37,7 +37,12 @@ This function creates a randomized loss function derivative by selecting a subse
 # Returns
 A function `randloss` that computes the mean squared error loss using the selected subset of data.
 """
-function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
+function create_randloss_derivative(GS_data,
+        FG_target,
+        f,
+        st;
+        nuse = size(GS_data, 2),
+        λ = 0)
     d = ndims(GS_data)
     nsample = size(GS_data, d)
     function randloss(θ)
@@ -49,13 +54,13 @@ function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_da
 end
 
 # auxiliary function to solve the NeuralODE, given parameters p
-function predict_u_CNODE(uv0,θ,tg)
+function predict_u_CNODE(uv0, θ, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
     #tg_size = size(tg)
     #println("sol size ", size(sol))
     #println("tg size ", size(tg))
     #println(sol[:,:,1] == tg[:,:,1])
-    
+
     ## handle unstable solver
     #if any(isnan, sol)
     #    # if some steps succesfully run, then use them for the loss
@@ -77,7 +82,7 @@ function predict_u_CNODE(uv0,θ,tg)
     #        end
     #    end
     #end
-    return sol, tg[:,:,1:size(sol,3)]
+    return sol, tg[:, :, 1:size(sol, 3)]
 end
 """
     create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
@@ -95,18 +100,26 @@ This function creates a random loss function for the multishooting method with m
 # Returns
 - `randloss_MulDtO`: A random loss function for the multishooting method.
 """
-function create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
+function create_randloss_MulDtO(target; nunroll, nintervals = 1, nsamples, λ_c, λ_l1)
     # Get the number of time steps 
     d = ndims(target)
     nt = size(target, d)
     function randloss_MulDtO(θ)
         # Zygote will select a random initial condition that can accomodate all the multishooting intervals
-        istart = Zygote.@ignore rand(1:nt-nunroll*nintervals)
-        trajectory = Zygote.@ignore ArrayType(selectdim(target, d, istart:istart+nunroll*nintervals))
+        istart = Zygote.@ignore rand(1:(nt - nunroll * nintervals))
+        trajectory = Zygote.@ignore ArrayType(selectdim(target,
+            d,
+            istart:(istart + nunroll * nintervals)))
         # and select a certain number of samples
-        trajectory = Zygote.@ignore trajectory[:,rand(1:size(trajectory,2), nsamples),:]
+        trajectory = Zygote.@ignore trajectory[:, rand(1:size(trajectory, 2), nsamples), :]
         # this is the loss evaluated for each multishooting set
-        loss_MulDtO_oneset(trajectory, θ, nunroll=nunroll, nintervals=nintervals, nsamples=nsamples, λ_c=λ_c, λ_l1=λ_l1)
+        loss_MulDtO_oneset(trajectory,
+            θ,
+            nunroll = nunroll,
+            nintervals = nintervals,
+            nsamples = nsamples,
+            λ_c = λ_c,
+            λ_l1 = λ_l1)
     end
 end
 
@@ -129,29 +142,39 @@ Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more 
 - `loss`: The computed loss value.
 - `nothing`: Placeholder return value.
 """
-function loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, nintervals, nsamples=nsamples)
+function loss_MulDtO_oneset(trajectory,
+        θ;
+        λ_c = 1e1,
+        λ_l1 = 1e1,
+        nunroll,
+        nintervals,
+        nsamples = nsamples)
     # Take all the time intervals and concatenate them in the batch dimension
-    list_tr = cat([trajectory[:, :, 1+(i-1)*nunroll:1+i*nunroll] for i in 1:nintervals]..., dims=2)
+    list_tr = cat([trajectory[:, :, (1 + (i - 1) * nunroll):(1 + i * nunroll)]
+                   for i in 1:nintervals]...,
+        dims = 2)
     # get all the initial conditions 
-    list_starts = cat([trajectory[:, :, 1+(i-1)*nunroll] for i in 1:nintervals]..., dims=2)
+    list_starts = cat([trajectory[:, :, 1 + (i - 1) * nunroll] for i in 1:nintervals]...,
+        dims = 2)
     # get the predictions
     pred, list_tr = predict_u_CNODE(list_starts, θ, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
     loss = sum(abs2, list_tr .- pred) ./ sum(abs2, list_tr)
 
-    if λ_c>0 && size(list_tr,3)==nunroll+1
+    if λ_c > 0 && size(list_tr, 3) == nunroll + 1
         # //TODO check if the continuity term is correct
         # Compute the continuity term by comparing end of one interval with the start of the next one
-        pred_end = pred[:,:,end]
-        pred_start = pred[:,:,1]
+        pred_end = pred[:, :, end]
+        pred_start = pred[:, :, 1]
         continuity = 0
         # loop over all the samples
         for s in 1:nsamples
             # each sample contains nintervals, we need to shift the index by
-            s_shift = (s-1)*nintervals
+            s_shift = (s - 1) * nintervals
             # loop over all the intervals for the sample (excluding the last one)
-            for i in 1:nintervals-1
-                continuity += sum(abs,pred_end[:, s_shift+ i] .- pred_start[:, s_shift+ i+1])
+            for i in 1:(nintervals - 1)
+                continuity += sum(abs,
+                    pred_end[:, s_shift + i] .- pred_start[:, s_shift + i + 1])
             end
         end
     else
