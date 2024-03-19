@@ -14,8 +14,7 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
-    ],
-)
+    ],)
 
 deploydocs(;
     repo="github.com/DEEPDIP-project/CoupledNODE.jl",
