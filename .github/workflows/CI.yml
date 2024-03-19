@@ -65,6 +65,6 @@ jobs:
         shell: julia --project=docs --color=yes {0}
         run: |
           using Documenter: DocMeta, doctest
-          using SciMLModelCoupling
-          DocMeta.setdocmeta!(SciMLModelCoupling, :DocTestSetup, :(using SciMLModelCoupling); recursive=true)
-          doctest(SciMLModelCoupling)
+          using CoupledNODE
+          DocMeta.setdocmeta!(CoupledNODE, :DocTestSetup, :(using CoupledNODE); recursive=true)
+          doctest(CoupledNODE)
