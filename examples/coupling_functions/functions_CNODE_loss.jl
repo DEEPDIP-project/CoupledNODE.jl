@@ -1,11 +1,42 @@
-# Random a priori loss function
-# You can use this to train the closure term to reproduce the right hand side
+"""
+    mean_squared_error(f, st, x, y, θ, λ)
+
+Random a priori loss function. Use this function to train the closure term to reproduce the right hand side.
+
+# Arguments:
+- `f`: Function that represents the model.
+- `st`: State of the model.
+- `x`: Input data.
+- `y`: Target data.
+- `θ`: Parameters of the model.
+- `λ`: Regularization parameter.
+
+# Returns:
+- `total_loss`: Mean squared error loss.
+"""
 function mean_squared_error(f, st, x, y, θ, λ) 
     prediction = Array(f(x, θ, st)[1])
     total_loss = sum(abs2, prediction - y) / sum(abs2, y)
-    return total_loss + λ *norm(θ, 1), nothing
+    return total_loss + λ * norm(θ, 1), nothing
 end
-# the loss functions are randomized by selecting a subset of the data, because it would be too expensive to use the entire dataset at each iteration
+
+"""
+    create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
+
+Create a randomized loss function that compares the derivatives.
+This function creates a randomized loss function derivative by selecting a subset of the data. This is done because using the entire dataset at each iteration would be too expensive.
+
+# Arguments
+- `GS_data`: The input data.
+- `FG_target`: The target data.
+- `f`: The model function.
+- `st`: The model state.
+- `nuse`: The number of samples to use for the loss function. Defaults to the size of `GS_data`.
+- `λ`: The regularization parameter. Defaults to 0.
+
+# Returns
+A function `randloss` that computes the mean squared error loss using the selected subset of data.
+"""
 function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
     d = ndims(GS_data)
     nsample = size(GS_data, d)
@@ -17,12 +48,10 @@ function create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_da
     end
 end
 
-
-
 # auxiliary function to solve the NeuralODE, given parameters p
 function predict_u_CNODE(uv0,θ,tg)
-    tg_size = size(tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
+    #tg_size = size(tg)
     #println("sol size ", size(sol))
     #println("tg size ", size(tg))
     #println(sol[:,:,1] == tg[:,:,1])
@@ -50,7 +79,22 @@ function predict_u_CNODE(uv0,θ,tg)
     #end
     return sol, tg[:,:,1:size(sol,3)]
 end
-# This is the function to create the loss
+"""
+    create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
+
+This function creates a random loss function for the multishooting method with multiple shooting intervals.
+
+# Arguments
+- `target`: The target data for the loss function.
+- `nunroll`: The number of time steps to unroll.
+- `nintervals`: The number of shooting intervals.
+- `nsamples`: The number of samples to select.
+- `λ_c`: The weight for the continuity term. It sets how strongly we make the pieces match (continuity term).
+- `λ_l1`: The coefficient for the L1 regularization term in the loss function.
+
+# Returns
+- `randloss_MulDtO`: A random loss function for the multishooting method.
+"""
 function create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
     # Get the number of time steps 
     d = ndims(target)
@@ -65,29 +109,47 @@ function create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, �
         loss_MulDtO_oneset(trajectory, θ, nunroll=nunroll, nintervals=nintervals, nsamples=nsamples, λ_c=λ_c, λ_l1=λ_l1)
     end
 end
-# the parameter λ sets how strongly we make the pieces match (continuity term)
-function loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, nintervals, nsamples=nsamples)
 
+"""
+    loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, nintervals, nsamples=nsamples)
+
+Compute the loss function for the multiple shooting method with a continuous neural ODE (CNODE) model.
+Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more details.
+
+# Arguments
+- `trajectory`: The trajectory of the system.
+- `θ`: The parameters of the CNODE model.
+- `λ_c`: The weight for the continuity term. It sets how strongly we make the pieces match (continuity term). Default is `1e1`.
+- `λ_l1`: The weight for the L1 regularization term. Default is `1e1`.
+- `nunroll`: The number of time steps to unroll the trajectory.
+- `nintervals`: The number of intervals to divide the trajectory into.
+- `nsamples`: The number of samples. Default is `nsamples`.
+
+# Returns
+- `loss`: The computed loss value.
+- `nothing`: Placeholder return value.
+"""
+function loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, nintervals, nsamples=nsamples)
     # Take all the time intervals and concatenate them in the batch dimension
     list_tr = cat([trajectory[:, :, 1+(i-1)*nunroll:1+i*nunroll] for i in 1:nintervals]..., dims=2)
     # get all the initial conditions 
     list_starts = cat([trajectory[:, :, 1+(i-1)*nunroll] for i in 1:nintervals]..., dims=2)
-    pred, list_tr = predict_u_CNODE(list_starts,θ,list_tr)
-    
+    # get the predictions
+    pred, list_tr = predict_u_CNODE(list_starts, θ, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
-    loss = sum(abs2, list_tr.- pred) ./ sum(abs2, list_tr)
+    loss = sum(abs2, list_tr .- pred) ./ sum(abs2, list_tr)
 
     if λ_c>0 && size(list_tr,3)==nunroll+1
         # //TODO check if the continuity term is correct
-        # Then I compute the continuity term by comparing end of one interval with the start of the next one
+        # Compute the continuity term by comparing end of one interval with the start of the next one
         pred_end = pred[:,:,end]
         pred_start = pred[:,:,1]
         continuity = 0
         # loop over all the samples
         for s in 1:nsamples
-            # each sample contains nintervals, so I need to shift the index by
+            # each sample contains nintervals, we need to shift the index by
             s_shift = (s-1)*nintervals
-            # the I loop over all the intervals for the sample (excluding the last one)
+            # loop over all the intervals for the sample (excluding the last one)
             for i in 1:nintervals-1
                 continuity += sum(abs,pred_end[:, s_shift+ i] .- pred_start[:, s_shift+ i+1])
             end
@@ -96,5 +158,5 @@ function loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, ninter
         continuity = 0
     end
 
-    return loss+(continuity*λ_c) + λ_l1*norm(θ), nothing
+    return loss + (continuity * λ_c) + λ_l1 * norm(θ), nothing
 end
