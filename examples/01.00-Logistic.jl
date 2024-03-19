@@ -38,9 +38,9 @@ plot!(t, u_experiment[:], label="Observation(t)")
 # How can we then model our experiment as an ODE?
 # 
 # There are many simpler alternatives for this example (e.g. Mode Decomposition, SINDY or Bayesian methods), but let's use this exercise to introduce a NODE:   
-# \begin{equation}\dfrac{du}{dt} = \underbrace{ru\left(1-\dfrac{u}{K}\right)}_{f(u)} + NN(u|\theta).\end{equation}
+# $\begin{equation}\dfrac{du}{dt} = \underbrace{ru\left(1-\dfrac{u}{K}\right)}_{f(u)} + NN(u|\theta).\end{equation}$
 # In this NODE we are looking for a solution $u(t)$ that reproduces our observation.
-#We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl`](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [`NeuralODE`](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
+# We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [NeuralODE](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 # ## Solve the NODE
 # We solve this 1D NODE using introducing the functionalities of this repository:
 
