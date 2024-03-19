@@ -10,16 +10,13 @@ cd("examples")
 
 files = glob("Example*jl")
 
-while true 
+while true
     for file in files
-        Literate.markdown(
-            file;
+        Literate.markdown(file;
             flavor = Literate.CommonMarkFlavor(),
-            codefence = "```julia" => "```",
-        )
+            codefence = "```julia" => "```",)
     end
 
     #watch_file("Example1.jl")
     watch_folder("examples")
-
 end
