@@ -36,6 +36,7 @@ We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{d
 Coupled Neural ODEs (C-NODEs) are defined as:
 
 $$
+\tag{2.1.0}
 \begin{pmatrix} \dfrac{du}{dt} \\
 \dfrac{dv}{dt} \end{pmatrix} = \begin{pmatrix} f(u,v,t)\\
 g(u,v,t) \end{pmatrix} + \begin{pmatrix}NN_f(u,v|\theta_f) \\
@@ -86,14 +87,19 @@ or in words: **does the discretized solution evolve like the original?**
 
 The answer is that it depends on the harshness of the discretization, i.e. the value of $N$ for the specific problem.
 We distinguish two cases:
-* **DNS** (direct numerical simulation): if $N$ is large then eq.\ref{eq:isclosed} is true, or we can say that the system is effectively *closed* because the discretized solution evolves following the behavior of the original system.
+* **DNS** (direct numerical simulation): if $N$ is large then eq.(2.2.2) is true, or we can say that the system is effectively *closed* because the discretized solution evolves following the behavior of the original system.
+
 However, especially if the system is chaotic, it is likely that the small scale behavior influences the large scale behavior. In this case we talk about:
-* **LES** (large eddy simulations): $N$ is too small to capture the small scale effects, thus the eq.\ref{eq:ode} is *closed* because we would need $$\frac{d\bar{u}}{dt} = \Phi f(u)$$ which can not be solved using $\bar{u}(t)$ only. 
+* **LES** (large eddy simulations): $N$ is too small to capture the small scale effects, thus the eq.(2.2.1) is *not closed*. This means that $\frac{d\bar{u}}{dt} = f_h(\bar{u})$ has a different dynamics than the exact solution $u(t)$, so we would need instead to solve  $$\frac{d\bar{u}}{dt} = \Phi f(u).$$ 
+However this DE depends on $u$, so the system is not closed and can not be efficiently solved.
 
-... TO BE CONTINUED ...
+One of the main goal of this repository will be to use CNODEs like eq.(2.1.0) in order to correct the LES simulation and get a solution as good as the DNS.
 
-We are mainly interested in differential equation models for vector fields that have some type of chaotic behavior. This means that we can expect that the problem can not be solved for a continuous variable $x\in\mathbb{R}$, so the solution has to be discretized on a finite grid. The definition of this grid also influences the definition of the force $f$, because usually the derivatives are approximated into finite differences. It is then important to consider that the grid is strictly connected to the boundary conditions: if $x=0$ is a fixed boundary, the staggered grid $x=n/2$ for $n=1,\cdots,N$ would miss this boundary. 
-For now, **we leave the grid problem to the user**. This means that we assume that the DE and all its elements will be defined by the user on a grid that makes sense for its problem, and we will **assume this constant user-defined grid for the solution** of the DE.
+4. [Examples 02.04](examples/02.04-GrayScott.jl): Trainable LES.
+
+**... TO BE CONTINUED ...**
+
+
 
 ### Example 4 : Burgers
 Look [here](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials). It has to be adapted, generalized and moved to this repo.
