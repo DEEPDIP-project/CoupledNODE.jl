@@ -54,19 +54,14 @@ Two main explanations:
 * We are working with coupled systems (like Gray-Scott).
 * Multi-scale approach to PDEs.
 
-#### Example 2.1: Parameters learning of the Gray-Scott problem
-* Link: Gray-Scott parameter learning
-  
-#### Example 2.2: Gray-Scott as a multiscale problem
-* Link: Gray-Scott multiscale
 
 ### Multiscale approach to chaotic PDEs
 In a more realistic situation, the incognita is usually a vector field, so we will try to solve for $u(x,t): \Omega \times \mathbb{R} \rightarrow \mathbb{R}^m$, where the spacial coordinate is $x\in \Omega \subseteq \mathbb{R}^D$ and the field $u$ is $m$-dimensional.
 
 If the problem is simple, like the case of linear ODEs, $u$ will be perfectly representable using a few parameters, e.g phase and frequency of an harmonic oscillator, and an analytical solution will be probably available.
-If this is the case, one could rely on direct and efficient approaches like the one described [here](https://docs.sciml.ai/DiffEqDocs/stable/examples/classical_physics/).
+If this is the case, one could rely on direct and efficient approaches,as we have show in [Example 01.00](examples/01.00-Logistic.jl), or a more general framework like the one described [here](https://docs.sciml.ai/DiffEqDocs/stable/examples/classical_physics/).
 
-However most of the times, the analytical solution is not available. A common solution is the method of lines, that consists in discretizing the spacial dimension and study a vectorial representation of the function $u(x,t) \rightarrow \bar{u}(t)\in \mathbb{R}^N$, where $N\ll D$. This discretization can also be interpreted as a **filter** $\Phi\in\mathbb{R}^{D\times N}$ that gets applied to the field:
+However most of the times, the analytical solution is not available. A common solution is the *method of lines*, that consists in discretizing the spacial dimension and study a vectorial representation of the function $u(x,t) \rightarrow \bar{u}(t)\in \mathbb{R}^N$, where $N\ll D$. This discretization can also be interpreted as a **filter** $\Phi\in\mathbb{R}^{D\times N}$ that gets applied to the field:
 $$\bar{u}= \Phi u$$
 
 Once we have a discretized space, we also discretize the force $f\rightarrow f_h$ using finite differences, while also assuming that the force is not time dependent. So we are left with
@@ -86,6 +81,8 @@ $$
 $$
 
 or in words: **does the discretized solution evolve like the original?**
+
+3. [Examples 02.03](examples/02.03-GrayScott.jl): DNS, LES and *exact* solutions.
 
 The answer is that it depends on the harshness of the discretization, i.e. the value of $N$ for the specific problem.
 We distinguish two cases:
