@@ -94,7 +94,7 @@ end
 """
     downscale_v(grid, resize_v=false)
     
-Generate the layer that downscales `v` and expects as input a tuple (u, v). 
+Generate the layer that downscales `v` and expects as input a tuple `(u, v)`. 
 If `resize_v` is `true`, the layer upscales `v` to twice the target size and applies mean pooling.
 
 Arguments:

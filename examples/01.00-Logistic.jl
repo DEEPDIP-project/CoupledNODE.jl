@@ -29,12 +29,10 @@ t = range(start=0, stop=6, step=0.01)
 Pt = P.(t)
 plot(t, Pt, label="P(t)", xlabel="t", ylabel="P(t)")
 
-
 # Let's say that we want to use the logistic equation to model an experiment like the activation energy of a neuron. We run the experiment and we observe the following:
 u_experiment = observation()
 plot(t, Pt, label="Best P(t) fit")
 plot!(t, u_experiment[:], label="Observation(t)")
-
 
 # This means that our experimental system, despite its similarity, it is not described by a logistic ODE.
 # How can we then model our experiment as an ODE?
@@ -42,17 +40,16 @@ plot!(t, u_experiment[:], label="Observation(t)")
 # There are many simpler alternatives for this example (e.g. Mode Decomposition, SINDY or Bayesian methods), but let's use this exercise to introduce a NODE:   
 # \begin{equation}\dfrac{du}{dt} = \underbrace{ru\left(1-\dfrac{u}{K}\right)}_{f(u)} + NN(u|\theta).\end{equation}
 # In this NODE we are looking for a solution $u(t)$ that reproduces our observation.
+#We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl`](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [`NeuralODE`](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 # ## Solve the NODE
 # We solve this 1D NODE using introducing the functionalities of this repository:
 
 # * We create the NN using `Lux`. In this example we do not discuss the structure of the NN, but we leave it as a black box that can be designed by the user. We will show later how to take inspiration from the physics of the problem to design optimal NN.
-
 NN = Chain(
     SkipConnection(
         Dense(1, 3), 
         (out, u) -> u * out[1] .+ u .* u .* out[2] .+ u .* log.(abs.(u)) .* out[3])
     )
-
 
 # * We define the force $f(u)$ compatibly with SciML. 
 f_u(u) = @. r * u * (1.0 - u/K);
@@ -66,7 +63,9 @@ f_NODE = create_f_NODE(NN, f_u; is_closed=true);
 trange = (0.0f0, 6.0f0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive=false, dt=0.001, saveat=0.2);
-# * And we solve it using the zero-initialized parameters
+
+# * We solve the NODE using the zero-initialized parameters
+# *Note:* `full_NODE` is a `NeuralODE` function that returns a `DiffEqBase.ODESolution` object. This object contains the solution of the ODE, but it also contains additional information like the time points at which the solution was evaluated and the parameters of the ODE. We can access the solution using `[1]`, and we convert it to an `Array` to be able to use it for further calculations and plot.
 untrained_NODE_solution = Array(full_NODE(u0, θ, st)[1]);
 
 # ## Prepare the model

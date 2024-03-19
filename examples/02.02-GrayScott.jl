@@ -24,7 +24,7 @@ include("coupling_functions/functions_CNODE_loss.jl");
 
 # # Learning the Gray-Scott model: a posteriori fitting
 
-# In this example, we will learn how to approximate a closure to the Gray-Scott model with a Neural Network trained via a posteriori fitting, using a multishooting approach.
+# In this example, we will learn how to approximate a closure to the Gray-Scott model with a Neural Network trained via a posteriori fitting, using a [multishooting](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/) approach.
 
 # As a reminder, the GS model is defined from 
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \nabla v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
@@ -38,8 +38,7 @@ dux = duy = dvx = dvy = 1.
 nux = nuy = nvx = nvy = 64
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
-
-# Here, we define the initial condition as a random perturbation over a constant background to add variety. notice that in this case we are generating only 2 samples (i.e. `nsimulations=2`). This is because for the a posteriori fitting we are using a fine sampling.
+# Define the initial condition as a random perturbation over a constant background to add variety. Notice that in this case we are generating only 2 samples (i.e. `nsimulations=2`). This is because for the *a posteriori fitting* we are using a fine sampling.
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations=1)
     u_init = U₀ .+ ε_u .* randn(grid.nux, grid.nuy, nsimulations)
     v_init = V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations)
@@ -53,7 +52,7 @@ u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulati
 # $u$ and $v$ are concatenated in a flattended array
 uv0 = vcat(reshape(u_initial, grid.Nu,:),reshape(v_initial, grid.Nv,:));
 
-# These are the GS parameters (also used in examples 02.01 and 02.02) that we will try to learn
+# These are the GS parameters (also used in examples 02.01 and 02.02) that we will try to learn.
 D_u = 0.16
 D_v = 0.08
 f = 0.055
@@ -81,7 +80,7 @@ burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:,:,end], θ
 # Data collection run
 uv0 = burnout_CNODE_solution[:,:,end];
 # For the a-posteriori fitting, we use a fine sampling for two reasons:
-# 1. use a handlable data points
+# 1. use a handlable amount of data points
 # 2. prevent instabilities while training
 # However, this means that the simulation can not be long.
 dt, saveat = (1/(4*max(D_u,D_v)), 0.001)
@@ -143,7 +142,6 @@ NN_u = GSLayer_u()
 NN_v = GSLayer_v()
 
 # Close the CNODE with the Neural Network
-include("coupling_functions/functions_NODE.jl");
 f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed=true) 
 θ, st = Lux.setup(rng, f_closed_CNODE);
 θ = ComponentArray(θ)
@@ -154,11 +152,11 @@ f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed=
 nunroll = 10   
 nintervals = 5
 nsamples = 1 ;
-# Since we want to control the timestep and the total length of the solutions that we have to compute at each iteration, we  define an auxiliary NODE that will be used for training. 
+# Since we want to control the time step and the total length of the solutions that we have to compute at each iteration, we  define an auxiliary NODE that will be used for training. 
 # In particular, we can use smaller time steps for the training, but have to sample at the same rate as the data.
+# Also, it is important to solve for only the time interval thas is needed at each training step (corresponding to `nunroll` steps)
 dt_train = 0.001;
 saveat_train = saveat
-# Also, it is important to solve for only the time interval thas is needed at each training step (corresponding to `nunroll` steps)
 t_train_range = (0.0f0, saveat_train * nunroll)
 training_CNODE = NeuralODE(f_closed_CNODE, t_train_range, Tsit5(), adaptive=false, dt=dt_train, saveat=saveat_train);
 # Let's also define a secondary auxiliary CNODE that will be used in case the previous one is unstable
@@ -167,7 +165,6 @@ t_train_range_2 = t_train_range
 training_CNODE_2 = NeuralODE(f_closed_CNODE, t_train_range_2, Tsit5(), adaptive=false, dt=0.5 * dt_train, saveat=saveat_train);
 
 # Create the loss
-include("coupling_functions/functions_CNODE_loss.jl")
 myloss = create_randloss_MulDtO(GS_sim, nunroll=nunroll, nintervals=nintervals, nsamples=nsamples, λ_c=1e2, λ_l1=1e-1);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
@@ -213,7 +210,7 @@ p2 = scatter(gs_w_v, label="learned", title="Comparison NN_v coefficients", xlab
 scatter!(p2, correct_w_v, label="correct")
 p = plot(p1, p2, layout = (2, 1))
 display(p)
-# The learned weights looks perfect, but let's check what happens if we use them to solve the GS model.
+# The learned weights look perfect, let's check what happens if we use them to solve the GS model.
 
 # ### Comparison: CNODE vs exact solutions
 

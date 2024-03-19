@@ -23,10 +23,9 @@ end
 
 
 # auxiliary function to solve the NeuralODE, given parameters p
-function predict_NODE(u0,θ)
+function predict_NODE(u0, θ)
     # you can make this shorter, since it is used only for the unrolling
-    sol = Array(training_NODE(u0, θ, st)[1])
-    return sol
+    return Array(training_NODE(u0, θ, st)[1])
 end
 
 
@@ -52,7 +51,7 @@ function loss_MulDtO_oneset(trajectory, θ; λ=1e3, nunroll, nintervals)
         # Warning: hard coded dimension! 
         #tr_start = trajectory[:,:,:,1+(i-1)*nunroll]
         # hard coded single batch
-        pred = dropdims(predict_NODE(tr_start,θ), dims=1)
+        pred = dropdims(predict_NODE(tr_start, θ), dims=1)
         real_tr = trajectory[1+(i-1)*nunroll:1+i*nunroll]
         # if they have different lenghts, make them match to the shortest
         if length(pred) > length(real_tr)

@@ -21,7 +21,7 @@ include("coupling_functions/functions_loss.jl")
 include("coupling_functions/functions_FDderivatives.jl");
 
 # # Gray-Scott model - explicit solution
-# In following examples we will use the GS model to showcase how it can be represented as Coupled Neural ODEs (CNODEs).
+# In following examples we will use the GS model to showcase how it can be represented as Coupled Neural ODEs (CNODEs). But let us first explore the GS model starting with an explicit solution of it. We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl`](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [`NeuralODE`](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 
 # The system that we want to solve, called the the Gray-Scott model, is defined by the following equations:
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \nabla v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
@@ -33,7 +33,7 @@ dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 100
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
-# We start with a central concentration of $v$
+# We start defining a central concentration of $v$ and a constant concentration of $u$:
 function initialize_uv(grid, u_bkg, v_bkg, center_size)
     u_initial = u_bkg * ones(grid.nux, grid.nuy)
     v_initial = zeros(grid.nvx, grid.nvy)
@@ -56,14 +56,14 @@ F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v.^2 .+ f .* (1
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v.^2 .- (f + k) .* v
 
 # Once the functions have been defined, we can create the CNODE
-# Notice that in the future, this same constructor, will be able to use the user provided neural network to close the equations
+# Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
 f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed=false);
 # and we ask Lux for the parameters to train and their structure
 θ, st = Lux.setup(rng, f_CNODE);
 # in this example we are not training any parameters, so we can confirm that the vector θ is empty
 length(θ) == 0;
 
-# We now do a short *burnout run* to get rid of the initial artifacts, in other words: this allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
+# We now do a short *burnout run* to get rid of the initial artifacts. This allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
 trange_burn = (0.0f0, 10.0f0);
 dt, saveat = (1e-2, 1);
 full_CNODE = NeuralODE(f_CNODE, trange_burn, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
@@ -83,7 +83,7 @@ untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
 u = reshape(untrained_CNODE_solution[1:grid.Nu, :, :]    , grid.nux, grid.nuy, size(untrained_CNODE_solution,2), :);
 v = reshape(untrained_CNODE_solution[grid.Nu+1:end, :, :], grid.nvx, grid.nvy, size(untrained_CNODE_solution,2), :);
 
-# Finally plot the solution as an animation
+# Finally, plot the solution as an animation
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
 @gif for i in 1:2:size(u, 4)

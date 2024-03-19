@@ -24,23 +24,22 @@ include("coupling_functions/functions_CNODE_loss.jl");
 
 # # Learning the Gray-Scott model: a priori fitting
 
-# In the previous example [02.00-GrayScott.jl](02.00-GrayScott.jl) we have seen how to use the CNODE to solve the Gray-Scott model.
-# Here we introduce the Learning part of the CNODE, and show how it can be used to close the CNODE. We are going to train the neural network via **a priori fitting** and in the next example [02.02-GrayScott](02.02-GrayScott.jl) we will show how to use a posteriori fitting.
+# In the previous example [02.00-GrayScott.jl](02.00-GrayScott.jl) we have seen how to use the CNODE to solve the Gray-Scott model via an explicit method.
+# Here we introduce the *Learning part* of the CNODE, and show how it can be used to close the CNODE. We are going to train the neural network via **a priori fitting** and in the next example [02.02-GrayScott](02.02-GrayScott.jl) we will show how to use a posteriori fitting.
 
 # As a reminder, the GS model is defined from 
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \nabla v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
-# This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
+# This effect is captured by the ratios between $D_u$ and $D_v$ (diffusion coefficients) and $f$ and $k$ (reaction rates).
 
 # In this example, we will first use the exact GS model to gather some data
 # then in the second part, we will train a generic CNODE to show that it can learn the GS model from the data.
 
-# ## Solving GS to collect data
+# ## I. Solving GS to collect data
 # Definition of the grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
-
 
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
@@ -58,14 +57,13 @@ u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulati
 # We define the initial condition as a flattened concatenated array
 uv0 = vcat(reshape(u_initial, grid.Nu,:),reshape(v_initial, grid.Nv,:));
 
-
 # These are the GS parameters (also used in example 02.01) that we will try to learn
 D_u = 0.16
 D_v = 0.08
 f = 0.055
 k = 0.062;
 
-# Exact right hand sides of the GS model
+# Exact right hand sides (functions) of the GS model
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v.^2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v.^2 .- (f + k) .* v
 
@@ -74,7 +72,7 @@ f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed=false);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
 # **Burnout run:** to discard the results of the initial conditions.
-# In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This will allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
+# In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
 trange_burn = (0.0f0, 1.0f0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE, trange_burn, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
@@ -92,25 +90,26 @@ dt, saveat = (1/(4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive=false, dt=dt, saveat=saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
 
-# We can also store a collection of right hand sides to do derivative fitting
-uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2)* size(GS_sim, 3));
+# `GS_sim` contains the solutions of $u$ and $v$ for the specified `trange` and `nsimulations` initial conditions. If you explore `GS_sim` you will see that it has the shape `((nux * nuy) + (nvx * nvy), nsimulations, timesteps)`.
+# `uv_data` is a reshaped version of `GS_sim` that has the shape `(nux * nuy + nvx * nvy, nsimulations * timesteps)`. This is the format that we will use to train the CNODE.
+uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3));
+# We define `FG_target` containing the right hand sides (i.e. $\frac{du}{dt} and \frac{dv}{dt}$) of each one of the samples. We will see later that for the training `FG_target` is used as the labels to do derivative fitting.
 FG_target = Array(f_CNODE(uv_data, θ_0, st_0)[1]);
 
-
-# ## Training a CNODE to learn the GS model via a priori training
+# ## II. Training a CNODE to learn the GS model via a priori training
 # To learn the GS model, we will use the following CNODE
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + \theta_{u,1} u +\theta_{u,2} v +\theta_{u,3}  \\ \frac{dv}{dt} = D_v \nabla v + uv^2 + \theta_{v,1} u +\theta_{v,2} v +\theta_{v,3} \end{cases} \end{equation}
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
 # The deterministic functions of the two coupled equations are:
-F_u_open(u, v ,grid) = Zygote.@ignore D_u * Laplacian(u,grid.dux,grid.duy) .- u .* v.^2;
-G_v_open(u, v ,grid) = Zygote.@ignore D_v * Laplacian(v,grid.dvx,grid.dvy) .+ u .* v.^2;
+F_u_open(u, v ,grid) = Zygote.@ignore D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v.^2;
+G_v_open(u, v ,grid) = Zygote.@ignore D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v.^2;
 # We tell Zygote to ignore this tree branch for the gradient propagation.
 
 # For the trainable part, we define an abstract Lux layer
 struct GSLayer{F} <: Lux.AbstractExplicitLayer
     init_weight::F
 end
-# and its constructor
+# and its (outside) constructor
 function GSLayer(; init_weight = zeros32)
 #function GSLayer(; init_weight = glorot_uniform)
     return GSLayer(init_weight)
@@ -124,7 +123,7 @@ Lux.initialstates(::AbstractRNG, ::GSLayer) = (;)
 Lux.parameterlength((; )::GSLayer) = 3
 Lux.statelength(::GSLayer) = 0
 
-# We now define how to pass inputs through GSlayer, assuming the following:
+# We define how to pass inputs through `GSlayer`, assuming the following:
 # - Input size: `(N, N, 2, nsample)`, where the two channels are $u$ and $v$.
 # - Output size: `(N, N, nsample)` where we assumed monochannel output, so we dropped the channel dimension.
 
@@ -135,12 +134,11 @@ function ((;)::GSLayer)(x, params, state)
     out = params.gs_weights[1] .* u .+ params.gs_weights[2] .* v .+ params.gs_weights[3]
     out, state
 end
-# We create the trainable models. In this case is just a GS layer wrapped in a `Chain`, but the model can be as complex as needed.
+# We create the trainable models. In this case is just a GS layer, but the model can be as complex as needed.
 NN_u = GSLayer()
 NN_v = GSLayer()
 
 # We can now close the CNODE with the Neural Network
-include("coupling_functions/functions_NODE.jl");
 f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed=true) 
 θ, st = Lux.setup(rng, f_closed_CNODE);
 print(θ)
@@ -153,7 +151,7 @@ correct_w_v = [0, -(f + k), 0 ] ;
 θ_correct.layer_3.layer_2.gs_weights = correct_w_v ;
 # Notice that they are the same within a tolerance of 1e-7
 isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol=1e-7, rtol=1e-7)
-# but now with a tolerance of 1e-8 this check returns `false``.
+# but now with a tolerance of 1e-8 this check returns `false`.
 isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1], θ_0, st_0)[1], atol=1e-8, rtol=1e-8)
 # In a chaotic system like GS, this would be enough to produce different dynamics, so be careful about this
 
@@ -165,20 +163,20 @@ isapprox(f_closed_CNODE(GS_sim[:,1,1], θ_correct, st)[1], f_CNODE(GS_sim[:,1,1]
 # ```
 
 # ### Design the loss function - a priori fitting
-# For this example, we use *a priori* fitting. Using `Zygote` we compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
-include("coupling_functions/functions_CNODE_loss.jl")
+# For this example, we use *a priori* fitting. In this approach, the loss function is defined to minimize the difference between the derivatives of $\frac{du}{dt}$ and $\frac{dv}{dt}$ predicted by the model and calculated via explicit method `FG_target`.
+# In practice, we use [Zygote](https://fluxml.ai/Zygote.jl/stable/) to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
 myloss = create_randloss_derivative(uv_data, FG_target, f_closed_CNODE, st; nuse=64, λ=0);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 lhist = Float32[];
-# Initialize and trigger the compilation of the model
+## Initialize and trigger the compilation of the model
 pinit = ComponentArray(θ);
 myloss(pinit);
-# [!] Check that the loss does not get type warnings, otherwise it will be slower
+## [!] Check that the loss does not get type warnings, otherwise it will be slower
 
-# Select the autodifferentiation type
-adtype = Optimization.AutoZygote();
 # We transform the NeuralODE into an optimization problem
+## Select the autodifferentiation type
+adtype = Optimization.AutoZygote();
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
@@ -191,7 +189,6 @@ algo = LBFGS();
 # or even gradient-free methods like CMA-ES that we use for this example
 using OptimizationCMAEvolutionStrategy
 algo = CMAEvolutionStrategyOpt();
-
 
 # ### Train the CNODE
 result_neuralode = Optimization.solve(optprob,
