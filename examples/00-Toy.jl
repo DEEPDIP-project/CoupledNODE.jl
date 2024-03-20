@@ -1,5 +1,5 @@
 # Import the necessary packages
-using SciMLModelCoupling
+using CoupledNODE
 
 # Let's greet the world
 helloworld()
