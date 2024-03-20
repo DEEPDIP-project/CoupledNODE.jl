@@ -1,6 +1,6 @@
-# SciML-model-coupling
+# CoupledNODE
 
-[![Build Status](https://github.com/DEEPDIP-project/SciML-model-coupling/actions/workflows/CI.yml/badge.svg)](https://github.com/DEEPDIP-project/SciML-model-coupling/actions/workflows/CI.yml)
+[![Build Status](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml)
 
 ### Context
 
