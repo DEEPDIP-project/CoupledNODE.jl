@@ -15,7 +15,9 @@ using Images
 using Interpolations
 using NNlib
 using FFTW
+CUDA.allowscalar(false)
 ArrayType = CUDA.functional() ? CuArray : Array;
+z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
 ## Import our custom backend functions
 include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
