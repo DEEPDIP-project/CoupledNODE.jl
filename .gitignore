@@ -1,5 +1,6 @@
 examples/*.ipynb
 examples/*.md
+examples/test*
 .vscode
 
 Manifest.toml
