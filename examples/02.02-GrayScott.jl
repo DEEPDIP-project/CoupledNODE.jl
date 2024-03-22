@@ -27,7 +27,7 @@ include("coupling_functions/functions_CNODE_loss.jl");
 # In this example, we will learn how to approximate a closure to the Gray-Scott model with a Neural Network trained via a posteriori fitting, using a [multishooting](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/) approach.
 
 # As a reminder, the GS model is defined from 
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \nabla v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
+# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
@@ -101,7 +101,7 @@ GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
 
 # ## II. Training a CNODE to learn the GS model via a posteriori training
 # To learn the GS model, we will use the following CNODE
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \nabla u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \nabla v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
+# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \Delta v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
 # Then the deterministic functions of the two coupled equations are
 F_u_open(u, v, grid) = Zygote.@ignore D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2
