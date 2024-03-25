@@ -15,11 +15,6 @@ function create_f_NODE(NN, f_u; is_closed = false)
     return Chain(SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)))
 end
 
-# NeuralODE representing the experimental observation
-function create_NODE_obs()
-    f_o(u) = @. u .* (0.0 .- 0.8 .* log.(u))
-    return Chain(u -> f_o(u))
-end
 
 """
     create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
