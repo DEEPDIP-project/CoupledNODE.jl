@@ -375,6 +375,7 @@ result_neuralode = Optimization.solve(optprob,
     callback = callback,
     maxiters = 3);
 pinit = result_neuralode.u;
+θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training)
 
