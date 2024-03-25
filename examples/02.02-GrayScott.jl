@@ -185,6 +185,7 @@ training_CNODE_2 = NeuralODE(f_closed_CNODE,
     saveat = saveat_train);
 
 # Create the loss
+include("coupling_functions/functions_CNODE_loss.jl");
 myloss = create_randloss_MulDtO(GS_sim,
     nunroll = nunroll,
     nintervals = nintervals,
