@@ -1,6 +1,4 @@
 using CUDA
-using Random
-rng = Random.seed!(1234)
 ArrayType = CUDA.functional() ? CuArray : Array
 ## Import our custom backend functions
 include("coupling_functions/functions_example.jl")
@@ -46,9 +44,12 @@ f_u(u) = @. r * u * (1.0 - u / K);
 # * We create the right hand side of the NODE, by combining the NN with f_u
 f_NODE = create_f_NODE(NN, f_u; is_closed = true);
 # and get the parametrs that you want to train
+using Random
+rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_NODE);
 
 # * We define the NODE
+using DiffEqFlux
 trange = (0.0, 6.0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
