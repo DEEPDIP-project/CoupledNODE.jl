@@ -15,6 +15,9 @@ using Images
 using Interpolations
 using NNlib
 using FFTW
+# Test if CUDA is running
+CUDA.functional()
+
 CUDA.allowscalar(false)
 ArrayType = CUDA.functional() ? CuArray : Array;
 z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
