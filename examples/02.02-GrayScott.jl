@@ -68,7 +68,7 @@ f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
 # **Burnout run**
-trange_burn = (0.0f0, 1.0f0)
+trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -78,7 +78,7 @@ burnout_CNODE = NeuralODE(f_CNODE,
     saveat = saveat);
 burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 # Second burnout with a larger timestep
-trange_burn = (0.0f0, 800.0f0)
+trange_burn = (0.0, 800.0)
 dt, saveat = (1 / (4 * max(D_u, D_v)), 100)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -95,7 +95,7 @@ uv0 = burnout_CNODE_solution[:, :, end];
 # 2. prevent instabilities while training
 # However, this means that the simulation can not be long.
 dt, saveat = (1 / (4 * max(D_u, D_v)), 0.001)
-trange = (0.0f0, 50.0f0)
+trange = (0.0, 50.0)
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
 
@@ -167,7 +167,7 @@ nsamples = 1;
 # Also, it is important to solve for only the time interval thas is needed at each training step (corresponding to `nunroll` steps)
 dt_train = 0.001;
 saveat_train = saveat
-t_train_range = (0.0f0, saveat_train * nunroll)
+t_train_range = (0.0, saveat_train * nunroll)
 training_CNODE = NeuralODE(f_closed_CNODE,
     t_train_range,
     Tsit5(),
@@ -175,7 +175,7 @@ training_CNODE = NeuralODE(f_closed_CNODE,
     dt = dt_train,
     saveat = saveat_train);
 # Let's also define a secondary auxiliary CNODE that will be used in case the previous one is unstable
-t_train_range_2 = (0.0f0, saveat_train * 2)
+t_train_range_2 = (0.0, saveat_train * 2)
 t_train_range_2 = t_train_range
 training_CNODE_2 = NeuralODE(f_closed_CNODE,
     t_train_range_2,
@@ -245,7 +245,7 @@ display(p)
 
 # ### Comparison: CNODE vs exact solutions
 
-trange = (0.0f0, 600)
+trange = (0.0, 600)
 dt, saveat = (1, 5)
 
 # Exact solution

@@ -57,7 +57,7 @@ f_NODE = create_f_NODE(NN, f_u; is_closed = true);
 θ, st = Lux.setup(rng, f_NODE);
 
 # * We define the NODE
-trange = (0.0f0, 6.0f0)
+trange = (0.0, 6.0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
 
@@ -73,7 +73,7 @@ myloss = create_randloss_MulDtO(u_experiment, nunroll = nunroll, nintervals = ni
 
 # Second, we define this auxiliary NODE that will be used for training
 dt = 0.01 # it has to be as fine as the data
-t_train_range = (0.0f0, dt * (nunroll + 1)) # it has to be as long as unroll
+t_train_range = (0.0, dt * (nunroll + 1)) # it has to be as long as unroll
 training_NODE = NeuralODE(f_NODE,
     t_train_range,
     Tsit5(),

@@ -69,7 +69,7 @@ f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # We now do a short *burnout run* to get rid of the initial artifacts
-trange_burn = (0.0f0, 10.0f0)
+trange_burn = (0.0, 10.0)
 dt_burn, saveat_burn = (1e-2, 1)
 full_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -82,7 +82,7 @@ burnout_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
 # **CNODE run** 
 # We use the output of the burnout to start a longer simulations
 uv0 = burnout_CNODE_solution[:, :, end];
-trange = (0.0f0, 7000.0f0)
+trange = (0.0, 7000.0)
 dt, saveat = (0.5, 20)
 full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
