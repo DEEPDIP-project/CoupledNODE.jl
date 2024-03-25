@@ -1,25 +1,7 @@
-using Lux
-using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-using Plots
-using Plots.PlotMeasures
-using Zygote
-using Random
-rng = Random.seed!(1234);
-using OptimizationOptimisers
-using Statistics
-using ComponentArrays
 using CUDA
-using Images
-using Interpolations
-using NNlib
 ArrayType = CUDA.functional() ? CuArray : Array;
 ## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_loss.jl")
-include("coupling_functions/functions_FDderivatives.jl")
 include("coupling_functions/functions_CNODE_loss.jl");
 
 # # Learning the Gray-Scott model: a priori fitting
@@ -39,10 +21,11 @@ include("coupling_functions/functions_CNODE_loss.jl");
 # Definition of the grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
-grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
+using Random
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
     u_init = U₀ .+ ε_u .* randn(grid.nux, grid.nuy, nsimulations)
     v_init = V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations)
@@ -52,10 +35,10 @@ U₀ = 0.5    # initial concentration of u
 V₀ = 0.25   # initial concentration of v
 ε_u = 0.05  # magnitude of the perturbation on u
 ε_v = 0.1   # magnitude of the perturbation on v
-u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulations = 20);
+u_initial, v_initial = initial_condition(grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 20);
 
 # We define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.Nv, :));
+uv0 = vcat(reshape(u_initial, grid_GS.Nu, :), reshape(v_initial, grid_GS.Nv, :));
 
 # These are the GS parameters (also used in example 02.01) that we will try to learn
 D_u = 0.16
@@ -68,11 +51,15 @@ F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* 
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Definition of the CNODE
-f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
+using Lux
+rng = Random.seed!(1234);
+f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
 # **Burnout run:** to discard the results of the initial conditions.
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
+using DifferentialEquations: Tsit5
+using DiffEqFlux: NeuralODE
 trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE,
@@ -150,11 +137,12 @@ NN_u = GSLayer()
 NN_v = GSLayer()
 
 # We can now close the CNODE with the Neural Network
-f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed = true)
+f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid_GS, NN_u, NN_v; is_closed = true)
 θ, st = Lux.setup(rng, f_closed_CNODE);
 print(θ)
 
 # Check that the closed CNODE can reproduce the GS model if the parameters are set to the correct values 
+using ComponentArrays
 correct_w_u = [-f, 0, f];
 correct_w_v = [0, -(f + k), 0];
 θ_correct = ComponentArray(θ);
@@ -198,6 +186,7 @@ myloss(pinit);
 
 # We transform the NeuralODE into an optimization problem
 ## Select the autodifferentiation type
+using OptimizationOptimisers
 adtype = Optimization.AutoZygote();
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
@@ -209,10 +198,11 @@ algo = OptimiserChain(Adam(1.0f-3));
 using OptimizationOptimJL
 algo = LBFGS();
 # or even gradient-free methods like CMA-ES that we use for this example
-using OptimizationCMAEvolutionStrategy
+using OptimizationCMAEvolutionStrategy, Statistics
 algo = CMAEvolutionStrategyOpt();
 
 # ### Train the CNODE
+include("coupling_functions/functions_example.jl") # callback function
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
@@ -224,6 +214,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # ## III. Analyse the results
 # Let's compare the learned weights to the values that we expect
+using Plots, Plots.PlotMeasures
 gs_w_u = θ.layer_3.layer_1.gs_weights;
 gs_w_v = θ.layer_3.layer_2.gs_weights;
 p1 = scatter(gs_w_u,
@@ -247,7 +238,7 @@ trange = (0.0, 500);
 dt, saveat = (1, 5);
 
 ## Exact solution
-f_exact = create_f_CNODE(F_u, G_v, grid; is_closed = false)
+f_exact = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false)
 θ_e, st_e = Lux.setup(rng, f_exact);
 exact_CNODE = NeuralODE(f_exact,
     trange,
@@ -256,14 +247,14 @@ exact_CNODE = NeuralODE(f_exact,
     dt = dt,
     saveat = saveat);
 exact_CNODE_solution = Array(exact_CNODE(GS_sim[:, 1:2, 1], θ_e, st_e)[1]);
-u = reshape(exact_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u = reshape(exact_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(exact_CNODE_solution, 2),
     :);
-v = reshape(exact_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v = reshape(exact_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(exact_CNODE_solution, 2),
     :);
 
@@ -275,17 +266,17 @@ trained_CNODE = NeuralODE(f_closed_CNODE,
     dt = dt,
     saveat = saveat);
 trained_CNODE_solution = Array(trained_CNODE(GS_sim[:, 1:3, 1], θ, st)[1]);
-u_trained = reshape(trained_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u_trained = reshape(trained_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(trained_CNODE_solution, 2),
     :);
-v_trained = reshape(trained_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v_trained = reshape(trained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(trained_CNODE_solution, 2),
     :);
-f_u = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed = false)
+f_u = create_f_CNODE(F_u_open, G_v_open, grid_GS, NN_u, NN_v; is_closed = false)
 θ_u, st_u = Lux.setup(rng, f_u);
 
 ## Untrained solution
@@ -296,14 +287,14 @@ untrained_CNODE = NeuralODE(f_u,
     dt = dt,
     saveat = saveat);
 untrained_CNODE_solution = Array(untrained_CNODE(GS_sim[:, 1:3, 1], θ_u, st_u)[1]);
-u_untrained = reshape(untrained_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u_untrained = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(untrained_CNODE_solution, 2),
     :);
-v_untrained = reshape(untrained_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v_untrained = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(untrained_CNODE_solution, 2),
     :);
 

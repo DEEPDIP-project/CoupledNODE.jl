@@ -4,7 +4,7 @@ using Plots
 function observation()
     f_o(u, p, t) = u .* (0.0 .- 0.8 .* log.(u))
     trange = (0.0, 6.0)
-    prob = ODEProblem(f_o, 0.01, trange, dt=0.01, saveat=0.01)
+    prob = ODEProblem(f_o, 0.01, trange, dt = 0.01, saveat = 0.01)
     sol = solve(prob, Tsit5())
     return sol.u
 end

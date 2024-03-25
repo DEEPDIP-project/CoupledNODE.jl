@@ -52,7 +52,7 @@ rng = Random.seed!(1234);
 length(θ) == 0;
 
 # We now do a short *burnout run* to get rid of the initial artifacts. This allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
-using DifferentialEquations:Tsit5
+using DifferentialEquations: Tsit5
 using DiffEqFlux: NeuralODE
 trange_burn = (0.0, 10.0);
 dt, saveat = (1e-2, 1);
@@ -75,13 +75,13 @@ full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, save
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
 # And we unpack the solution to get the two species. Remember that we have concatenated $u$ and $v$ in the same array.
 u = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
-grid_GS.nux,
-grid_GS.nuy,
+    grid_GS.nux,
+    grid_GS.nuy,
     size(untrained_CNODE_solution, 2),
     :);
 v = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
-grid_GS.nvx,
-grid_GS.nvy,
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(untrained_CNODE_solution, 2),
     :);
 

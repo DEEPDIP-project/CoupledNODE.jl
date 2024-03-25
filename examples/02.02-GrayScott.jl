@@ -207,7 +207,7 @@ algo = LBFGS(linesearch = LineSearches.BackTracking(order = 3));
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
-    maxiters = 50,);
+    maxiters = 50);
 pinit = result_neuralode.u;
 θ = pinit
 optprob = Optimization.OptimizationProblem(optf, pinit);

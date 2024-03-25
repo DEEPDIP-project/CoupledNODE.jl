@@ -17,7 +17,6 @@ function create_f_NODE(NN, f_u; is_closed = false)
     return Chain(SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)))
 end
 
-
 """
     create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
 

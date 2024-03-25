@@ -1,3 +1,4 @@
+using LinearAlgebra
 using Zygote
 
 """
@@ -153,8 +154,9 @@ function loss_MulDtO_oneset(trajectory,
         nintervals,
         nsamples = nsamples)
     # Take all the time intervals and concatenate them in the batch dimension
-    list_tr = cat([trajectory[:, :, (1 + (i - 1) * nunroll):(1 + i * nunroll)]
-                   for i in 1:nintervals]...,
+    list_tr = cat(
+        [trajectory[:, :, (1 + (i - 1) * nunroll):(1 + i * nunroll)]
+         for i in 1:nintervals]...,
         dims = 2)
     # get all the initial conditions 
     list_starts = cat([trajectory[:, :, 1 + (i - 1) * nunroll] for i in 1:nintervals]...,
