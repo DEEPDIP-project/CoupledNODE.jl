@@ -65,7 +65,7 @@ f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
 length(θ) == 0;
 
 # We now do a short *burnout run* to get rid of the initial artifacts. This allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
-trange_burn = (0.0f0, 10.0f0);
+trange_burn = (0.0, 10.0);
 dt, saveat = (1e-2, 1);
 full_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -79,7 +79,7 @@ burnout_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
 
 # We use the output of the *burnout run* to start a longer simulation
 uv0 = burnout_CNODE_solution[:, :, end];
-trange = (0.0f0, 8000.0f0);
+trange = (0.0, 8000.0);
 # the maximum suggested time step for GS is defined as `1/(4 * Dmax)`
 dt, saveat = (1 / (4 * max(D_u, D_v)), 25);
 full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
