@@ -20,17 +20,17 @@ include("coupling_functions/functions_NODE.jl")
 include("coupling_functions/functions_loss.jl")
 include("coupling_functions/functions_FDderivatives.jl");
 
-# ## Effect of grid coarsening
+# # Learning the Gray-Scott model: Effect of grid coarsening
 
 # In this example we want to show the effect of grid coarsening on the solution of a PDE.
-# We will introduce one of the most important problem in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
+# We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
 # We use again the GS model, which is defined from
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
-# ### The 'exact' solution
+# ### The *exact* solution
 # Even if the GS model can not be solved analytically, we can discretize it on a very fine grid and expect its solution to be almost exact. 
 # We will use it as a reference to compare the solution on a coarser grid.
 # Notice that the simple fact that we are discretizing, makes this solution technically a DNS (Direct Numerical Simulation) and not an exact solution, but since we are using a very fine grid, we will call it *exact* for simplicity.
@@ -43,7 +43,7 @@ grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 # We start with a central concentration of $v$
 function initialize_uv(grid, u_bkg, v_bkg, center_size)
     u_initial = u_bkg * ones(grid.nux, grid.nuy)
-    v_initial = 0 * ones(grid.nvx, grid.nvy)
+    v_initial = zeros(grid.nvx, grid.nvy)
     v_initial[Int(grid.nvx / 2 - center_size):Int(grid.nvx / 2 + center_size), Int(grid.nvy / 2 - center_size):Int(grid.nvy / 2 + center_size)] .= v_bkg
     return u_initial, v_initial
 end
@@ -329,4 +329,4 @@ if isdir("./plots")
 else
     gif(anim, "examples/plots/02.03_gridsize.gif", fps = 10)
 end
-# From the figure, you can see that the LES has induced some artifacts that influences the dynamics. We will solve these artifacts using the Neural part of the CNODES.
+# In the figure we see that the LES has induced some artifacts that influences the dynamics. In the next example, we will solve these artifacts using the Neural part of the CNODEs.

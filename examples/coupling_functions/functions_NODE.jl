@@ -1,3 +1,5 @@
+using Lux
+
 """
     create_f_NODE(NN, f_u; is_closed=false)
 

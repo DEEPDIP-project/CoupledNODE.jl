@@ -32,8 +32,8 @@ include("coupling_functions/functions_CNODE_loss.jl");
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (diffusion coefficients) and $f$ and $k$ (reaction rates).
 
-# In this example, we will first use the exact GS model to gather some data
-# then in the second part, we will train a generic CNODE to show that it can learn the GS model from the data.
+# In this example, we will first (I) use the exact GS model to gather some data
+# then in the second part (II), we will train a generic CNODE to show that it can learn the GS model from the data.
 
 # ## I. Solving GS to collect data
 # Definition of the grid
@@ -222,7 +222,7 @@ pinit = result_neuralode.u;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training, however don't do that with CMA-ES since it will restart from a random initial population)
 
-# ## Analyse the results
+# ## III. Analyse the results
 # Let's compare the learned weights to the values that we expect
 gs_w_u = θ.layer_3.layer_1.gs_weights;
 gs_w_v = θ.layer_3.layer_2.gs_weights;

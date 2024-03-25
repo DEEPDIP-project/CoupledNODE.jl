@@ -31,7 +31,7 @@ include("coupling_functions/functions_CNODE_loss.jl");
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
-# As in the repvious example, we will first use the exact GS model to gather some data and then in the second part we will train a neural network to approximate the GS model using a posteriori fitting.
+# As in the repvious example, we will first (I) use the exact GS model to gather some data and then in the second part (II) we will train a neural network to approximate the GS model using a posteriori fitting.
 
 # ## I. Solving GS to collect data
 # Definition of the grid
@@ -165,6 +165,7 @@ nsamples = 1;
 # Since we want to control the time step and the total length of the solutions that we have to compute at each iteration, we  define an auxiliary NODE that will be used for training. 
 # In particular, we can use smaller time steps for the training, but have to sample at the same rate as the data.
 # Also, it is important to solve for only the time interval thas is needed at each training step (corresponding to `nunroll` steps)
+# *Note:* The GS model is stiff, so we need to use a small time step to solve it. In previous versions we had two different CNODEs, the second one would be used in case the solver would be unstable. In this version, we stick to a smaller time step that those used in the previous examples to avoid instabilities.
 dt_train = 0.001;
 saveat_train = saveat
 t_train_range = (0.0, saveat_train * nunroll)
@@ -173,15 +174,6 @@ training_CNODE = NeuralODE(f_closed_CNODE,
     Tsit5(),
     adaptive = false,
     dt = dt_train,
-    saveat = saveat_train);
-# Let's also define a secondary auxiliary CNODE that will be used in case the previous one is unstable
-t_train_range_2 = (0.0, saveat_train * 2)
-t_train_range_2 = t_train_range
-training_CNODE_2 = NeuralODE(f_closed_CNODE,
-    t_train_range_2,
-    Tsit5(),
-    adaptive = false,
-    dt = 0.5 * dt_train,
     saveat = saveat_train);
 
 # Create the loss
@@ -220,7 +212,7 @@ pinit = result_neuralode.u;
 θ = pinit
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
-# ## Analyse the results
+# ## III. Analyse the results
 
 # ### Comparison: learned weights vs (expected) values of the parameters
 correct_w_u = [-f, f]

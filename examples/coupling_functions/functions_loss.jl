@@ -1,3 +1,4 @@
+using Zygote
 
 # *********************
 # DtO Loss for NeuralODE object
