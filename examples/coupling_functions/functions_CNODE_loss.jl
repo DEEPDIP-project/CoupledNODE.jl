@@ -1,5 +1,6 @@
-using LinearAlgebra
-using Zygote
+import Zygote
+import Random: shuffle
+import LinearAlgebra: norm
 
 """
     mean_squared_error(f, st, x, y, θ, λ)

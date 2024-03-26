@@ -1,4 +1,4 @@
-using Lux
+import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool
 
 """
     create_f_NODE(NN, f_u; is_closed=false)

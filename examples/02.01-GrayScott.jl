@@ -1,8 +1,5 @@
-using CUDA
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array;
-## Import our custom backend functions
-include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_CNODE_loss.jl");
 
 # # Learning the Gray-Scott model: a priori fitting
 
@@ -19,16 +16,17 @@ include("coupling_functions/functions_CNODE_loss.jl");
 
 # ## I. Solving GS to collect data
 # Definition of the grid
+include("coupling_functions/functions_NODE.jl")
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
 grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
-using Random
+import Random
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
-    u_init = U₀ .+ ε_u .* randn(grid.nux, grid.nuy, nsimulations)
-    v_init = V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations)
+    u_init = U₀ .+ ε_u .* Random.randn(grid.nux, grid.nuy, nsimulations)
+    v_init = V₀ .+ ε_v .* Random.randn(grid.nvx, grid.nvy, nsimulations)
     return u_init, v_init
 end
 U₀ = 0.5    # initial concentration of u
@@ -47,19 +45,20 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand sides (functions) of the GS model
+include("coupling_functions/functions_FDderivatives.jl")
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Definition of the CNODE
-using Lux
-rng = Random.seed!(1234);
+import Lux
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
+rng = Random.seed!(1234);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
 # **Burnout run:** to discard the results of the initial conditions.
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
-using DifferentialEquations: Tsit5
-using DiffEqFlux: NeuralODE
+import DifferentialEquations: Tsit5
+import DiffEqFlux: NeuralODE
 trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE,
@@ -98,6 +97,7 @@ FG_target = Array(f_CNODE(uv_data, θ_0, st_0)[1]);
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + \theta_{u,1} u +\theta_{u,2} v +\theta_{u,3}  \\ \frac{dv}{dt} = D_v \Delta v + uv^2 + \theta_{v,1} u +\theta_{v,2} v +\theta_{v,3} \end{cases} \end{equation}
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
 # The deterministic functions of the two coupled equations are:
+import Zygote
 F_u_open(u, v, grid) = Zygote.@ignore D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2;
 G_v_open(u, v, grid) = Zygote.@ignore D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2;
 # We tell Zygote to ignore this tree branch for the gradient propagation.
@@ -107,17 +107,17 @@ struct GSLayer{F} <: Lux.AbstractExplicitLayer
     init_weight::F
 end
 # and its (outside) constructor
-function GSLayer(; init_weight = zeros32)
+function GSLayer(; init_weight = Lux.zeros32)
     #function GSLayer(; init_weight = glorot_uniform)
     return GSLayer(init_weight)
 end
 # We also need to specify how to initialize its parameters and states. 
 # This custom layer does not have any hidden states (RNGs) that are modified.
-function Lux.initialparameters(rng::AbstractRNG, (; init_weight)::GSLayer)
+function Lux.initialparameters(rng::Random.AbstractRNG, (; init_weight)::GSLayer)
     (;
         gs_weights = init_weight(rng, 3),)
 end
-Lux.initialstates(::AbstractRNG, ::GSLayer) = (;)
+Lux.initialstates(::Random.AbstractRNG, ::GSLayer) = (;)
 Lux.parameterlength((;)::GSLayer) = 3
 Lux.statelength(::GSLayer) = 0
 
@@ -142,10 +142,10 @@ f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid_GS, NN_u, NN_v; is_clos
 print(θ)
 
 # Check that the closed CNODE can reproduce the GS model if the parameters are set to the correct values 
-using ComponentArrays
+import ComponentArrays
 correct_w_u = [-f, 0, f];
 correct_w_v = [0, -(f + k), 0];
-θ_correct = ComponentArray(θ);
+θ_correct = ComponentArrays.ComponentArray(θ);
 θ_correct.layer_3.layer_1.gs_weights = correct_w_u;
 θ_correct.layer_3.layer_2.gs_weights = correct_w_v;
 # Notice that they are the same within a tolerance of 1e-7
@@ -170,6 +170,7 @@ isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
 # ### Design the loss function - a priori fitting
 # For this example, we use *a priori* fitting. In this approach, the loss function is defined to minimize the difference between the derivatives of $\frac{du}{dt}$ and $\frac{dv}{dt}$ predicted by the model and calculated via explicit method `FG_target`.
 # In practice, we use [Zygote](https://fluxml.ai/Zygote.jl/stable/) to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
+include("coupling_functions/functions_CNODE_loss.jl");
 myloss = create_randloss_derivative(uv_data,
     FG_target,
     f_closed_CNODE,
@@ -180,23 +181,24 @@ myloss = create_randloss_derivative(uv_data,
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 lhist = Float32[];
 ## Initialize and trigger the compilation of the model
-pinit = ComponentArray(θ);
+pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit);
 ## [!] Check that the loss does not get type warnings, otherwise it will be slower
 
 # We transform the NeuralODE into an optimization problem
 ## Select the autodifferentiation type
-using OptimizationOptimisers
+import OptimizationOptimisers: Optimization
 adtype = Optimization.AutoZygote();
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
 # In the previous example we have used a classic gradient method like Adam:
-algo = OptimiserChain(Adam(1.0f-3));
+import OptimizationOptimisers: OptimiserChain, Adam
+algo = OptimiserChain(Adam(1.0e-3));
 # notice however that CNODEs can be trained with any Julia optimizer, including the ones from the `Optimization` package like LBFGS
-using OptimizationOptimJL
-algo = LBFGS();
+import OptimizationOptimJL: Optim
+algo = Optim.LBFGS();
 # or even gradient-free methods like CMA-ES that we use for this example
 using OptimizationCMAEvolutionStrategy, Statistics
 algo = CMAEvolutionStrategyOpt();

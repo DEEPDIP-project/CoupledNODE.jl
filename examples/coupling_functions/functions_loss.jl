@@ -1,4 +1,4 @@
-using Zygote
+import Zygote
 
 # *********************
 # DtO Loss for NeuralODE object

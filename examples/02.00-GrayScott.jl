@@ -1,4 +1,4 @@
-using CUDA
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array;
 ## Import our custom backend functions
 include("coupling_functions/functions_NODE.jl")
@@ -45,7 +45,7 @@ G_v(u, v, grid_GS) = D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 # and we ask Lux for the parameters to train and their structure
 using Lux
-using Random
+import Random
 rng = Random.seed!(1234);
 θ, st = Lux.setup(rng, f_CNODE);
 # in this example we are not training any parameters, so we can confirm that the vector θ is empty

@@ -1,26 +1,5 @@
-using Lux
-using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-using Plots
-using Plots.PlotMeasures
-using Zygote
-using Random
-rng = Random.seed!(1234);
-using OptimizationOptimisers
-using Statistics
-using ComponentArrays
-using CUDA
-using Images
-using Interpolations
-using NNlib
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array;
-## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
-include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_loss.jl")
-include("coupling_functions/functions_FDderivatives.jl")
-include("coupling_functions/functions_CNODE_loss.jl");
 
 # # Learning the Gray-Scott model: a posteriori fitting
 
@@ -35,23 +14,25 @@ include("coupling_functions/functions_CNODE_loss.jl");
 
 # ## I. Solving GS to collect data
 # Definition of the grid
+include("coupling_functions/functions_NODE.jl")
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
-grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # Define the initial condition as a random perturbation over a constant background to add variety. Notice that in this case we are generating only 2 samples (i.e. `nsimulations=2`). This is because for the *a posteriori fitting* we are using a fine sampling.
+import Random
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
-    u_init = U₀ .+ ε_u .* randn(grid.nux, grid.nuy, nsimulations)
-    v_init = V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations)
+    u_init = U₀ .+ ε_u .* Random.randn(grid.nux, grid.nuy, nsimulations)
+    v_init = V₀ .+ ε_v .* Random.randn(grid.nvx, grid.nvy, nsimulations)
     return u_init, v_init
 end
 U₀ = 0.5    # initial concentration of u
 V₀ = 0.25   # initial concentration of v
 ε_u = 0.05  # magnitude of the perturbation on u
 ε_v = 0.1   # magnitude of the perturbation on v
-u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulations = 2);
+u_initial, v_initial = initial_condition(grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 2);
 # $u$ and $v$ are concatenated in a flattended array
-uv0 = vcat(reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.Nv, :));
+uv0 = vcat(reshape(u_initial, grid_GS.Nu, :), reshape(v_initial, grid_GS.Nv, :));
 
 # These are the GS parameters (also used in examples 02.01 and 02.02) that we will try to learn.
 D_u = 0.16
@@ -60,14 +41,19 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand sides of the GS model:
+include("coupling_functions/functions_FDderivatives.jl")
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # CNODE definition
-f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
+import Lux
+f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
+rng = Random.seed!(1234);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
 # **Burnout run**
+import DifferentialEquations: Tsit5
+import DiffEqFlux: NeuralODE
 trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE,
@@ -104,6 +90,7 @@ GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \Delta v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
 # Then the deterministic functions of the two coupled equations are
+import Zygote
 F_u_open(u, v, grid) = Zygote.@ignore D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2
 G_v_open(u, v, grid) = Zygote.@ignore D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2
 # We tell Zygote to ignore this tree branch for the gradient propagation.
@@ -113,26 +100,26 @@ G_v_open(u, v, grid) = Zygote.@ignore D_v * Laplacian(v, grid.dvx, grid.dvy) .+ 
 struct GSLayer_u{F} <: Lux.AbstractExplicitLayer
     init_weight::F
 end
-function GSLayer_u(; init_weight = zeros32)
+function GSLayer_u(; init_weight = Lux.zeros32)
     return GSLayer_u(init_weight)
 end
 struct GSLayer_v{F} <: Lux.AbstractExplicitLayer
     init_weight::F
 end
-function GSLayer_v(; init_weight = zeros32)
+function GSLayer_v(; init_weight = Lux.zeros32)
     return GSLayer_v(init_weight)
 end
 
-function Lux.initialparameters(rng::AbstractRNG, (; init_weight)::GSLayer_u)
+function Lux.initialparameters(rng::Random.AbstractRNG, (; init_weight)::GSLayer_u)
     (;
         gs_weights = init_weight(rng, 2),)
 end
-function Lux.initialparameters(rng::AbstractRNG, (; init_weight)::GSLayer_v)
+function Lux.initialparameters(rng::Random.AbstractRNG, (; init_weight)::GSLayer_v)
     (;
         gs_weights = init_weight(rng, 1),)
 end
-Lux.initialstates(::AbstractRNG, ::GSLayer_u) = (;)
-Lux.initialstates(::AbstractRNG, ::GSLayer_v) = (;)
+Lux.initialstates(::Random.AbstractRNG, ::GSLayer_u) = (;)
+Lux.initialstates(::Random.AbstractRNG, ::GSLayer_v) = (;)
 Lux.parameterlength((;)::GSLayer_u) = 2
 Lux.parameterlength((;)::GSLayer_v) = 1
 Lux.statelength(::GSLayer_u) = 0
@@ -153,9 +140,10 @@ NN_u = GSLayer_u()
 NN_v = GSLayer_v()
 
 # Close the CNODE with the Neural Network
-f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed = true)
+f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid_GS, NN_u, NN_v; is_closed = true)
 θ, st = Lux.setup(rng, f_closed_CNODE);
-θ = ComponentArray(θ)
+import ComponentArrays
+θ = ComponentArrays.ComponentArray(θ)
 
 # ### Design the loss function - a posteriori fitting
 # In *a posteriori* fitting, we rely on a differentiable solver to propagate the gradient through the solution of the NODE. In this case, we use the *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/), where we use `Zygote` to compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
@@ -190,11 +178,13 @@ myloss = create_randloss_MulDtO(GS_sim,
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 lhist = Float32[];
 # Initialize and trigger the compilation of the model
-pinit = ComponentArray(θ)
+pinit = ComponentArrays.ComponentArray(θ)
 myloss(pinit)  # trigger compilation
 # ⚠️ Check that the loss does not get type warnings, otherwise it will be slower
 
 # ### Autodifferentiation type
+import OptimizationOptimisers: Optimization
+using Statistics
 adtype = Optimization.AutoZygote();
 # We transform the NeuralODE into an optimization problem
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
@@ -202,11 +192,12 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # ### Training algorithm
 # In this example we use a quasi-newtonian method
-using OptimizationOptimJL
-using LineSearches
-algo = LBFGS(linesearch = LineSearches.BackTracking(order = 3));
+import OptimizationOptimJL: Optim
+import LineSearches
+algo = Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3));
 
 # ### Train the CNODEs
+include("coupling_functions/functions_example.jl")
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
@@ -218,6 +209,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 # ## III. Analyse the results
 
 # ### Comparison: learned weights vs (expected) values of the parameters
+using Plots, Plots.PlotMeasures
 correct_w_u = [-f, f]
 correct_w_v = [-(f + k)]
 gs_w_u = θ.layer_3.layer_1.gs_weights
@@ -244,7 +236,7 @@ trange = (0.0, 600)
 dt, saveat = (1, 5)
 
 # Exact solution
-f_exact = create_f_CNODE(F_u, G_v, grid; is_closed = false)
+f_exact = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false)
 θ_e, st_e = Lux.setup(rng, f_exact);
 exact_CNODE = NeuralODE(f_exact,
     trange,
@@ -253,14 +245,14 @@ exact_CNODE = NeuralODE(f_exact,
     dt = dt,
     saveat = saveat);
 exact_CNODE_solution = Array(exact_CNODE(GS_sim[:, 1:2, 1], θ_e, st_e)[1]);
-u = reshape(exact_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u = reshape(exact_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(exact_CNODE_solution, 2),
     :);
-v = reshape(exact_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v = reshape(exact_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(exact_CNODE_solution, 2),
     :);
 
@@ -272,19 +264,19 @@ trained_CNODE = NeuralODE(f_closed_CNODE,
     dt = dt,
     saveat = saveat);
 trained_CNODE_solution = Array(trained_CNODE(GS_sim[:, 1:2, 1], θ, st)[1]);
-u_trained = reshape(trained_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u_trained = reshape(trained_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(trained_CNODE_solution, 2),
     :);
-v_trained = reshape(trained_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v_trained = reshape(trained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(trained_CNODE_solution, 2),
     :);
 
 # Untrained solution
-f_u = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed = false)
+f_u = create_f_CNODE(F_u_open, G_v_open, grid_GS, NN_u, NN_v; is_closed = false)
 θ_u, st_u = Lux.setup(rng, f_u);
 untrained_CNODE = NeuralODE(f_u,
     trange,
@@ -293,14 +285,14 @@ untrained_CNODE = NeuralODE(f_u,
     dt = dt,
     saveat = saveat);
 untrained_CNODE_solution = Array(untrained_CNODE(GS_sim[:, 1:2, 1], θ_u, st_u)[1]);
-u_untrained = reshape(untrained_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u_untrained = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(untrained_CNODE_solution, 2),
     :);
-v_untrained = reshape(untrained_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v_untrained = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(untrained_CNODE_solution, 2),
     :);
 

@@ -1,4 +1,4 @@
-using CUDA
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array
 ## Import our custom backend functions
 include("coupling_functions/functions_example.jl")
@@ -34,8 +34,8 @@ plot!(t, u_experiment[:], label = "Observation(t)")
 # We solve this 1D NODE using introducing the functionalities of this repository:
 
 # * We create the NN using `Lux`. In this example we do not discuss the structure of the NN, but we leave it as a black box that can be designed by the user. We will show later how to take inspiration from the physics of the problem to design optimal NN.
-using Lux
-NN = Chain(SkipConnection(Dense(1, 3),
+import Lux
+NN = Lux.Chain(Lux.SkipConnection(Lux.Dense(1, 3),
     (out, u) -> u * out[1] .+ u .* u .* out[2] .+ u .* log.(abs.(u)) .* out[3]));
 
 # * We define the force $f(u)$ compatibly with SciML. 
@@ -44,12 +44,13 @@ f_u(u) = @. r * u * (1.0 - u / K);
 # * We create the right hand side of the NODE, by combining the NN with f_u
 f_NODE = create_f_NODE(NN, f_u; is_closed = true);
 # and get the parametrs that you want to train
-using Random
+import Random
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_NODE);
 
 # * We define the NODE
-using DiffEqFlux
+import DiffEqFlux: NeuralODE
+import DifferentialEquations: Tsit5
 trange = (0.0, 6.0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
@@ -78,8 +79,8 @@ training_NODE = NeuralODE(f_NODE,
 lhist = Float32[];
 
 # Initialize and trigger the compilation of the model
-using ComponentArrays
-pinit = ComponentArray(θ);
+import ComponentArrays
+pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit); # trigger compilation
 
 # Select the autodifferentiation type
