@@ -1,9 +1,9 @@
 import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array
 ## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
-include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_loss.jl");
+include("../coupling_functions/functions_example.jl")
+include("../coupling_functions/functions_NODE.jl")
+include("../coupling_functions/functions_loss.jl");
 
 # # Logistic equation and NODE
 # Let's study a phenomenon that can be described with the following ODE $$\dfrac{dP}{dt} = rP\left(1-\dfrac{P}{K}\right),$$ which is called the logistic equation. Given $P(t=0)=P_0$ we can solve this problem analytically to get $P(t) = \frac{K}{1+\left(K-P_0\right)/P_0 \cdot e^{-rt}}$. Let's plot the solution for $r=K=2, P_0=0.01$:
@@ -84,7 +84,7 @@ pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit); # trigger compilation
 
 # Select the autodifferentiation type
-using OptimizationOptimisers
+import OptimizationOptimisers: Optimization
 adtype = Optimization.AutoZygote();
 # We transform the NeuralODE into an optimization problem
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
@@ -92,6 +92,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
 # We choose Adam with learning rate 0.1, with gradient clipping
+import OptimizationOptimisers: OptimiserChain, Adam, ClipGrad
 ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
 
 # ## Train de NODE
@@ -99,8 +100,7 @@ ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
 # Notice that the block can be repeated to continue training
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
-    ## Commented out the line that uses a custom callback to track loss over time
-    ##callback = callback,
+    callback = callback,
     maxiters = 100)
 pinit = result_neuralode.u;
 optprob = Optimization.OptimizationProblem(optf, pinit);
