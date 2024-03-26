@@ -53,6 +53,9 @@ import Random, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
 
+# Actuallly, we are not training any parameters, but using `NeuralODE` for consistency with the resto of examples. Therefore, we see that $\theta$ is empty.
+length(θ)
+
 # We now do a short *burnout run* to get rid of the initial artifacts
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
