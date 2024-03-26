@@ -1,5 +1,5 @@
-![CNODE banner](https://raw.githubusercontent.com/DEEPDIP-project/CoupledNODE.jl/main/src/assets/logo_black.png#gh-light-mode-only)
-![CNODE banner](https://raw.githubusercontent.com/DEEPDIP-project/CoupledNODE.jl/main/src/assets/logo_white.png#gh-dark-mode-only)
+![CNODE banner](https://raw.githubusercontent.com/DEEPDIP-project/CoupledNODE.jl/main/assets/logo_black.png#gh-light-mode-only)
+![CNODE banner](https://raw.githubusercontent.com/DEEPDIP-project/CoupledNODE.jl/main/assets/logo_white.png#gh-dark-mode-only)
 
 # CoupledNODE
 
