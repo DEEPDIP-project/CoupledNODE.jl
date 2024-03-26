@@ -169,7 +169,7 @@ function loss_MulDtO_oneset(trajectory,
     # Take all the time intervals and concatenate them in the batch dimension
     list_tr = cat([trajectory[:, :,i:(i + nunroll)]
                    for i in starting_points]...,
-        dims = 2)
+                   dims = 2)
     # Get all the initial conditions 
     list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
         dims = 2)
