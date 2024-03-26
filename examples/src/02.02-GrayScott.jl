@@ -202,10 +202,6 @@ result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
     maxiters = 50);
-<<<<<<< HEAD:examples/src/02.02-GrayScott.jl
-=======
-
->>>>>>> origin/main:examples/02.02-GrayScott.jl
 # We may get `**Warning:** Instability detected. Aborting` for the first time steps of the training. This is due to the stiff nature of the GS model as explained earlier. The training will continue after the first few steps.
 pinit = result_neuralode.u;
 θ = pinit
