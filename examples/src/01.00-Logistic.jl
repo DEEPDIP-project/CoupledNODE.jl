@@ -1,9 +1,4 @@
-import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array
-## Import our custom backend functions
-include("../coupling_functions/functions_example.jl")
-include("../coupling_functions/functions_NODE.jl")
-include("../coupling_functions/functions_loss.jl");
+import CoupledNODE
 
 # # Logistic equation and NODE
 # Let's study a phenomenon that can be described with the following ODE $$\dfrac{dP}{dt} = rP\left(1-\dfrac{P}{K}\right),$$ which is called the logistic equation. Given $P(t=0)=P_0$ we can solve this problem analytically to get $P(t) = \frac{K}{1+\left(K-P_0\right)/P_0 \cdot e^{-rt}}$. Let's plot the solution for $r=K=2, P_0=0.01$:
@@ -15,11 +10,19 @@ function P(t)
 end
 t = range(start = 0, stop = 6, step = 0.01)
 Pt = P.(t)
+using Plots
 plot(t, Pt, label = "P(t)", xlabel = "t", ylabel = "P(t)")
 
 # Let's say that we want to use the logistic equation to model an experiment like the activation energy of a neuron. We run the experiment and we observe the following:
+import DifferentialEquations: ODEProblem, solve, Tsit5
+function observation()
+    f_o(u, p, t) = u .* (0.0 .- 0.8 .* log.(u))
+    trange = (0.0, 6.0)
+    prob = ODEProblem(f_o, 0.01, trange, dt = 0.01, saveat = 0.01)
+    sol = solve(prob, Tsit5())
+    return sol.u
+end
 u_experiment = observation()
-using Plots
 plot(t, Pt, label = "Best P(t) fit")
 plot!(t, u_experiment[:], label = "Observation(t)")
 
@@ -42,6 +45,7 @@ NN = Lux.Chain(Lux.SkipConnection(Lux.Dense(1, 3),
 f_u(u) = @. r * u * (1.0 - u / K);
 
 # * We create the right hand side of the NODE, by combining the NN with f_u
+import CoupledNODE: create_f_NODE
 f_NODE = create_f_NODE(NN, f_u; is_closed = true);
 # and get the parametrs that you want to train
 import Random
@@ -50,7 +54,6 @@ rng = Random.seed!(1234)
 
 # * We define the NODE
 import DiffEqFlux: NeuralODE
-import DifferentialEquations: Tsit5
 trange = (0.0, 6.0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
@@ -60,13 +63,9 @@ full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, sav
 untrained_NODE_solution = Array(full_NODE(u0, θ, st)[1]);
 
 # ## Prepare the model
-# First, we need to design the **loss function**. For this example, we use *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/). Using `Zygote` we compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
-nunroll = 60
-nintervals = 10
-myloss = create_randloss_MulDtO(u_experiment, nunroll = nunroll, nintervals = nintervals);
-
-# Second, we define this auxiliary NODE that will be used for training
+# First, we define this auxiliary NODE that will be used for training
 dt = 0.01 # it has to be as fine as the data
+nunroll = 60
 t_train_range = (0.0, dt * (nunroll + 1)) # it has to be as long as unroll
 training_NODE = NeuralODE(f_NODE,
     t_train_range,
@@ -75,8 +74,13 @@ training_NODE = NeuralODE(f_NODE,
     dt = dt,
     saveat = dt);
 
+# Seconf, we need to design the **loss function**. For this example, we use *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/). Using `Zygote` we compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
+import CoupledNODE: create_randloss_MulDtO_1
+nintervals = 10
+myloss = create_randloss_MulDtO_1(u_experiment, training_NODE, st, nunroll = nunroll, nintervals = nintervals);
+
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = Float32[];
+lhist = [];
 
 # Initialize and trigger the compilation of the model
 import ComponentArrays
@@ -98,6 +102,7 @@ ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
 # ## Train de NODE
 # We are ready to train the NODE.
 # Notice that the block can be repeated to continue training
+import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
     callback = callback,

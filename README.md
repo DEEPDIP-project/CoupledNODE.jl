@@ -7,7 +7,6 @@
 
 ## Installation
 
-
 ```julia
 ]
 activate .
