@@ -41,7 +41,11 @@ function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_close
         grid.dux,
         grid.duy,
         grid.nux,
-        grid.nuy)
+        grid.nuy,
+        convert_to_float32 = true)
+    if CUDA.functional()
+        grid_for_force = cu(grid_for_force)
+    end
     # check if v has to be rescaled or not
     if grid.dux != grid.dvx || grid.duy != grid.dvy
         println("Resizing v to the same grid as u")
@@ -60,10 +64,14 @@ function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_close
             # layer that casts to f32
             Upscaler,
             uv -> let u = uv[1], v = uv[2]
+                println("in F")
+                println(typeof(u))
                 # Return a tuple of the right hand side of the CNODE
                 # remove the placeholder dimension for the channels
                 u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u, 4))
                 v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v, 4))
+                println(typeof(u))
+                println(typeof(F_u(u, v, grid_for_force)))
                 (F_u(u, v, grid_for_force), G_v(u, v, grid_for_force))
             end,
             Downscaler)
@@ -102,9 +110,14 @@ Returns:
 function downscale_v(grid, resize_v = false)
     if !resize_v
         return Chain(uv -> let u = uv[1], v = uv[2]
+            println("in down")
+            println(typeof(u))
             # make u and v linear
             u = reshape(u, grid.Nu, size(u)[end])
             v = reshape(v, grid.Nv, size(v)[end])
+            println("out down")
+            println(typeof(u))
+            println(typeof(vcat(u, v)))
             # and concatenate
             vcat(u, v)
         end)
@@ -151,6 +164,8 @@ function upscale_v(grid, resize_v = false)
 
     if !resize_v
         return Chain(uv -> let u = uv[1:(grid.Nu), :], v = uv[(grid.Nu + 1):end, :]
+            println("in upscale")
+            println(typeof(u))
             # reshape u and v on the grid
             u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
             v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
@@ -195,27 +210,33 @@ Constructor:
 - `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
 """
 struct Grid
-    dux::Float64
-    duy::Float64
+    dux::Union{Float32, Float64}
+    duy::Union{Float32, Float64}
     nux::Int
     nuy::Int
-    dvx::Float64
-    dvy::Float64
+    dvx::Union{Float32, Float64}
+    dvy::Union{Float32, Float64}
     nvx::Int
     nvy::Int
     Nu::Int
     Nv::Int
 
-    function Grid(dux::Float64,
-            duy::Float64,
+    function Grid(
+            dux::Union{Float32, Float64},
+            duy::Union{Float32, Float64},
             nux::Int,
             nuy::Int,
-            dvx::Float64,
-            dvy::Float64,
+            dvx::Union{Float32, Float64},
+            dvy::Union{Float32, Float64},
             nvx::Int,
-            nvy::Int)
+            nvy::Int;
+            convert_to_float32::Bool=false)
         Nu = nux * nuy
         Nv = nvx * nvy
-        new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv)
+        if convert_to_float32
+            new(Float32(dux), Float32(duy), nux, nuy, Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv)
+        else
+            new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv)
+        end
     end
 end
