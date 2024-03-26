@@ -1,4 +1,4 @@
-using DifferentialEquations
+import DifferentialEquations: ODEProblem, solve, Tsit5
 using Plots
 
 function observation()
