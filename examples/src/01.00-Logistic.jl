@@ -23,6 +23,7 @@ function observation()
     return sol.u
 end
 u_experiment = observation()
+using Plots
 plot(t, Pt, label = "Best P(t) fit")
 plot!(t, u_experiment[:], label = "Observation(t)")
 
