@@ -5,6 +5,15 @@
 
 [![Build Status](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml)
 
+## Installation
+
+
+```julia
+]
+activate .
+instantiate
+```
+
 ### Context
 
 This repo was created during [this co-working session](https://github.com/DEEPDIP-project/logs/blob/main/meetings/2024-02-20%20Coworking%20session.md).
