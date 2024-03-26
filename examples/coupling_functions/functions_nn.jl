@@ -27,16 +27,17 @@ function create_cnn(grid)
     end
     n_features = ch_cnn[end] * nout_cnn * nout_cnn
     # this cnn takes as input a 2d field and returns a 2d field
-    return Chain((Chain(
-            # Before convolution I do a periodic padding
-            uv -> NNlib.pad_circular(uv, r_cnn[i], dims = [1, 2]),
-            uv -> reshape(uv, size(uv, 1), size(uv, 2), size(uv, 3), :),
-            Conv((2 * r_cnn[i] + 1, 2 * r_cnn[i] + 1),
-                ch_cnn[i] => ch_cnn[i + 1],
-                σ[i];
-                pad = 0,
-                stride = stride[i]),
-            MaxPool((pool_k[i], pool_k[i]))) for i in eachindex(r_cnn))...,
+    return Chain(
+        (Chain(
+             # Before convolution I do a periodic padding
+             uv -> NNlib.pad_circular(uv, r_cnn[i], dims = [1, 2]),
+             uv -> reshape(uv, size(uv, 1), size(uv, 2), size(uv, 3), :),
+             Conv((2 * r_cnn[i] + 1, 2 * r_cnn[i] + 1),
+                 ch_cnn[i] => ch_cnn[i + 1],
+                 σ[i];
+                 pad = 0,
+                 stride = stride[i]),
+             MaxPool((pool_k[i], pool_k[i]))) for i in eachindex(r_cnn))...,
         FlattenLayer(),
         Dense(n_features, grid.Nu, leakyrelu),
         ReshapeLayer((grid.nux, grid.nuy)))
