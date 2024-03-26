@@ -1,16 +1,4 @@
-using Lux
-using NaNMath
-using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-using Plots
-using Zygote
-using Random
-rng = Random.seed!(1234)
-using OptimizationOptimisers
-using Statistics
-using ComponentArrays
-using CUDA
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array
 ## Import our custom backend functions
 include("coupling_functions/functions_example.jl")
@@ -31,6 +19,7 @@ plot(t, Pt, label = "P(t)", xlabel = "t", ylabel = "P(t)")
 
 # Let's say that we want to use the logistic equation to model an experiment like the activation energy of a neuron. We run the experiment and we observe the following:
 u_experiment = observation()
+using Plots
 plot(t, Pt, label = "Best P(t) fit")
 plot!(t, u_experiment[:], label = "Observation(t)")
 
@@ -45,18 +34,23 @@ plot!(t, u_experiment[:], label = "Observation(t)")
 # We solve this 1D NODE using introducing the functionalities of this repository:
 
 # * We create the NN using `Lux`. In this example we do not discuss the structure of the NN, but we leave it as a black box that can be designed by the user. We will show later how to take inspiration from the physics of the problem to design optimal NN.
-NN = Chain(SkipConnection(Dense(1, 3),
-    (out, u) -> u * out[1] .+ u .* u .* out[2] .+ u .* log.(abs.(u)) .* out[3]))
+import Lux
+NN = Lux.Chain(Lux.SkipConnection(Lux.Dense(1, 3),
+    (out, u) -> u * out[1] .+ u .* u .* out[2] .+ u .* log.(abs.(u)) .* out[3]));
 
 # * We define the force $f(u)$ compatibly with SciML. 
 f_u(u) = @. r * u * (1.0 - u / K);
 
-# * We create the right hand side of the NODE, by combining the NN with f_u 
+# * We create the right hand side of the NODE, by combining the NN with f_u
 f_NODE = create_f_NODE(NN, f_u; is_closed = true);
 # and get the parametrs that you want to train
+import Random
+rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_NODE);
 
 # * We define the NODE
+import DiffEqFlux: NeuralODE
+import DifferentialEquations: Tsit5
 trange = (0.0, 6.0)
 u0 = [0.01]
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
@@ -85,10 +79,12 @@ training_NODE = NeuralODE(f_NODE,
 lhist = Float32[];
 
 # Initialize and trigger the compilation of the model
-pinit = ComponentArray(θ);
+import ComponentArrays
+pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit); # trigger compilation
 
 # Select the autodifferentiation type
+using OptimizationOptimisers
 adtype = Optimization.AutoZygote();
 # We transform the NeuralODE into an optimization problem
 optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
@@ -96,7 +92,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
 # We choose Adam with learning rate 0.1, with gradient clipping
-ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
+ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
 
 # ## Train de NODE
 # We are ready to train the NODE.
