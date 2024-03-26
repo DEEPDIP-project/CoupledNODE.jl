@@ -15,7 +15,12 @@ using Images
 using Interpolations
 using NNlib
 using FFTW
+# Test if CUDA is running
+CUDA.functional()
+
+CUDA.allowscalar(false)
 ArrayType = CUDA.functional() ? CuArray : Array;
+z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
 ## Import our custom backend functions
 include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
@@ -142,9 +147,9 @@ fig = plot(layout = (3, 2), size = (600, 900))
     frame(anim, fig)
 end
 if isdir("./plots")
-    gif(anim, "./plots/multi_GS.gif", fps = 10)
+    gif(anim, "./plots/02.04-DNS.gif", fps = 10)
 else
-    gif(anim, "examples/plots/multi_GS.gif", fps = 10)
+    gif(anim, "examples/plots/02.04-DNS.gif", fps = 10)
 end
 
 # ### Collect the data for the coarse grid
@@ -285,9 +290,9 @@ fig = plot(layout = (3, 5), size = (500, 300))
     frame(anim, fig)
 end
 if isdir("./plots")
-    gif(anim, "./plots/multi_GS_coarse.gif", fps = 10)
+    gif(anim, "./plots/02.04-LES.gif", fps = 10)
 else
-    gif(anim, "examples/plots/multi_GS_coarse.gif", fps = 10)
+    gif(anim, "examples/plots/02.04-LES.gif", fps = 10)
 end
 
 # In order to prepare the loss function, we compute from the simulation data the target that we would like to fit. In the example u will be unchanged, while v will be rescaled to the coarse grid 
@@ -343,7 +348,8 @@ myloss = create_randloss_MulDtO(target,
     nunroll = nunroll,
     nintervals = nintervals,
     nsamples = nsamples,
-    λ = 0.1);
+    λ_c = 1e2,
+    λ_l1 = 1e-1);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 
@@ -369,6 +375,7 @@ result_neuralode = Optimization.solve(optprob,
     callback = callback,
     maxiters = 3);
 pinit = result_neuralode.u;
+θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training)
 
@@ -450,7 +457,7 @@ fig = plot(layout = (2, 5), size = (750, 300))
     frame(anim, fig)
 end
 if isdir("./plots")
-    gif(anim, "./plots/trained_GS.gif", fps = 10)
+    gif(anim, "./plots/02.04-NNclosure.gif", fps = 10)
 else
-    gif(anim, "examples/plots/trained_GS.gif", fps = 10)
+    gif(anim, "examples/plots/02.04-NNclosure.gif", fps = 10)
 end

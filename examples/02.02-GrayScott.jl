@@ -161,6 +161,7 @@ f_closed_CNODE = create_f_CNODE(F_u_open, G_v_open, grid, NN_u, NN_v; is_closed 
 # In *a posteriori* fitting, we rely on a differentiable solver to propagate the gradient through the solution of the NODE. In this case, we use the *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/), where we use `Zygote` to compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
 nunroll = 10
 nintervals = 5
+noverlaps = 1
 nsamples = 1;
 # Since we want to control the time step and the total length of the solutions that we have to compute at each iteration, we  define an auxiliary NODE that will be used for training. 
 # In particular, we can use smaller time steps for the training, but have to sample at the same rate as the data.
@@ -177,8 +178,10 @@ training_CNODE = NeuralODE(f_closed_CNODE,
     saveat = saveat_train);
 
 # Create the loss
+include("coupling_functions/functions_CNODE_loss.jl");
 myloss = create_randloss_MulDtO(GS_sim,
     nunroll = nunroll,
+    noverlaps = noverlaps,
     nintervals = nintervals,
     nsamples = nsamples,
     λ_c = 1e2,
