@@ -37,8 +37,12 @@ k = 0.062;
 
 # Define the **right hand sides** of the two equations:
 include("coupling_functions/functions_FDderivatives.jl")
-F_u(u, v, grid_GS) = D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
-G_v(u, v, grid_GS) = D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+function F_u(u, v, grid_GS)
+    D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+end
+function G_v(u, v, grid_GS)
+    D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+end
 
 # Once the functions have been defined, we can create the CNODE
 # Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
