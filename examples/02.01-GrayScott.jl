@@ -73,7 +73,7 @@ f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
 
 # **Burnout run:** to discard the results of the initial conditions.
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
-trange_burn = (0.0f0, 1.0f0)
+trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -83,7 +83,7 @@ burnout_CNODE = NeuralODE(f_CNODE,
     saveat = saveat);
 burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 # Second burnout with a smaller timestep
-trange_burn = (0.0f0, 500.0f0)
+trange_burn = (0.0, 500.0)
 dt, saveat = (1 / (4 * max(D_u, D_v)), 100)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -95,7 +95,7 @@ burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:, :, end], 
 
 # Data collection run
 uv0 = burnout_CNODE_solution[:, :, end];
-trange = (0.0f0, 2000.0f0);
+trange = (0.0, 2000.0);
 dt, saveat = (1 / (4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
@@ -243,7 +243,7 @@ display(p)
 # The learned weights look perfect, but let's check what happens if we use them to solve the GS model.
 
 # Let's solve the system, for two different set of parameters, with the trained CNODE and compare with the exact solution
-trange = (0.0f0, 500);
+trange = (0.0, 500);
 dt, saveat = (1, 5);
 
 ## Exact solution
