@@ -1,6 +1,6 @@
 function observation()
     f_ND = create_NODE_obs()
-    trange = (0.0f0, 6.0f0)
+    trange = (0.0, 6.0)
     p0 = [0.01]
     # define the observation from a NeuralODE
     obs_node = NeuralODE(f_ND, trange, Tsit5(), adaptive = false, dt = 0.01, saveat = 0.01)
