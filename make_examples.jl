@@ -10,7 +10,7 @@ autorun_notebooks = false
 for f in files
     Literate.markdown(f;
         flavor = Literate.CommonMarkFlavor(),
-        codefence = "```julia" => "```",)
+        codefence = "```julia" => "```")
     if overwrite_nb
         Literate.notebook(f; execute = autorun_notebooks)
     else

@@ -179,7 +179,8 @@ u_closed = reshape(closed_CNODE_solution[1:(coarse_grid.nux * coarse_grid.nuy), 
     coarse_grid.nuy,
     size(closed_CNODE_solution, 2),
     :);
-v_closed = reshape(closed_CNODE_solution[(coarse_grid.nux * coarse_grid.nuy + 1):end, :, :],
+v_closed = reshape(
+    closed_CNODE_solution[(coarse_grid.nux * coarse_grid.nuy + 1):end, :, :],
     coarse_grid.nvx,
     coarse_grid.nvy,
     size(closed_CNODE_solution, 2),
