@@ -1,3 +1,5 @@
+import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool
+
 """
     create_f_NODE(NN, f_u; is_closed=false)
 
@@ -13,12 +15,6 @@ Create a Neural ODE (NODE) using ResNet skip blocks to add the closure.
 """
 function create_f_NODE(NN, f_u; is_closed = false)
     return Chain(SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)))
-end
-
-# NeuralODE representing the experimental observation
-function create_NODE_obs()
-    f_o(u) = @. u .* (0.0 .- 0.8 .* log.(u))
-    return Chain(u -> f_o(u))
 end
 
 """

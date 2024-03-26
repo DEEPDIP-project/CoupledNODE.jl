@@ -1,11 +1,12 @@
+import DifferentialEquations: ODEProblem, solve, Tsit5
+using Plots
+
 function observation()
-    f_ND = create_NODE_obs()
+    f_o(u, p, t) = u .* (0.0 .- 0.8 .* log.(u))
     trange = (0.0, 6.0)
-    p0 = [0.01]
-    # define the observation from a NeuralODE
-    obs_node = NeuralODE(f_ND, trange, Tsit5(), adaptive = false, dt = 0.01, saveat = 0.01)
-    th_e, st_e = Lux.setup(rng, f_ND)
-    return Array(obs_node(p0, th_e, st_e)[1])
+    prob = ODEProblem(f_o, 0.01, trange, dt = 0.01, saveat = 0.01)
+    sol = solve(prob, Tsit5())
+    return sol.u
 end
 
 # Define a callback function to observe training

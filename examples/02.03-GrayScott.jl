@@ -1,57 +1,39 @@
-using Lux
-using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-using Plots
-using Zygote
-using Random
-rng = Random.seed!(1234)
-using OptimizationOptimisers
-using Statistics
-using ComponentArrays
-using CUDA
-using Images
-using Interpolations
-using NNlib
+import CUDA
 ArrayType = CUDA.functional() ? CuArray : Array;
-## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
-include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_loss.jl")
-include("coupling_functions/functions_FDderivatives.jl");
 
-# ## Effect of grid coarsening
+# # Learning the Gray-Scott model: Effect of grid coarsening
 
 # In this example we want to show the effect of grid coarsening on the solution of a PDE.
-# We will introduce one of the most important problem in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
+# We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
 # We use again the GS model, which is defined from
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
-# ### The 'exact' solution
+# ### The *exact* solution
 # Even if the GS model can not be solved analytically, we can discretize it on a very fine grid and expect its solution to be almost exact. 
 # We will use it as a reference to compare the solution on a coarser grid.
 # Notice that the simple fact that we are discretizing, makes this solution technically a DNS (Direct Numerical Simulation) and not an exact solution, but since we are using a very fine grid, we will call it *exact* for simplicity.
 
 # Let's define the finest grid using 200 steps of 0.5 in each direction, reaching a 100[L] x 100[L] domain.
+include("coupling_functions/functions_NODE.jl")
 dux = duy = dvx = dvy = 0.5
 nux = nuy = nvx = nvy = 200
-grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # We start with a central concentration of $v$
 function initialize_uv(grid, u_bkg, v_bkg, center_size)
     u_initial = u_bkg * ones(grid.nux, grid.nuy)
-    v_initial = 0 * ones(grid.nvx, grid.nvy)
+    v_initial = zeros(grid.nvx, grid.nvy)
     v_initial[Int(grid.nvx / 2 - center_size):Int(grid.nvx / 2 + center_size), Int(grid.nvy / 2 - center_size):Int(grid.nvy / 2 + center_size)] .= v_bkg
     return u_initial, v_initial
 end
-u_initial, v_initial = initialize_uv(grid, 0.8, 0.9, 4);
+u_initial, v_initial = initialize_uv(grid_GS, 0.8, 0.9, 4);
 
 # We can now define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid.nux * grid.nuy, 1),
-    reshape(v_initial, grid.nvx * grid.nvy, 1))
+uv0 = vcat(reshape(u_initial, grid_GS.nux * grid_GS.nuy, 1),
+    reshape(v_initial, grid_GS.nvx * grid_GS.nvy, 1))
 
 # From the literature, we have selected the following parameters in order to form nice patterns
 D_u = 0.16
@@ -60,15 +42,23 @@ f = 0.055
 k = 0.062;
 
 # Here we (the user) define the **right hand sides** of the equations
+include("coupling_functions/functions_FDderivatives.jl");
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Once the forces have been defined, we can create the CNODE
-f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false)
+f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false)
 # and we ask Lux for the parameters to train and their structure [none in this example]
+import Random, Lux
+rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
 
+# Actuallly, we are not training any parameters, but using `NeuralODE` for consistency with the resto of examples. Therefore, we see that $\theta$ is empty.
+length(θ)
+
 # We now do a short *burnout run* to get rid of the initial artifacts
+import DifferentialEquations: Tsit5
+import DiffEqFlux: NeuralODE
 trange_burn = (0.0, 10.0)
 dt_burn, saveat_burn = (1e-2, 1)
 full_CNODE = NeuralODE(f_CNODE,
@@ -87,18 +77,19 @@ dt, saveat = (0.5, 20)
 full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
 # And we unpack the solution to get the two species from
-u_exact = reshape(untrained_CNODE_solution[1:(grid.Nu), :, :],
-    grid.nux,
-    grid.nuy,
+u_exact = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
+    grid_GS.nux,
+    grid_GS.nuy,
     size(untrained_CNODE_solution, 2),
     :)
-v_exact = reshape(untrained_CNODE_solution[(grid.Nu + 1):end, :, :],
-    grid.nvx,
-    grid.nvy,
+v_exact = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
+    grid_GS.nvx,
+    grid_GS.nvy,
     size(untrained_CNODE_solution, 2),
     :);
 
 # Plot the solution as an animation
+using Plots
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
 @gif for i in 1:2:size(u_exact, 4)
@@ -130,6 +121,7 @@ nux = nuy = nvx = nvy = 150
 dns_grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # Use the same initial condition as the exact solution 
+import Images: imresize
 u0_dns = imresize(u_initial, (dns_grid.nux, dns_grid.nuy));
 v0_dns = imresize(v_initial, (dns_grid.nvx, dns_grid.nvy));
 uv0_dns = vcat(reshape(u0_dns, dns_grid.nux * dns_grid.nuy, 1),
@@ -329,4 +321,4 @@ if isdir("./plots")
 else
     gif(anim, "examples/plots/02.03_gridsize.gif", fps = 10)
 end
-# From the figure, you can see that the LES has induced some artifacts that influences the dynamics. We will solve these artifacts using the Neural part of the CNODES.
+# In the figure we see that the LES has induced some artifacts that influences the dynamics. In the next example, we will solve these artifacts using the Neural part of the CNODEs.
