@@ -1,0 +1,21 @@
+name: Format suggestions
+on:
+  push:
+  pull_request:
+jobs:
+  code-style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/cache@v1
+      - uses: julia-actions/setup-julia@v1
+      - name: format code
+        run: |
+          julia -e '
+            import Pkg;
+            Pkg.add("JuliaFormatter");
+            using JuliaFormatter;
+            JuliaFormatter.format(".")
+          '
+      - name: Check for uncommitted changes
+        run: git diff --exit-code
