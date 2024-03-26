@@ -52,6 +52,7 @@ rng = Random.seed!(1234);
 length(θ) == 0;
 
 # We now do a short *burnout run* to get rid of the initial artifacts. This allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
+
 using DifferentialEquations: Tsit5
 using DiffEqFlux: NeuralODE
 trange_burn = (0.0, 10.0);
