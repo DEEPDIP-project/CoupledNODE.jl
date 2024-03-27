@@ -1,3 +1,4 @@
+```julia
 import DifferentialEquations: ODEProblem, solve, Tsit5
 using Plots
 
@@ -8,14 +9,21 @@ function observation()
     sol = solve(prob, Tsit5())
     return sol.u
 end
+```
 
-# Define a callback function to observe training
+Define a callback function to observe training
+
+```julia
 callback = function (p, l, pred; doplot = true)
     l_l = length(lhist)
     println("Loss[$(l_l)]: $(l)")
     push!(lhist, l)
     if doplot
-        # plot rolling average of loss, every 10 steps
+```
+
+plot rolling average of loss, every 10 steps
+
+```julia
         if l_l % 10 == 0
             plot()
             fig = plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
@@ -28,3 +36,9 @@ callback = function (p, l, pred; doplot = true)
     end
     return false
 end
+```
+
+---
+
+*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
+

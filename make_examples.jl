@@ -3,14 +3,23 @@ using Glob
 
 cd("examples")
 
-files = glob("*-*.jl")
-overwrite_nb = false
+# if this is called with an argument, use that as filenames
+if length(ARGS) > 0
+    files = ARGS
+    # only check files in examples/ and remove the path
+    files = [f for f in files if occursin("examples/", f)]
+    files = [replace(f, r"examples/" => "") for f in files]
+else
+    files = glob("*-*.jl")
+end
+
+overwrite_nb = true
 autorun_notebooks = false
 
 for f in files
     Literate.markdown(f;
         flavor = Literate.CommonMarkFlavor(),
-        codefence = "```julia" => "```",)
+        codefence = "```julia" => "```")
     if overwrite_nb
         Literate.notebook(f; execute = autorun_notebooks)
     else

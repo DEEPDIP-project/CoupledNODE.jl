@@ -40,7 +40,7 @@ function Lux.initialparameters(rng::AbstractRNG,
         (; kmax, cin, cout, init_weight)::FourierLayer)
     (;
         spatial_weight = init_weight(rng, cout, cin),
-        spectral_weights = init_weight(rng, kmax + 1, kmax + 1, cout, cin, 2),)
+        spectral_weights = init_weight(rng, kmax + 1, kmax + 1, cout, cin, 2))
 end
 Lux.initialstates(::AbstractRNG, ::FourierLayer) = (;)
 function Lux.parameterlength((; kmax, cin, cout)::FourierLayer)
@@ -107,7 +107,7 @@ end
 function create_fno_model(kmax_fno, ch_fno, σ_fno)
     return Chain(u -> real.(ifft(u, (1, 2))),
         (FourierLayer(kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
-         i in eachindex(σ_fno))...,
+        i in eachindex(σ_fno))...,
         # Put the channel dimension in the first position to apply a dense layer
         u -> permutedims(u, (3, 1, 2, 4)),
         Dense(ch_fno[end] => 2 * ch_fno[end], gelu),

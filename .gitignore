@@ -1,5 +1,3 @@
-examples/*.ipynb
-examples/*.md
 examples/test*
 .vscode
 
