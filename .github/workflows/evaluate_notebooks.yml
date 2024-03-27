@@ -1,0 +1,32 @@
+name: Evaluate notebooks
+
+# start job only for PRs when a label is added.
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  build:
+    if: contains(github.event.pull_request.labels.*.name, 'evaluate-notebooks')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.ref }}
+    - uses: julia-actions/setup-julia@v1
+    - uses: julia-actions/cache@v1
+    - uses: julia-actions/julia-buildpkg@v1
+    - name: Evaluate notebooks
+      shell: bash -l {0}
+      run: |
+        julia --project evaluate_notebooks.jl
+    - name: Commit
+      shell: bash -l {0}
+      run: |
+        git config --global user.name "${GITHUB_ACTOR}"
+        git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+        git add examples/
+        git status
+        git commit -m "Automatically evaluated notebooks from PR ${{ github.event.number }}, branch ${{ github.event.pull_request.head.ref }}."
+        git push origin "${{ github.event.pull_request.head.ref }}"
