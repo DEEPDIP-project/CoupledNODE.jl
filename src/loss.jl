@@ -41,11 +41,13 @@ function create_randloss_MulDtO_1(ubar, training_NODE, st; nunroll, nintervals)
             d,
             istart:(istart + nunroll * nintervals)))
         # this is the loss evaluated for each multishooting set
-        loss_MulDtO_oneset_1(trajectory, θ, st, training_NODE, nunroll = nunroll, nintervals = nintervals)
+        loss_MulDtO_oneset_1(
+            trajectory, θ, st, training_NODE, nunroll = nunroll, nintervals = nintervals)
     end
 end
 # the parameter λ sets how strongly we make the pieces match (continuity term)
-function loss_MulDtO_oneset_1(trajectory, θ, st, training_NODE; λ = 1e3, nunroll, nintervals)
+function loss_MulDtO_oneset_1(
+        trajectory, θ, st, training_NODE; λ = 1e3, nunroll, nintervals)
     loss = 0.0
     last_pred = nothing
     for i in 1:nintervals
@@ -179,7 +181,8 @@ Creates a random loss function for the multishooting method with multiple shooti
 # Returns
 - `randloss_MulDtO`: A random loss function for the multishooting method.
 """
-function create_randloss_MulDtO(target; nunroll, nintervals = 1, noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
+function create_randloss_MulDtO(
+        target; nunroll, nintervals = 1, noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
     # TODO: there should be some check about the consistency of the input arguments
     # Get the number of time steps 
     d = ndims(target)
@@ -187,7 +190,7 @@ function create_randloss_MulDtO(target; nunroll, nintervals = 1, noverlaps = 1, 
     function randloss_MulDtO(θ)
         # Compute the requested length of consecutive timesteps
         # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0 
-        length_required = nintervals*(nunroll+1) - noverlaps*(nintervals-1)
+        length_required = nintervals * (nunroll + 1) - noverlaps * (nintervals - 1)
         # Zygote will select a random initial condition that can accomodate all the multishooting intervals
         istart = Zygote.@ignore rand(1:(nt - length_required))
         trajectory = Zygote.@ignore ArrayType(selectdim(target,
@@ -236,11 +239,10 @@ function loss_MulDtO_oneset(trajectory,
         noverlaps,
         nsamples = nsamples)
     # Get the timesteps where the intervals start 
-    #starting_points = [i*(nunroll+1-noverlaps) for i in 1:(nintervals-1)]
-    #pushfirst!(starting_points,1)
-    starting_points = [i == 0 ? 1 : i*(nunroll+1-noverlaps) for i in 0:(nintervals-1)]
+    starting_points = [i == 0 ? 1 : i * (nunroll + 1 - noverlaps)
+                       for i in 0:(nintervals - 1)]
     # Take all the time intervals and concatenate them in the batch dimension
-    list_tr = cat([trajectory[:, :,i:(i + nunroll)]
+    list_tr = cat([trajectory[:, :, i:(i + nunroll)]
                    for i in starting_points]...,
         dims = 2)
     # Get all the initial conditions 
@@ -257,10 +259,10 @@ function loss_MulDtO_oneset(trajectory,
         # (!) Remind that the trajectory is stored as: 
         #   pred[grid, (nintervals*nsamples), nunroll+1]
         # and we need to compare the last noverlaps points of an interval
-        pred_end = pred[:, :, end-noverlaps+1:end]
+        pred_end = pred[:, :, (end - noverlaps + 1):end]
         # with the first noverlaps points of the next interval EXCLUDING the initial condition 
         # (which is already part of the loss function)
-        pred_start = pred[:, :, 2:(1+noverlaps)]
+        pred_start = pred[:, :, 2:(1 + noverlaps)]
         continuity = 0
         # loop over all the samples, which have been concatenated in dim 2
         for s in 1:nsamples
