@@ -1,5 +1,3 @@
-import CoupledNODE
-
 # # Gray-Scott model - explicit solution
 # In following examples we will use the GS model to showcase how it can be represented as Coupled Neural ODEs (CNODEs). But let us first explore the GS model starting with an explicit solution of it. We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl`](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [`NeuralODE`](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 
@@ -34,18 +32,20 @@ f = 0.055
 k = 0.062;
 
 # Define the **right hand sides** of the two equations:
-#include("coupling_functions/functions_FDderivatives.jl")
 import CoupledNODE: Laplacian
-F_u(u, v, grid_GS) = D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
-G_v(u, v, grid_GS) = D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+function F_u(u, v, grid_GS)
+    D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+end
+function G_v(u, v, grid_GS)
+    D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+end
 
 # Once the functions have been defined, we can create the CNODE
 # Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
 import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 # and we ask Lux for the parameters to train and their structure
-using Lux
-import Random
+import Lux, Random
 rng = Random.seed!(1234);
 θ, st = Lux.setup(rng, f_CNODE);
 # in this example we are not training any parameters, so we can confirm that the vector θ is empty

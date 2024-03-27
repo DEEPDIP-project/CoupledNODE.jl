@@ -1,5 +1,3 @@
-import CoupledNODE
-
 # # Logistic equation and NODE
 # Let's study a phenomenon that can be described with the following ODE $$\dfrac{dP}{dt} = rP\left(1-\dfrac{P}{K}\right),$$ which is called the logistic equation. Given $P(t=0)=P_0$ we can solve this problem analytically to get $P(t) = \frac{K}{1+\left(K-P_0\right)/P_0 \cdot e^{-rt}}$. Let's plot the solution for $r=K=2, P_0=0.01$:
 r = 2
@@ -78,7 +76,8 @@ training_NODE = NeuralODE(f_NODE,
 # Seconf, we need to design the **loss function**. For this example, we use *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/). Using `Zygote` we compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
 import CoupledNODE: create_randloss_MulDtO_1
 nintervals = 10
-myloss = create_randloss_MulDtO_1(u_experiment, training_NODE, st, nunroll = nunroll, nintervals = nintervals);
+myloss = create_randloss_MulDtO_1(
+    u_experiment, training_NODE, st, nunroll = nunroll, nintervals = nintervals);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
 lhist = [];
