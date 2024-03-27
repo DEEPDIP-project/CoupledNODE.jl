@@ -1,4 +1,5 @@
 import DifferentialEquations: ODEProblem, solve, Tsit5
+import Statistics: mean
 using Plots
 
 function observation()

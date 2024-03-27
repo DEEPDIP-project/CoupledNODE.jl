@@ -1,8 +1,4 @@
-import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array;
-
 # # Learning the Gray-Scott model: a priori fitting
-
 # In the previous example [02.00-GrayScott.jl](02.00-GrayScott.jl) we have seen how to use the CNODE to solve the Gray-Scott model via an explicit method.
 # Here we introduce the *Learning part* of the CNODE, and show how it can be used to close the CNODE. We are going to train the neural network via **a priori fitting** and in the next example [02.02-GrayScott](02.02-GrayScott.jl) we will show how to use a posteriori fitting.
 
@@ -16,7 +12,7 @@ ArrayType = CUDA.functional() ? CuArray : Array;
 
 # ## I. Solving GS to collect data
 # Definition of the grid
-include("coupling_functions/functions_NODE.jl")
+import CoupledNODE: Grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
 grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
@@ -45,12 +41,13 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand sides (functions) of the GS model
-include("coupling_functions/functions_FDderivatives.jl")
+import CoupledNODE: Laplacian
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Definition of the CNODE
 import Lux
+import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 rng = Random.seed!(1234);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
@@ -108,7 +105,7 @@ struct GSLayer{F} <: Lux.AbstractExplicitLayer
 end
 # and its (outside) constructor
 function GSLayer(; init_weight = Lux.zeros32)
-    #function GSLayer(; init_weight = glorot_uniform)
+    #function GSLayer(; init_weight = Lux.glorot_uniform)
     return GSLayer(init_weight)
 end
 # We also need to specify how to initialize its parameters and states. 
@@ -170,7 +167,7 @@ isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
 # ### Design the loss function - a priori fitting
 # For this example, we use *a priori* fitting. In this approach, the loss function is defined to minimize the difference between the derivatives of $\frac{du}{dt}$ and $\frac{dv}{dt}$ predicted by the model and calculated via explicit method `FG_target`.
 # In practice, we use [Zygote](https://fluxml.ai/Zygote.jl/stable/) to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
-include("coupling_functions/functions_CNODE_loss.jl");
+import CoupledNODE: create_randloss_derivative
 myloss = create_randloss_derivative(uv_data,
     FG_target,
     f_closed_CNODE,
@@ -179,7 +176,7 @@ myloss = create_randloss_derivative(uv_data,
     λ = 0);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = Float32[];
+lhist = [];
 ## Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit);
@@ -204,7 +201,7 @@ using OptimizationCMAEvolutionStrategy, Statistics
 algo = CMAEvolutionStrategyOpt();
 
 # ### Train the CNODE
-include("coupling_functions/functions_example.jl") # callback function
+import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,

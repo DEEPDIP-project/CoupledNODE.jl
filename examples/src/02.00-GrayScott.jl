@@ -1,8 +1,3 @@
-import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array;
-## Import our custom backend functions
-include("coupling_functions/functions_NODE.jl")
-
 # # Gray-Scott model - explicit solution
 # In following examples we will use the GS model to showcase how it can be represented as Coupled Neural ODEs (CNODEs). But let us first explore the GS model starting with an explicit solution of it. We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl`](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [`NeuralODE`](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 
@@ -12,6 +7,7 @@ include("coupling_functions/functions_NODE.jl")
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
 # Let's start creating a grid to discretize the problem. Notice that in literature the coefficients are usually scaled such that $dx=dy=1$, so we will use this scaling to have a direct comparison with literature.
+import CoupledNODE: Grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 100
 grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
@@ -36,7 +32,7 @@ f = 0.055
 k = 0.062;
 
 # Define the **right hand sides** of the two equations:
-include("coupling_functions/functions_FDderivatives.jl")
+import CoupledNODE: Laplacian
 function F_u(u, v, grid_GS)
     D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 end
@@ -46,10 +42,10 @@ end
 
 # Once the functions have been defined, we can create the CNODE
 # Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
+import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 # and we ask Lux for the parameters to train and their structure
-using Lux
-import Random
+import Lux, Random
 rng = Random.seed!(1234);
 θ, st = Lux.setup(rng, f_CNODE);
 # in this example we are not training any parameters, so we can confirm that the vector θ is empty

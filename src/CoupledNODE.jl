@@ -1,5 +1,12 @@
 module CoupledNODE
 
-include("toy/toyexample.jl")
+import CUDA
+ArrayType = CUDA.functional() ? CuArray : Array
 
-end
+include("loss.jl")
+include("grid.jl")
+include("NODE.jl")
+include("derivatives.jl")
+include("utils.jl")
+
+end # module CoupledNODE
