@@ -23,6 +23,7 @@ CUDA.allowscalar(false)
 const ArrayType = CUDA.functional() ? CuArray : Array;
 const z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...);
 const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
+const MY_DEVICE = CUDA.functional() ? cu : identity;
 # and remember to use float32 if you plan to use a GPU
 const MY_TYPE = Float32;
 ## Import our custom backend functions
@@ -54,38 +55,61 @@ u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulati
 # We can now define the initial condition as a flattened concatenated array
 uv0 = MY_TYPE.(vcat(reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.nvx * grid.nvy, :)));
 
-D_u = 0.16f0;
-D_v = 0.08f0;
-f = 0.055f0;
-k = 0.062f0;
+const D_u = 0.16f0;
+const D_v = 0.08f0;
+const f = 0.055f0;
+const k = 0.062f0;
 
+
+include("coupling_functions/functions_FDderivatives.jl");
 # RHS of GS model
-F_u(u, v, grid) = MY_TYPE.(D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u));
-G_v(u, v, grid) = MY_TYPE.(D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v);
+function create_functions(D_u, D_v, f, k, grid)
+    dux2=grid.dux^2
+    duy2=grid.duy^2
+    dvx2=grid.dvx^2
+    dvy2=grid.dvy^2
+    F_u(u, v) = D_u * Laplacian(u, dux2, duy2) .- u .* v .^ 2 .+ f .* (1.0f0 .- u)
+    G_v(u, v) = D_v * Laplacian(v, dvx2, dvy2) .+ u .* v .^ 2 .- (f + k) .* v
+    return F_u, G_v
+end
+F_u, G_v = create_functions(D_u, D_v, f, k, grid)
+
 # Typical cnode
-f_CNODE_cpu = create_f_CNODE(F_u, G_v, grid; is_closed = false);
+#f_CNODE_cpu = create_f_CNODE(F_u, G_v, grid; is_closed = false);
+f_CNODE_cpu = create_f_CNODE(create_functions, D_u, D_v, f, k, grid; is_closed = false);
 θ_cpu, st_cpu = Lux.setup(rng, f_CNODE_cpu);
 # the only difference for the gpu is that the grid lives on the gpu now
-f_CNODE_gpu = create_f_CNODE(F_u, G_v, cu(grid); is_closed = false);
+#f_CNODE_gpu = create_f_CNODE(F_u, G_v, cu(grid); is_closed = false);
+f_CNODE_gpu = create_f_CNODE(create_functions, D_u, D_v, f, k, cu(grid); is_closed = false);
 θ_gpu, st_gpu = Lux.setup(rng, f_CNODE_gpu);
 
 
-# Test if the force keeps the array on the GPU
-zz = F_u(u_initial, v_initial, grid)
-typeof(zz)
-zz = F_u(cu(u_initial), cu(v_initial), cu(grid))
-typeof(zz)
-# Test if the right hand side of the CNODE is on the GPU
-zz = f_CNODE_gpu(uv0, θ_gpu, st_gpu)
-typeof(zz)
-zz = f_CNODE_gpu(cu(uv0), θ_gpu, st_gpu)
-typeof(zz)
+using Profile
+# Trigger and test if the force keeps the array on the GPU
+@time zz = F_u(u_initial, v_initial);
+@time for i in 1:1000
+    zz = F_u(u_initial, v_initial);
+end
+cuu = cu(u_initial);
+cuv = cu(v_initial);
+@time zz = F_u(cuu, cuv);
+#@time for i in 1:1000
+CUDA.@profile for i in 1:100
+    zz = F_u(cuu, cuv);
+end
+
+# Trigger and test if the right hand side of the CNODE keeps input on the GPU
+@time zz = f_CNODE_cpu(uv0, θ_gpu, st_gpu);
+@time zz = f_CNODE_gpu(uv0, θ_gpu, st_gpu);
+cuv0 = cu(uv0);
+@time zz = f_CNODE_gpu(cuv0, θ_gpu, st_gpu);
 zz = nothing
 GC.gc()
 
 
-trange_burn = (0.0f0, 0.10f0);
-dt, saveat = (1e-2, 1);
+# [!] It is important that trange, dt, saveat have the correct type
+trange_burn = (0.0f0, 10.0f0);
+dt, saveat = (0.01f0, 1.0f0);
 # [!] According to https://docs.sciml.ai/DiffEqGPU/stable/getting_started/ 
 #     the best thing to do in case of bottleneck consisting in expensive right hand side is to use CuArray as initial condition and do not rely on EnsemblesGPU.
 
@@ -97,12 +121,12 @@ full_CNODE_cpu = NeuralODE(f_CNODE_cpu,
     adaptive = false,
     dt = dt,
     saveat = saveat);
-full_CNODE_gpu = NeuralODE(f_CNODE_gpu,
+full_CNODE_gpu = cu(NeuralODE(f_CNODE_gpu,
     trange_burn,
     GPUTsit5(),
     adaptive = false,
     dt = dt,
-    saveat = saveat);
+    saveat = saveat));
 # also test with the initial condition on gpu
 cu0 = cu(uv0);
 typeof(uv0)
@@ -110,18 +134,22 @@ typeof(cu0)
 
 # Now test the cpu_vs_gpu algorithms and the cpu_vs_gpu initial condition 
 @time cpu_cpu = full_CNODE_cpu(uv0, θ_cpu, st_cpu)[1];
-# on which device is the result?
-typeof(cpu_cpu)
+typeof(cpu_cpu.u)
+@profview cpu_cpu = full_CNODE_cpu(uv0, θ_cpu, st_cpu)[1];
 # Clean the GPU memory and trigger gc
 cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
 GC.gc()
-# @time cpu_gpu = full_CNODE_cpu(cu0, θ, st)[1]; # not woth, too slow
+@time cpu_gpu = full_CNODE_cpu(cu0, θ_cpu, st_cpu)[1]; 
+typeof(cpu_gpu.u)
+cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
+GC.gc()
 @time gpu_cpu = full_CNODE_gpu(uv0, θ_gpu, st_gpu)[1];
-typeof(gpu_cpu)
+typeof(gpu_cpu.u)
 cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
 GC.gc()
 @time gpu_gpu = full_CNODE_gpu(cu0, θ_gpu, st_gpu)[1];
-typeof(gpu_gpu)
+typeof(gpu_gpu.u)
+@profview gpu_gpu = full_CNODE_gpu(cu0, θ_gpu, st_gpu)[1];
 cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
 GC.gc()
 
