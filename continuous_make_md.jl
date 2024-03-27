@@ -14,7 +14,7 @@ while true
     for file in files
         Literate.markdown(file;
             flavor = Literate.CommonMarkFlavor(),
-            codefence = "```julia" => "```",)
+            codefence = "```julia" => "```")
     end
 
     #watch_file("Example1.jl")
