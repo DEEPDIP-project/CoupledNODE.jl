@@ -32,7 +32,7 @@ Create a neural network model for the Coupled Neural ODE (CNODE) approach.
 # Returns
 - The created CNODE model.
 """
-function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_closed = false)
+function create_f_CNODE(create_functions, D_u, D_v, f, k, grid, NN_u = nothing, NN_v = nothing; is_closed = false)
     # Since I will be upscaling v, I need to define a new grid to pass to the force
     grid_for_force = Grid(grid.dux,
         grid.duy,
@@ -46,6 +46,7 @@ function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_close
     if CUDA.functional()
         grid_for_force = cu(grid_for_force)
     end
+    F_u, G_u = create_functions(D_u, D_v, f, k, grid_for_force)
     # check if v has to be rescaled or not
     if grid.dux != grid.dvx || grid.duy != grid.dvy
         println("Resizing v to the same grid as u")
@@ -61,18 +62,13 @@ function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_close
     # Check if you want to close the CNODE or not
     if !is_closed
         return Chain(
-            # layer that casts to f32
             Upscaler,
             uv -> let u = uv[1], v = uv[2]
-                println("in F")
-                println(typeof(u))
                 # Return a tuple of the right hand side of the CNODE
                 # remove the placeholder dimension for the channels
                 u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u, 4))
                 v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v, 4))
-                println(typeof(u))
-                println(typeof(F_u(u, v, grid_for_force)))
-                (F_u(u, v, grid_for_force), G_v(u, v, grid_for_force))
+                (F_u(u, v), G_v(u, v))
             end,
             Downscaler)
     else
@@ -87,8 +83,8 @@ function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_close
             # Apply the right hand side of the CNODE 
             SkipConnection(NN_closure,
                 (f_NN, uv) -> let u = uv[:, :, 1, :], v = uv[:, :, 2, :]
-                    (F_u(u, v, grid_for_force) + f_NN[1],
-                        G_v(u, v, grid_for_force) + f_NN[2])
+                    (F_u(u, v) + f_NN[1],
+                        G_v(u, v) + f_NN[2])
                 end),
             Downscaler)
     end
@@ -110,14 +106,14 @@ Returns:
 function downscale_v(grid, resize_v = false)
     if !resize_v
         return Chain(uv -> let u = uv[1], v = uv[2]
-            println("in down")
-            println(typeof(u))
+            #println("in down")
+            #println(typeof(u))
             # make u and v linear
             u = reshape(u, grid.Nu, size(u)[end])
             v = reshape(v, grid.Nv, size(v)[end])
-            println("out down")
-            println(typeof(u))
-            println(typeof(vcat(u, v)))
+            #println("out down")
+            #println(typeof(u))
+            #println(typeof(vcat(u, v)))
             # and concatenate
             vcat(u, v)
         end)
@@ -164,8 +160,8 @@ function upscale_v(grid, resize_v = false)
 
     if !resize_v
         return Chain(uv -> let u = uv[1:(grid.Nu), :], v = uv[(grid.Nu + 1):end, :]
-            println("in upscale")
-            println(typeof(u))
+            #println("in upscale")
+            #println(typeof(u))
             # reshape u and v on the grid
             u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
             v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
