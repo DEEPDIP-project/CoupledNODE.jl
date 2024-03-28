@@ -4,18 +4,18 @@ using SciMLSensitivity
 using DiffEqFlux
 using DifferentialEquations
 using Plots
-using Plots.PlotMeasures
+#using Plots.PlotMeasures
 using Zygote
 using Random
 rng = Random.seed!(1234)
-using OptimizationOptimisers
-using Statistics
+#using OptimizationOptimisers
+#using Statistics
 using ComponentArrays
 using CUDA
-using Images
-using Interpolations
-using NNlib
-using FFTW
+#using Images
+#using Interpolations
+#using NNlib
+#using FFTW
 using DiffEqGPU
 # Test if CUDA is running
 CUDA.functional()
@@ -27,20 +27,22 @@ const MY_DEVICE = CUDA.functional() ? cu : identity;
 # and remember to use float32 if you plan to use a GPU
 const MY_TYPE = Float32;
 ## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
 include("coupling_functions/functions_CNODE_loss.jl")
 include("coupling_functions/functions_FDderivatives.jl");
-include("coupling_functions/functions_nn.jl")
-include("coupling_functions/functions_FNO.jl")
+
 
 # ## Testing SciML on GPU
 
 # In this example, we want to test the GPU implementation of SciML. We also use float32 to speed up the computation on the GPU. 
 
 dux = duy = dvx = dvy = 1.0f0;
-nux = nuy = nvx = nvy = 40;
+# on snellius test nodes, this is the largest grid that fits on the GPU
+# [notice that for smaller grids it is not convenient to use the GPU at all]
+nux = nuy = nvx = nvy = 50;
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, convert_to_float32 = true);
+
+# Initial condition
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
     u_init = MY_TYPE.(U₀ .+ ε_u .* randn(grid.nux, grid.nuy, nsimulations))
     v_init = MY_TYPE.(V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations))
@@ -51,18 +53,14 @@ V₀  = 0.25f0;
 ε_u = 0.05f0;
 ε_v = 0.1f0;
 u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulations = 4);
-
-# We can now define the initial condition as a flattened concatenated array
 uv0 = MY_TYPE.(vcat(reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.nvx * grid.nvy, :)));
 
+
+# RHS of GS model
 const D_u = 0.16f0;
 const D_v = 0.08f0;
 const f = 0.055f0;
 const k = 0.062f0;
-
-
-include("coupling_functions/functions_FDderivatives.jl");
-# RHS of GS model
 function create_functions(D_u, D_v, f, k, grid)
     dux2=grid.dux^2
     duy2=grid.duy^2
@@ -74,47 +72,56 @@ function create_functions(D_u, D_v, f, k, grid)
 end
 F_u, G_v = create_functions(D_u, D_v, f, k, grid)
 
+
+
+using Profile
+# Trigger and test if the force keeps the array on the GPU
+@time zz = F_u(u_initial, v_initial);
+cuu = cu(u_initial);
+cuv = cu(v_initial);
+@time zz = F_u(cuu, cuv);
+@time for i in 1:1000
+##@profview for i in 1:100
+##CUDA.@profile for i in 1:100
+    zz = F_u(u_initial, v_initial);
+end
+@time for i in 1:1000
+##CUDA.@profile for i in 1:100
+##@profview for i in 1:100
+    zz = F_u(cuu, cuv);
+end
+
+
 # Typical cnode
 #f_CNODE_cpu = create_f_CNODE(F_u, G_v, grid; is_closed = false);
 f_CNODE_cpu = create_f_CNODE(create_functions, D_u, D_v, f, k, grid; is_closed = false);
 θ_cpu, st_cpu = Lux.setup(rng, f_CNODE_cpu);
 # the only difference for the gpu is that the grid lives on the gpu now
 #f_CNODE_gpu = create_f_CNODE(F_u, G_v, cu(grid); is_closed = false);
-f_CNODE_gpu = create_f_CNODE(create_functions, D_u, D_v, f, k, cu(grid); is_closed = false);
+f_CNODE_gpu = create_f_CNODE(create_functions, D_u, D_v, f, k, cu(grid); is_closed = false, gpu_mode=true);
+#f_CNODE_gpu = f_CNODE_gpu |> gpu;
 θ_gpu, st_gpu = Lux.setup(rng, f_CNODE_gpu);
+#θ_gpu = θ_gpu |> gpu;
+#st_gpu = st_gpu |> gpu;
+
+## Trigger and test if the right hand side of the CNODE keeps input on the GPU
+#@time zz = f_CNODE_cpu(uv0, θ_gpu, st_gpu);
+#@time zz = f_CNODE_gpu(uv0, θ_gpu, st_gpu);
+#cuv0 = cu(uv0);
+#@time zz = f_CNODE_gpu(cuv0, θ_gpu, st_gpu);
+#zz = nothing
+#GC.gc()
 
 
-using Profile
-# Trigger and test if the force keeps the array on the GPU
-@time zz = F_u(u_initial, v_initial);
-@time for i in 1:1000
-    zz = F_u(u_initial, v_initial);
-end
-cuu = cu(u_initial);
-cuv = cu(v_initial);
-@time zz = F_u(cuu, cuv);
-#@time for i in 1:1000
-CUDA.@profile for i in 1:100
-    zz = F_u(cuu, cuv);
-end
-
-# Trigger and test if the right hand side of the CNODE keeps input on the GPU
-@time zz = f_CNODE_cpu(uv0, θ_gpu, st_gpu);
-@time zz = f_CNODE_gpu(uv0, θ_gpu, st_gpu);
-cuv0 = cu(uv0);
-@time zz = f_CNODE_gpu(cuv0, θ_gpu, st_gpu);
-zz = nothing
-GC.gc()
 
 
 # [!] It is important that trange, dt, saveat have the correct type
-trange_burn = (0.0f0, 10.0f0);
+trange_burn = (0.0f0, 20.0f0);
 dt, saveat = (0.01f0, 1.0f0);
 # [!] According to https://docs.sciml.ai/DiffEqGPU/stable/getting_started/ 
 #     the best thing to do in case of bottleneck consisting in expensive right hand side is to use CuArray as initial condition and do not rely on EnsemblesGPU.
 
 # But since this is the first time example where we use a GPU, let's do a CPU/GPU comparison 
-include("coupling_functions/functions_NODE.jl")
 full_CNODE_cpu = NeuralODE(f_CNODE_cpu,
     trange_burn,
     Tsit5(),
@@ -135,21 +142,22 @@ typeof(cu0)
 # Now test the cpu_vs_gpu algorithms and the cpu_vs_gpu initial condition 
 @time cpu_cpu = full_CNODE_cpu(uv0, θ_cpu, st_cpu)[1];
 typeof(cpu_cpu.u)
-@profview cpu_cpu = full_CNODE_cpu(uv0, θ_cpu, st_cpu)[1];
 # Clean the GPU memory and trigger gc
 cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
 GC.gc()
-@time cpu_gpu = full_CNODE_cpu(cu0, θ_cpu, st_cpu)[1]; 
-typeof(cpu_gpu.u)
-cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
-GC.gc()
-@time gpu_cpu = full_CNODE_gpu(uv0, θ_gpu, st_gpu)[1];
-typeof(gpu_cpu.u)
-cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
-GC.gc()
+
+
+#@time cpu_gpu = full_CNODE_cpu(cu0, θ_cpu, st_cpu)[1]; 
+#typeof(cpu_gpu.u)
+#cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
+#GC.gc()
+
+CUDA.reclaim()
+CUDA.memory_status()
+CUDA.unsafe_free!(cu0)
+
 @time gpu_gpu = full_CNODE_gpu(cu0, θ_gpu, st_gpu)[1];
 typeof(gpu_gpu.u)
-@profview gpu_gpu = full_CNODE_gpu(cu0, θ_gpu, st_gpu)[1];
 cpu_cpu = cpu_gpu = gpu_cpu = gpu_cpu = nothing
-GC.gc()
+GC.gc(true)
 
