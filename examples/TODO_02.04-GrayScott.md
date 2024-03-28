@@ -1,5 +1,6 @@
 ```julia
 using Lux
+using LuxCUDA
 using SciMLSensitivity
 using DiffEqFlux
 using DifferentialEquations
@@ -16,16 +17,23 @@ using Images
 using Interpolations
 using NNlib
 using FFTW
+using DiffEqGPU
 ```
 
 Test if CUDA is running
 
 ```julia
 CUDA.functional()
-
 CUDA.allowscalar(false)
-ArrayType = CUDA.functional() ? CuArray : Array;
-z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
+const ArrayType = CUDA.functional() ? CuArray : Array;
+const z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
+const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
+```
+
+and remember to use float32 if you plan to use a GPU
+
+```julia
+const MY_TYPE = Float32
 # Import our custom backend functions
 include("coupling_functions/functions_example.jl")
 include("coupling_functions/functions_NODE.jl")
@@ -43,9 +51,9 @@ We run multiple GS simulations as discussed in the previous part.
 Notice that the 'fine' grid is now only 40 cells per side, in order to speed up the example
 
 ```julia
-dux = duy = dvx = dvy = 1.0
+dux = duy = dvx = dvy = 1.0f0
 nux = nuy = nvx = nvy = 40
-grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, convert_to_float32 = true);
 ```
 
 Here, we define the initial condition as a random perturbation over a constant background to add variety
@@ -56,33 +64,38 @@ function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
     v_init = V₀ .+ ε_v .* randn(grid.nvx, grid.nvy, nsimulations)
     return u_init, v_init
 end
-U₀ = 0.5    # initial concentration of u
-V₀ = 0.25   # initial concentration of v
-ε_u = 0.05 # magnitude of the perturbation on u
-ε_v = 0.1 # magnitude of the perturbation on v
+U₀ = 0.5f0    # initial concentration of u
+V₀ = 0.25f0   # initial concentration of v
+ε_u = 0.05f0 # magnitude of the perturbation on u
+ε_v = 0.1f0 # magnitude of the perturbation on v
 u_initial, v_initial = initial_condition(grid, U₀, V₀, ε_u, ε_v, nsimulations = 4);
 ```
 
 We can now define the initial condition as a flattened concatenated array
 
 ```julia
-uv0 = vcat(reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.nvx * grid.nvy, :));
+uv0 = MY_TYPE.(vcat(
+    reshape(u_initial, grid.Nu, :), reshape(v_initial, grid.nvx * grid.nvy, :)));
 ```
 
 From the literature, we have selected the following parameters in order to form nice patterns
 
 ```julia
-D_u = 0.16
-D_v = 0.08
-f = 0.055
-k = 0.062;
+D_u = 0.16f0
+D_v = 0.08f0
+f = 0.055f0
+k = 0.062f0;
 ```
 
 RHS of GS model
 
 ```julia
-F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
-G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+function F_u(u, v, grid)
+    MY_TYPE.(D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u))
+end
+function G_v(u, v, grid)
+    MY_TYPE.(D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v)
+end
 ```
 
 and definition of the model
@@ -97,9 +110,16 @@ Short *burnout run* to get rid of the initial artifacts
 ```julia
 trange_burn = (0.0f0, 50.0f0)
 dt, saveat = (1e-2, 1)
+```
+
+[!] According to https://docs.sciml.ai/DiffEqGPU/stable/getting_started/
+    the best thing to do in case of bottleneck consisting in expensive right hand side is to
+    use CuArray as initial condition and do not rely on EnsemblesGPU.
+
+```julia
 full_CNODE = NeuralODE(f_CNODE,
     trange_burn,
-    Tsit5(),
+    solver_algo,
     adaptive = false,
     dt = dt,
     saveat = saveat);
