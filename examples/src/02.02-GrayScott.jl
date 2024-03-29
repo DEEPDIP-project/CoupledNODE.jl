@@ -1,8 +1,4 @@
-import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array;
-
 # # Learning the Gray-Scott model: a posteriori fitting
-
 # In this example, we will learn how to approximate a closure to the Gray-Scott model with a Neural Network trained via a posteriori fitting, using a [multishooting](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/) approach.
 
 # As a reminder, the GS model is defined from 
@@ -14,7 +10,7 @@ ArrayType = CUDA.functional() ? CuArray : Array;
 
 # ## I. Solving GS to collect data
 # Definition of the grid
-include("coupling_functions/functions_NODE.jl")
+import CoupledNODE: Grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 64
 grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
@@ -41,12 +37,13 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand sides of the GS model:
-include("coupling_functions/functions_FDderivatives.jl")
+import CoupledNODE: Laplacian
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # CNODE definition
 import Lux
+import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
 rng = Random.seed!(1234);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
@@ -166,7 +163,7 @@ training_CNODE = NeuralODE(f_closed_CNODE,
     saveat = saveat_train);
 
 # Create the loss
-include("coupling_functions/functions_CNODE_loss.jl");
+import CoupledNODE: create_randloss_MulDtO
 myloss = create_randloss_MulDtO(GS_sim,
     nunroll = nunroll,
     noverlaps = noverlaps,
@@ -176,7 +173,7 @@ myloss = create_randloss_MulDtO(GS_sim,
     λ_l1 = 1e-1);
 
 # To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = Float32[];
+lhist = [];
 # Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ)
 myloss(pinit)  # trigger compilation
@@ -197,12 +194,11 @@ import LineSearches
 algo = Optim.LBFGS(linesearch = LineSearches.BackTracking(order = 3));
 
 # ### Train the CNODEs
-include("coupling_functions/functions_example.jl")
+import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
     maxiters = 50);
-
 # We may get `**Warning:** Instability detected. Aborting` for the first time steps of the training. This is due to the stiff nature of the GS model as explained earlier. The training will continue after the first few steps.
 pinit = result_neuralode.u;
 θ = pinit
