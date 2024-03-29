@@ -1,8 +1,4 @@
-import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array;
-
 # # Learning the Gray-Scott model: Effect of grid coarsening
-
 # In this example we want to show the effect of grid coarsening on the solution of a PDE.
 # We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
@@ -17,7 +13,7 @@ ArrayType = CUDA.functional() ? CuArray : Array;
 # Notice that the simple fact that we are discretizing, makes this solution technically a DNS (Direct Numerical Simulation) and not an exact solution, but since we are using a very fine grid, we will call it *exact* for simplicity.
 
 # Let's define the finest grid using 200 steps of 0.5 in each direction, reaching a 100[L] x 100[L] domain.
-include("coupling_functions/functions_NODE.jl")
+import CoupledNODE: Grid
 dux = duy = dvx = dvy = 0.5
 nux = nuy = nvx = nvy = 200
 grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
@@ -42,7 +38,7 @@ f = 0.055
 k = 0.062;
 
 # Here we (the user) define the **right hand sides** of the equations
-include("coupling_functions/functions_FDderivatives.jl");
+import CoupledNODE: Laplacian
 F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
