@@ -23,6 +23,8 @@ jobs:
         julia --project evaluate_notebooks.jl
     - name: Commit
       shell: bash -l {0}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         git config --global user.name "${GITHUB_ACTOR}"
         git config --global user.email "${GITHUB_ACTOR}@users.noreply.github.com"
