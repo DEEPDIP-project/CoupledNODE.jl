@@ -1,37 +1,18 @@
-using Lux
-using LuxCUDA
 using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-using Plots
-using Plots.PlotMeasures
-using Zygote
-using Random
-rng = Random.seed!(1234)
-using OptimizationOptimisers
-using Statistics
-using ComponentArrays
-using CUDA
-using Images
-using Interpolations
-using NNlib
-using FFTW
-using DiffEqGPU
+
 # Test if CUDA is running
+using CUDA
 CUDA.functional()
 CUDA.allowscalar(false)
 const ArrayType = CUDA.functional() ? CuArray : Array;
 const z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...)
-const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
 # and remember to use float32 if you plan to use a GPU
 const MY_TYPE = Float32
-## Import our custom backend functions
-include("coupling_functions/functions_example.jl")
-include("coupling_functions/functions_NODE.jl")
-include("coupling_functions/functions_CNODE_loss.jl")
-include("coupling_functions/functions_FDderivatives.jl");
-include("coupling_functions/functions_nn.jl")
-include("coupling_functions/functions_FNO.jl")
+
+# Select the time solver algorithm
+using DifferentialEquations: Tsit5
+using DiffEqGPU: GPUTsit5
+const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
 
 # ## Learning the Gray-Scott model
 
@@ -41,6 +22,7 @@ include("coupling_functions/functions_FNO.jl")
 # Notice that the 'fine' grid is now only 40 cells per side, in order to speed up the example
 dux = duy = dvx = dvy = 1.0f0
 nux = nuy = nvx = nvy = 40
+import CoupledNODE: Grid, Laplacian
 grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, convert_to_float32 = true);
 # Here, we define the initial condition as a random perturbation over a constant background to add variety
 function initial_condition(grid, U₀, V₀, ε_u, ε_v; nsimulations = 1)
@@ -72,10 +54,14 @@ function G_v(u, v, grid)
     MY_TYPE.(D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v)
 end
 # and definition of the model
+import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid; is_closed = false);
+import Random, LuxCUDA
+rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Short *burnout run* to get rid of the initial artifacts
+using DiffEqFlux: NeuralODE
 trange_burn = (0.0f0, 50.0f0)
 dt, saveat = (1e-2, 1)
 # [!] According to https://docs.sciml.ai/DiffEqGPU/stable/getting_started/ 
@@ -127,6 +113,7 @@ v = reshape(reference_data[(grid.Nu + 1):end, :, :],
     :);
 
 # Plot the data
+using Plots
 anim = Animation()
 fig = plot(layout = (3, 2), size = (600, 900))
 @gif for i in 1:1000:size(u, 4)
@@ -173,6 +160,7 @@ coarse_grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
 
 # ** Show what happens if you use a non-closed model on a smaller grid
 # (we are not using any NN here)
+using Images
 f_coarse_CNODE = create_f_CNODE(F_u, G_v, coarse_grid; is_closed = false)
 θ, st = Lux.setup(rng, f_coarse_CNODE);
 uv0 = burnout_data[:, :, end];
@@ -333,10 +321,13 @@ NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno);
 NN_v = create_fno_model(kmax_fno, ch_fno, σ_fno)
 # We can now close the CNODE with the Neural Network
 f_closed_CNODE = create_f_CNODE(F_u, G_v, coarse_grid, NN_u, NN_v; is_closed = true)
+
 # and make it into float32
 f_closed_CNODE = f_closed_CNODE |> f32;
 θ, st = Lux.setup(rng, f_closed_CNODE);
 
+using Zygote, ComponentArrays
+import CoupledNODE: create_randloss_MulDtO
 # ### Design the **loss function**
 # For this example, we use *multishooting a posteriori* fitting (MulDtO), where we tell `Zygote` to compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
 nunroll = 5
@@ -371,6 +362,7 @@ pinit = ComponentArray(θ);
 myloss(pinit)  # trigger compilation
 # [!] Check that the loss does not get type warnings, otherwise it will be slower
 
+using OptimizationOptimisers, Statistics
 # Select the autodifferentiation type
 adtype = Optimization.AutoZygote();
 # We transform the NeuralODE into an optimization problem
@@ -382,6 +374,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 ClipAdam = OptimiserChain(Adam(1.0f-2), ClipGrad(1));
 
 # Finally we can train the NODE
+import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
     callback = callback,
@@ -412,6 +405,7 @@ v_trained = reshape(trained_CNODE_solution[(coarse_grid.Nu + 1):end, :, :],
     coarse_grid.nvy,
     size(trained_CNODE_solution, 2),
     :);
+using Plots.PlotMeasures
 anim = Animation()
 fig = plot(layout = (2, 5), size = (750, 300))
 @gif for i in 1:40:size(u_trained, 4)
