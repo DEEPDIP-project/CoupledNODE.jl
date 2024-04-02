@@ -43,16 +43,17 @@ F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* 
 G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Once the forces have been defined, we can create the CNODE
+import CoupledNODE: create_f_CNODE
 f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false)
-# and we ask Lux for the parameters to train and their structure [none in this example]
+# and we ask Lux for the parameters to train and their structure (none in this example).
 import Random, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
 
-# Actuallly, we are not training any parameters, but using `NeuralODE` for consistency with the resto of examples. Therefore, we see that $\theta$ is empty.
+# Actually, we are not training any parameters, but using `NeuralODE` for consistency with the rest of examples. Therefore, we see that $\theta$ is empty.
 length(θ)
 
-# We now do a short *burnout run* to get rid of the initial artifacts
+# We now do a short *burnout run* to get rid of the initial artifacts.
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
 trange_burn = (0.0, 10.0)
@@ -66,7 +67,7 @@ full_CNODE = NeuralODE(f_CNODE,
 burnout_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
 
 # **CNODE run** 
-# We use the output of the burnout to start a longer simulations
+# We use the output of the burnout to start a longer simulation
 uv0 = burnout_CNODE_solution[:, :, end];
 trange = (0.0, 7000.0)
 dt, saveat = (0.5, 20)
@@ -84,7 +85,7 @@ v_exact = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
     size(untrained_CNODE_solution, 2),
     :);
 
-# Plot the solution as an animation
+# Let's look at the results, plotting the solution as an animation
 using Plots
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
@@ -201,7 +202,7 @@ v0_les = imresize(v_initial, (les_grid.nvx, les_grid.nvy));
 uv0_les = vcat(reshape(u0_les, les_grid.nux * les_grid.nuy, 1),
     reshape(v0_les, les_grid.nvx * les_grid.nvy, 1))
 
-# Compare the initial conditions
+# Compare the initial conditions of the three cases: exact solution, DNS and LES
 p1 = heatmap(u_initial,
     axis = false,
     cbar = false,
@@ -269,6 +270,7 @@ v_les = reshape(les_solution[(les_grid.Nu + 1):end, :, :],
     size(les_solution, 2),
     :);
 
+# Plot DNS vs LES vs exact solution
 anim = Animation()
 fig = plot(layout = (3, 2), size = (600, 900))
 @gif for i in 1:2:size(u_exact, 4)
