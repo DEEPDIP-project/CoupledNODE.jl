@@ -169,34 +169,34 @@ v0b = reshape(uv0[(grid_GS.Nu + 1):end, :], grid_GS.nvx, grid_GS.nvy, :);
 v0_coarse = imresize(v0b, (coarse_grid.nvx, coarse_grid.nvy));
 uv0_coarse = vcat(reshape(u0b, coarse_grid.Nu, :), reshape(v0_coarse, coarse_grid.Nv, :));
 # ### Define model without closure: LES
-closed_CNODE = NeuralODE(f_coarse_CNODE,
+les_CNODE = NeuralODE(f_coarse_CNODE,
     trange,
     Tsit5(),
     adaptive = false,
     dt = dt,
     saveat = saveat);
-closed_CNODE_solution = Array(closed_CNODE(uv0_coarse, θ, st)[1]);
-u_closed = reshape(closed_CNODE_solution[1:(coarse_grid.Nu), :, :],
+les_solution = Array(les_CNODE(uv0_coarse, θ, st)[1]);
+u_les = reshape(les_solution[1:(coarse_grid.Nu), :, :],
     coarse_grid.nux,
     coarse_grid.nuy,
-    size(closed_CNODE_solution, 2),
+    size(les_solution, 2),
     :);
-v_closed = reshape(closed_CNODE_solution[(coarse_grid.Nu + 1):end, :, :],
+v_les = reshape(les_solution[(coarse_grid.Nu + 1):end, :, :],
     coarse_grid.nvx,
     coarse_grid.nvy,
-    size(closed_CNODE_solution, 2),
+    size(les_solution, 2),
     :);
 # ### Plot the results of LES (no closure)
 anim = Animation()
 fig = plot(layout = (3, 5), size = (500, 300))
-@gif for i in 1:1000:size(u_closed, 4)
-    p1 = heatmap(u_closed[:, :, 1, i],
+@gif for i in 1:1000:size(u_les, 4)
+    p1 = heatmap(u_les[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds,
         title = "u(x,y) [C]")
-    p2 = heatmap(v_closed[:, :, 1, i],
+    p2 = heatmap(v_les[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
@@ -214,19 +214,19 @@ fig = plot(layout = (3, 5), size = (500, 300))
         aspect_ratio = 1,
         color = :blues,
         title = "v(x,y) [F]")
-    e = u_closed[:, :, 1, i] .- u[:, :, 1, i]
+    e = u_les[:, :, 1, i] .- u[:, :, 1, i]
     p5 = heatmap(e,
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :greens,
         title = "u-Diff")
-    p6 = heatmap(u_closed[:, :, 2, i],
+    p6 = heatmap(u_les[:, :, 2, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds)
-    p7 = heatmap(v_closed[:, :, 2, i],
+    p7 = heatmap(v_les[:, :, 2, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
@@ -237,19 +237,19 @@ fig = plot(layout = (3, 5), size = (500, 300))
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    e = u_closed[:, :, 2, i] .- u[:, :, 2, i]
+    e = u_les[:, :, 2, i] .- u[:, :, 2, i]
     p10 = heatmap(e,
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :greens,
         title = "u-Diff")
-    p11 = heatmap(u_closed[:, :, 3, i],
+    p11 = heatmap(u_les[:, :, 3, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds)
-    p12 = heatmap(v_closed[:, :, 3, i],
+    p12 = heatmap(v_les[:, :, 3, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
@@ -264,7 +264,7 @@ fig = plot(layout = (3, 5), size = (500, 300))
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    e = u_closed[:, :, 3, i] .- u[:, :, 3, i]
+    e = u_les[:, :, 3, i] .- u[:, :, 3, i]
     p15 = heatmap(e,
         axis = false,
         cbar = false,
@@ -315,7 +315,7 @@ v_target = imresize(v, (coarse_grid.nvx, coarse_grid.nvy));
 # Pack $u$ and $v$ together in a `target` array where $u$ and $v$ are linearized in the first dimension.
 target = vcat(reshape(u_target, grid_GS.Nu, size(u_target, 3), :),
     reshape(v_target, coarse_grid.Nv, size(v_target, 3), :));
-#target = target |> Float32; #@Luisa: do not think is necessary target is already of type Float32
+
 # ### Closure Model
 # Let's create the CNODE with the Neural Network closure. In this case we are going to use two different neural netwroks for the two components $u$ and $v$.
 import CoupledNODE: create_fno_model
