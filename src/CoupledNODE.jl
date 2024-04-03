@@ -6,6 +6,7 @@ ArrayType = CUDA.functional() ? CuArray : Array
 include("loss.jl")
 include("grid.jl")
 include("NODE.jl")
+include("FNO.jl")
 include("derivatives.jl")
 include("utils.jl")
 
