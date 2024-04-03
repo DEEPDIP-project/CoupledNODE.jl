@@ -132,8 +132,7 @@ function create_randloss_derivative(GS_data,
 end
 
 # auxiliary function to solve the NeuralODE, given parameters p
-function predict_u_CNODE(uv0, θ, tg)
-    #TODO: pass training_CNODE as parameter too.
+function predict_u_CNODE(uv0, θ, st, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
     #tg_size = size(tg)
     #println("sol size ", size(sol))
@@ -171,6 +170,7 @@ Creates a random loss function for the multishooting method with multiple shooti
 
 # Arguments
 - `target`: The target data for the loss function.
+- `training_CNODE`: Model CNODE.
 - `nunroll`: The number of time steps to unroll.
 - `noverlaps`: The number of time steps that overlaps between each consecutive intervals.
 - `nintervals`: The number of shooting intervals.
@@ -182,7 +182,8 @@ Creates a random loss function for the multishooting method with multiple shooti
 - `randloss_MulDtO`: A random loss function for the multishooting method.
 """
 function create_randloss_MulDtO(
-        target; nunroll, nintervals = 1, noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
+        target, training_CNODE, st; nunroll, nintervals = 1,
+        noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
     # TODO: there should be some check about the consistency of the input arguments
     # Get the number of time steps 
     d = ndims(target)
@@ -201,6 +202,8 @@ function create_randloss_MulDtO(
         # then return the loss for each multishooting set
         loss_MulDtO_oneset(trajectory,
             θ,
+            st,
+            training_CNODE,
             nunroll = nunroll,
             nintervals = nintervals,
             noverlaps = noverlaps,
@@ -219,6 +222,7 @@ Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more 
 # Arguments
 - `trajectory`: The trajectory of the system.
 - `θ`: The parameters of the CNODE model.
+- `training_CNODE`: Model CNODE.
 - `λ_c`: The weight for the continuity term. It sets how strongly we make the pieces match (continuity term). Default is `1e1`.
 - `λ_l1`: The weight for the L1 regularization term. Default is `1e1`.
 - `nunroll`: The number of time steps to unroll the trajectory.
@@ -231,7 +235,8 @@ Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more 
 - `nothing`: Placeholder return value.
 """
 function loss_MulDtO_oneset(trajectory,
-        θ;
+        θ, st,
+        training_CNODE;
         λ_c = 1e1,
         λ_l1 = 1e1,
         nunroll,
@@ -249,7 +254,7 @@ function loss_MulDtO_oneset(trajectory,
     list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
         dims = 2)
     # Use the differentiable solver to get the predictions
-    pred, list_tr = predict_u_CNODE(list_starts, θ, list_tr)
+    pred, list_tr = predict_u_CNODE(list_starts, θ, st, training_CNODE, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
     loss = sum(abs2, list_tr .- pred) ./ sum(abs2, list_tr)
 

@@ -165,6 +165,8 @@ training_CNODE = NeuralODE(f_closed_CNODE,
 # Create the loss
 import CoupledNODE: create_randloss_MulDtO
 myloss = create_randloss_MulDtO(GS_sim,
+    training_CNODE,
+    st,
     nunroll = nunroll,
     noverlaps = noverlaps,
     nintervals = nintervals,

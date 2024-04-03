@@ -1,4 +1,4 @@
-# # Learning the Gray-Scott model: Effect of grid coarsening
+# # Gray-Scott model: Effect of grid coarsening
 # In this example we want to show the effect of grid coarsening on the solution of a PDE.
 # We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
