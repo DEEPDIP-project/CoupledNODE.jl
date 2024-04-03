@@ -8,7 +8,7 @@
 ## Installation
 
 ```julia
-]
+] # open Package manager
 activate .
 instantiate
 ```
@@ -68,7 +68,6 @@ Two main explanations:
 * We are working with coupled systems (like Gray-Scott).
 * Multi-scale approach to PDEs.
 
-
 ### Multiscale approach to chaotic PDEs
 In a more realistic situation, the incognita is usually a vector field, so we will try to solve for $u(x,t): \Omega \times \mathbb{R} \rightarrow \mathbb{R}^m$, where the spacial coordinate is $x\in \Omega \subseteq \mathbb{R}^D$ and the field $u$ is $m$-dimensional.
 
@@ -88,7 +87,7 @@ $$
 \end{cases}
 $$
 
-Then the crucial question that we need to address is 
+Then the crucial question that we need to address is
 
 $$
 \tag{2.2.2}\bar{u}(t)\stackrel{?}{=} \Phi u(t),
@@ -108,7 +107,7 @@ However this DE depends on $u$, so the system is not closed and can not be effic
 
 One of the main goal of this repository will be to use CNODEs like eq.(2.1.0) in order to correct the LES simulation and get a solution as good as the DNS.
 
-4. [Example 02.04](examples/src/02.04-GrayScott.jl): Trainable LES.
+4. [Example 02.04](examples/src/02.04-GrayScott.jl): Train a closure model that, together with LES, can approximate DNS.
 
 **... TO BE CONTINUED ...**
 
