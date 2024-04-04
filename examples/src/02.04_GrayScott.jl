@@ -1,5 +1,4 @@
 const ArrayType = Array
-const z = (s...) -> zeros(Float32, s...)
 import DifferentialEquations: Tsit5
 const solver_algo = Tsit5()
 const MY_TYPE = Float32 # use float32 if you plan to use a GPU
@@ -7,7 +6,6 @@ import CUDA # Test if CUDA is running
 if CUDA.functional()
     CUDA.allowscalar(false)
     const ArrayType = CuArray
-    const z = CUDA.zeros
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
@@ -44,11 +42,14 @@ f = 0.055f0
 k = 0.062f0;
 
 # Definiton of the right-hand-sides (RHS) of GS model
+import Zygote
 function F_u(u, v, grid)
-    MY_TYPE.(D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u))
+    Zygote.@ignore MY_TYPE.(D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+
+                            f .* (1.0f0 .- u))
 end
 function G_v(u, v, grid)
-    MY_TYPE.(D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v)
+    Zygote.@ignore MY_TYPE.(D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .-
+                            (f + k) .* v)
 end
 # Definition of the model
 import CoupledNODE: create_f_CNODE
@@ -77,7 +78,7 @@ trange_burn = (0.0f0, 100.0f0)
 dt, saveat = (1, 50)
 full_CNODE = NeuralODE(f_CNODE,
     trange_burn,
-    Tsit5(),
+    solver_algo,
     adaptive = false,
     dt = dt,
     saveat = saveat);
@@ -96,7 +97,8 @@ uv0 = burnout_data[:, :, end];
 trange = (0.0f0, 2500.0f0)
 # for this data production run, we set `dt=1` and we sample every step.
 dt, saveat = (0.1, 0.1)
-full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
+full_CNODE = NeuralODE(
+    f_CNODE, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 reference_data = Array(full_CNODE(uv0, θ, st)[1]);
 # And we unpack the solution to get the two species from
 u = reshape(reference_data[1:(grid_GS.Nu), :, :],
@@ -111,7 +113,7 @@ v = reshape(reference_data[(grid_GS.Nu + 1):end, :, :],
     :);
 
 # ### Plot the data of the exact solution in the *fine* grid (DNS)
-using Plots
+using Plots, Plots.PlotMeasures
 anim = Animation()
 fig = plot(layout = (3, 2), size = (600, 900))
 @gif for i in 1:1000:size(u, 4)
@@ -140,7 +142,8 @@ fig = plot(layout = (3, 2), size = (600, 900))
         aspect_ratio = 1,
         color = :blues)
     time = round(i * saveat, digits = 0)
-    fig = plot(p1, p2, p3, p4, p5, p6, layout = (3, 2), plot_title = "time = $(time)")
+    fig = plot(p1, p2, p3, p4, p5, p6, layout = (3, 2),
+        plot_title = "time = $(time)", margin = 0mm)
     frame(anim, fig)
 end
 if isdir("./plots")
@@ -171,7 +174,7 @@ uv0_coarse = vcat(reshape(u0b, coarse_grid.Nu, :), reshape(v0_coarse, coarse_gri
 # ### Define model without closure: LES
 les_CNODE = NeuralODE(f_coarse_CNODE,
     trange,
-    Tsit5(),
+    solver_algo,
     adaptive = false,
     dt = dt,
     saveat = saveat);
@@ -288,7 +291,8 @@ fig = plot(layout = (3, 5), size = (500, 300))
         p14,
         p15,
         layout = (3, 5),
-        plot_title = "time = $(time)")
+        plot_title = "time = $(time)",
+        margin = 0mm)
     frame(anim, fig)
 end
 if isdir("./plots")
@@ -338,10 +342,10 @@ nsamples = 2
 dt_train = 0.05
 # but we have to sample at the same rate as the data
 saveat_train = saveat
-t_train_range = (0.0f0, saveat_train * (nunroll + 0)) # it has to be as long as unroll
+t_train_range = (0.0f0, saveat_train * nunroll) # it has to be as long as nunroll
 training_CNODE = NeuralODE(f_closed_CNODE,
     t_train_range,
-    Tsit5(),
+    solver_algo,
     adaptive = false,
     dt = dt_train,
     saveat = saveat_train);
@@ -394,7 +398,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 trange = (0.0f0, 300.0f0)
 trained_CNODE = NeuralODE(f_closed_CNODE,
     trange,
-    Tsit5(),
+    solver_algo,
     adaptive = false,
     dt = dt,
     saveat = saveat);
@@ -409,7 +413,7 @@ v_trained = reshape(trained_CNODE_solution[(coarse_grid.Nu + 1):end, :, :],
     coarse_grid.nvy,
     size(trained_CNODE_solution, 2),
     :);
-using Plots.PlotMeasures
+
 anim = Animation()
 fig = plot(layout = (2, 5), size = (750, 300))
 @gif for i in 1:40:size(u_trained, 4)
