@@ -1,7 +1,7 @@
 # # Learning the Gray-Scott model: a posteriori fitting
 # In this example, we will learn how to approximate a closure to the Gray-Scott model with a Neural Network trained via a posteriori fitting, using a [multishooting](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/) approach.
 
-# As a reminder, the GS model is defined from 
+# As a reminder, the GS model is defined from
 # \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
