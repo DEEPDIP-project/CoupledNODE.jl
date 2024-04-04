@@ -2,6 +2,7 @@
     struct Grid
 
 This object contains the grid information.
+TODO: This may need to allow for multiple dimensions.
 
 Fields:
 - `dux::Float64`: The grid spacing in the x-direction for u.
@@ -14,6 +15,7 @@ Fields:
 - `nvy::Int`: The number of grid points in the y-direction for v.
 - `Nu::Int`: The total number of elements for u.
 - `Nv::Int`: The total number of elements for v.
+- `Nd::Int`: The total number of dimensions.
 
 Constructor:
 - `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
@@ -29,6 +31,7 @@ struct Grid
     nvy::Int
     Nu::Int
     Nv::Int
+    Nd::Int
 
     function Grid(dux::Union{Float32, Float64},
             duy::Union{Float32, Float64},
@@ -41,6 +44,7 @@ struct Grid
             convert_to_float32::Bool = false)
         Nu = nux * nuy
         Nv = nvx * nvy
+        Nd = 2 # TODO: This struct be generalized to handle multiple dimensions
         if convert_to_float32
             new(Float32(dux), Float32(duy), nux, nuy,
                 Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv)

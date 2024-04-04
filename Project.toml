@@ -4,6 +4,7 @@ authors = ["Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com> , Luis
 version = "1.0.0-DEV"
 
 [deps]
+AbstractFFTs = "621f4979-c628-5d54-868e-fcf4e3e8185c"
 BlockDiagonals = "0a1fb500-61f7-11e9-3c65-f5ef3456f9f0"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"

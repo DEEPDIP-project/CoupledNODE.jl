@@ -58,10 +58,10 @@ function second_derivatives(u, Δx, Δy)
     return d2u_dx2, d2u_dy2
 end
 
-function Laplacian_old(u, Δx, Δy)
-    d2u_dx2, d2u_dy2 = second_derivatives(u, Δx, Δy)
-    return d2u_dx2 + d2u_dy2
-end
+#function Laplacian_old(u, Δx, Δy)
+#    d2u_dx2, d2u_dy2 = second_derivatives(u, Δx, Δy)
+#    return d2u_dx2 + d2u_dy2
+#end
 
 function circular_pad(u)
     add_dim_1(x) = reshape(x, 1, size(x)...)
