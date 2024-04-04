@@ -54,7 +54,7 @@ function add_dim_1(x)
     return reshape(x, 1, size(x)...)
 end
 function add_dim_2(x)
-    return reshape(x, size(x,1), 1, size(x,2))
+    return reshape(x, size(x, 1), 1, size(x, 2))
 end
 
 #function second_derivatives(u, Δx, Δy)
@@ -90,22 +90,20 @@ end
 #
 #end
 
-
 function circular_pad(u)
-    u_padded = vcat(add_dim_1(u[end, :, :]), u, add_dim_1(u[1, :, :])) 
-    u_padded = hcat(add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :])) 
+    u_padded = vcat(add_dim_1(u[end, :, :]), u, add_dim_1(u[1, :, :]))
+    u_padded = hcat(add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
     return u_padded
 end
 
-
 function Laplacian(u, Δx2, Δy2)
-    
     up = circular_pad(u)
     d2u = similar(up)
 
-    d2u[2:(end - 1), :, :] = ( up[3:end, :, :] - 2 * up[2:(end - 1), :, :] + up[1:(end - 2), :, :] )
-    d2u[:, 2:(end - 1), :] += ( up[:, 3:end, :] - 2 * up[:, 2:(end - 1), :] + up[:, 1:(end - 2), :] )
+    d2u[2:(end - 1), :, :] = (up[3:end, :, :] - 2 * up[2:(end - 1), :, :] +
+                              up[1:(end - 2), :, :])
+    d2u[:, 2:(end - 1), :] += (up[:, 3:end, :] - 2 * up[:, 2:(end - 1), :] +
+                               up[:, 1:(end - 2), :])
 
-    return d2u[2:end-1, 2:end-1, :]/(Δx2 + Δy2) 
+    return d2u[2:(end - 1), 2:(end - 1), :] / (Δx2 + Δy2)
 end
-

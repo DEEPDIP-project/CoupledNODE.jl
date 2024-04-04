@@ -13,3 +13,13 @@ Now every time you commit your changes, pre-commit will run a formatting check a
 If it made any changes, you'll have to manually stage them and commit again.
 
 If for some reason you want to skip pre-commit checks, you can use the `--no-verify` flag when committing (perhaps to correct formatting in a separate commit for clarity).
+
+## Manually format
+At the root of the project:
+```julia
+]
+activate . # make sure you are in the CoupleNODE environement
+# exit Pkg: hit backspace
+using JuliaFormatter
+format_file("path/to/file_to_format.jl")
+```
