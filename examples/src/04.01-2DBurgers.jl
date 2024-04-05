@@ -1,4 +1,3 @@
-```julia
 const ArrayType = Array
 import DifferentialEquations: Tsit5
 const solver_algo = Tsit5()
@@ -10,33 +9,23 @@ if CUDA.functional()
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
-```
 
-# Burgers equations
-In this example, we will solve the Burgers equation in using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
-\begin{equation}
-\frac{\partial u}{\partial t} = - u \frac{\partial u}{\partial x} + \nu \frac{\partial u^2}{\partial x^2}
-\end{equation}
-where $u(x,t)$ is the velocity of the fluid, $\nu$ is the viscosity coefficient, and x$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in one spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
+# # 2D Burgers equations
+# In this example, we will solve the Burgers equation in 2D using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
+# \begin{equation}
+# \frac{\partial u}{\partial t} = - u \frac{\partial u}{\partial x} - v \frac{\partial u}{\partial y} + \nu \Delta u
+# \frac{\partial v}{\partial t} = - u \frac{\partial v}{\partial x} - v \frac{\partial v}{\partial y} + \nu \Delta v
+# \end{equation}
+# where $\bm{u} = \left\{u(x,y,t), v(x,y,t)\right\}$ is the velocity field, $\nu$ is the viscosity coefficient, and $(x,y)$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in two spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
 
-We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives.
-So the first step is to define the grid that we are going to use
-
-```julia
+# We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
+# So the first step is to define the grid that we are going to use
 import CoupledNODE: Grid
-```
-
-MAKE THE GRID 1D!
-
-```julia
 dux = duy = dvx = dvy = 2π / 100
 nux = nuy = nvx = nvy = 100
 grid_B = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, convert_to_float32 = true);
-```
 
-The following function constructs the right-hand side of the Burgers equation:
-
-```julia
+# The following function constructs the right-hand side of the Burgers equation:
 import CoupledNODE: Laplacian, first_derivatives
 using Zygote
 function create_burgers_rhs(grid, force_params)
@@ -53,45 +42,27 @@ function create_burgers_rhs(grid, force_params)
     end
     return FG
 end
-```
+# Notice that compared to the Gray-Scott example we are returning a single function that computes both components of the force at the same time. This is because the Burgers equation is a system of two coupled PDEs so we want to avoid recomputing the derivatives a second time.
 
-Notice that compared to the Gray-Scott example we are returning a single function that computes both components of the force at the same time. This is because the Burgers equation is a system of two coupled PDEs so we want to avoid recomputing the derivatives a second time.
-
-Let's set the parameters for the Burgers equation
-
-```julia
+# Let's set the parameters for the Burgers equation
 ν = 0.005f0
-```
-
-and we pack them into a tuple for the rhs Constructor
-
-```julia
+# and we pack them into a tuple for the rhs Constructor
 force_params = (ν,)
-```
 
-Now we can create the right-hand side of the NODE
-
-```julia
+# Now we can create the right-hand side of the NODE
 FG = create_burgers_rhs(grid_B, force_params)
 include("./../coupling_functions/functions_NODE.jl")
 f_CNODE = create_f_CNODE(create_burgers_rhs, force_params, grid_B; is_closed = false);
 import Random, LuxCUDA, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
-```
 
-Now we create the initial condition for the Burgers equation.
-We start defining a gaussian pulse centered in the grid.:
-
-```julia
+# Now we create the initial condition for the Burgers equation. 
+# We start defining a gaussian pulse centered in the grid.:
 function initialize_uv_gaussian(grid, u_bkg, v_bkg, sigma)
     u_initial = zeros(MY_TYPE, grid.nux, grid.nuy)
     v_initial = zeros(MY_TYPE, grid.nvx, grid.nvy)
-```
-
-Create a Gaussian pulse centered in the grid
-
-```julia
+    # Create a Gaussian pulse centered in the grid
     for i in 1:(grid.nvx)
         for j in 1:(grid.nvy)
             x = i - grid.nvx / 2
@@ -105,18 +76,11 @@ Create a Gaussian pulse centered in the grid
 end
 
 u_initial, v_initial = initialize_uv_gaussian(grid_B, 2.0f0, 2.0f0, 20);
-```
-
-We can now define the initial condition as a flattened concatenated array
-
-```julia
+# We can now define the initial condition as a flattened concatenated array
 uv0 = vcat(reshape(u_initial, grid_B.nux * grid_B.nuy, 1),
     reshape(v_initial, grid_B.nvx * grid_B.nvy, 1))
-```
 
-The first phase of the Burger solution will be the formation of the shock. We use a small time step to resolve the shock formation.
-
-```julia
+# The first phase of the Burger solution will be the formation of the shock. We use a small time step to resolve the shock formation.
 import DiffEqFlux: NeuralODE
 t_shock = 2.5f0
 dt_shock = 0.005f0
@@ -130,11 +94,8 @@ shock_CNODE = NeuralODE(f_CNODE,
     saveat = saveat_shock);
 shock_CNODE_solution = Array(shock_CNODE(uv0, θ, st)[1])
 uv_shock = shock_CNODE_solution[:, :, 1, end];
-```
 
-And we unpack the solution to get the two species from
-
-```julia
+# And we unpack the solution to get the two species from
 u_shock = reshape(shock_CNODE_solution[1:(grid_B.Nu), :, :],
     grid_B.nux,
     grid_B.nuy,
@@ -145,11 +106,8 @@ v_shock = reshape(shock_CNODE_solution[(grid_B.Nu + 1):end, :, :],
     grid_B.nvy,
     size(shock_CNODE_solution, 2),
     :);
-```
 
-Plot
-
-```julia
+# Plot 
 x = range(0, 2π, length = grid_B.nux)
 y = range(0, 2π, length = grid_B.nuy)
 using Plots #, Plotly
@@ -165,11 +123,8 @@ fig = plot(layout = (1, 2), size = (400, 800))
     fig = plot(p1, p2, layout = (1, 2), title = title)
     frame(anim, fig)
 end
-```
 
-Then there is a phase of shock dissipation
-
-```julia
+# Then there is a phase of shock dissipation
 t_diss = 35.0f0
 dt_diss = 0.01f0
 trange_burn = (0.0f0, t_diss)
@@ -204,11 +159,8 @@ fig = plot(layout = (1, 2), size = (400, 800))
     fig = plot(p1, p2, layout = (1, 2), title = title)
     frame(anim, fig)
 end
-```
 
-And then the Burgers equation reaches a steady state
-
-```julia
+# And then the Burgers equation reaches a steady state
 t_steady = 150.0f0
 dt_steady = 0.1f0
 trange_burn = (0.0f0, 100.0f0)
@@ -243,11 +195,8 @@ fig = plot(layout = (1, 2), size = (400, 800))
     fig = plot(p1, p2, layout = (1, 2), title = title)
     frame(anim, fig)
 end
-```
 
-Now plot the whole trajectory
-
-```julia
+# Now plot the whole trajectory
 u_total = cat(u_shock, u_diss, u_steady, dims = 4)
 v_total = cat(v_shock, v_diss, v_steady, dims = 4)
 t_total = vcat(0:saveat_shock:t_shock, t_shock:saveat_diss:(t_shock + t_diss),
@@ -272,9 +221,3 @@ if isdir("./plots")
 else
     gif(anim, "examples/plots/03.01_Burgers.gif", fps = 8)
 end
-```
-
----
-
-*This page was generated using [Literate.jl](https://github.com/fredrikekre/Literate.jl).*
-
