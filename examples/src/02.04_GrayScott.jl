@@ -3,7 +3,9 @@ import DifferentialEquations: Tsit5
 import DiffEqGPU: GPUTsit5
 const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
 const MY_TYPE = Float32 # use float32 if you plan to use a GPU
-CUDA.allowscalar(false)
+if CUDA.functional()
+    CUDA.allowscalar(false)
+end
 
 # # Learning a closure for the Gray-Scott model when using a coarser grid for $v$
 # In this example, we want to learn a closure to the Gray-Scott model using a Neural Network. Here we use a **coarser grid only on $v$**, while we keep the **fine grid for $u$**.
