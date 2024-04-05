@@ -33,7 +33,8 @@ Create a neural network model for the Coupled Neural ODE (CNODE) approach.
 # Returns
 - The created CNODE model.
 """
-function create_f_CNODE(create_functions, D_u, D_v, f, k, grid, NN_u = nothing, NN_v = nothing; is_closed = false, gpu_mode = false)
+function create_f_CNODE(create_functions, D_u, D_v, f, k, grid, NN_u = nothing,
+        NN_v = nothing; is_closed = false, gpu_mode = false)
     # Since I will be upscaling v, I need to define a new grid to pass to the force
     grid_for_force = Grid(grid.dux,
         grid.duy,
