@@ -44,12 +44,12 @@ struct Grid
             convert_to_float32::Bool = false)
         Nu = nux * nuy
         Nv = nvx * nvy
-        Nd = 2 # TODO: This struct be generalized to handle multiple dimensions
+        Nd = 2 #TODO: This struct be generalized to handle multiple dimensions
         if convert_to_float32
             new(Float32(dux), Float32(duy), nux, nuy,
-                Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv)
+                Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv, Nd)
         else
-            new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv)
+            new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv, Nd)
         end
     end
 end
