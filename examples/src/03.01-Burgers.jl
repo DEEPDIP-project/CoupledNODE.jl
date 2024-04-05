@@ -31,11 +31,13 @@ using Zygote
 function create_burgers_rhs(grid, force_params)
     ν = force_params[1]
 
-    function FG(u, v, grid)
-        du_dx, du_dy = first_derivatives(u, grid.dx, grid.dy)
-        dv_dx, dv_dy = first_derivatives(v, grid.dx, grid.dy)
-        F = Zygote.@ignore -u .* du_dx - v .* du_dy .+ ν * Laplacian(u)
-        G = Zygote.@ignore -u .* dv_dx - v .* dv_dy .+ ν * Laplacian(v)
+    function FG(u, v)
+        du_dx, du_dy = first_derivatives(u, grid.dux, grid.duy)
+        dv_dx, dv_dy = first_derivatives(v, grid.dvx, grid.dvy)
+        F = Zygote.@ignore -u .* du_dx - v .* du_dy .+
+                           ν * Laplacian(u, grid.dux^2, grid.duy^2)
+        G = Zygote.@ignore -u .* dv_dx - v .* dv_dy .+
+                           ν * Laplacian(v, grid.dvx^2, grid.dvy^2)
         return F, G
     end
     return FG
@@ -43,7 +45,7 @@ end
 # Notice that compared to the Gray-Scott example we are returning a single function that computes both components of the force at the same time. This is because the Burgers equation is a system of two coupled PDEs so we want to avoid recomputing the derivatives a second time.
 
 # Let's set the parameters for the Burgers equation
-ν = 0.0005f0
+ν = 0.005f0
 # and we pack them into a tuple for the rhs Constructor
 force_params = (ν,)
 
@@ -55,187 +57,167 @@ import Random, LuxCUDA, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
 
-# Now we create the initial condition for the Burgers equation. For this we will need some auxiliary functions (those function have been developed by Toby to handle 2 and 3 dimensions [TODO: test])
-function construct_k(grid)
-    # Get the number of dimensions
-    dims = grid.Nd
-    # Calculate the Fourier frequencies for each dimension
-    k = [fftfreq(i, i) for i in (grid.Nu, grid.Nv)]
-    # Create an array of ones with the same dimensions as the input
-    some_ones = ones(grid.Nu, grid.Nv)
-    # Initialize k_mats with the Fourier frequencies for the first dimension
-    k_mats = some_ones .* k[1]
-    k_mats = reshape(k_mats, (size(k_mats)..., 1))
-    # Loop over the remaining dimensions
-    for i in 2:dims
-        # Create a permutation of the dimensions where the current dimension is first
-        original_dims = collect(1:dims)
-        permuted_dims = copy(original_dims)
-        permuted_dims[1], permuted_dims[i] = permuted_dims[i], permuted_dims[1]
-        # Calculate the Fourier frequencies for the current dimension
-        k_mat = permutedims(k[i] .* permutedims(some_ones, permuted_dims), permuted_dims)
-        # Concatenate the Fourier frequencies for the current dimension to k_mats
-        k_mats = cat(k_mats, k_mat, dims = dims + 1)
-    end
-    # Return the multi-dimensional array of Fourier frequencies
-    return k_mats
-end
-
-function gen_permutations(N)
-    # Get the number of dimensions
-    dims = length(N)
-    # Create a grid for each dimension
-    N_grid = [collect(1:n) for n in N]
-    # Initialize an array of ones with the same dimensions as N
-    sub_grid = ones(Int, N...)
-    # Preallocate sub_grids with the final size
-    sub_grids = Array{Int, dims + 1}(undef, (N..., dims))
-    # Loop over the dimensions
-    for i in 1:dims
-        # Create a permutation of the dimensions where the current dimension is first
-        permuted_dims = circshift(collect(1:dims), i - 1)
-        # Calculate the permuted grid for the current dimension
-        permuted_grid = permutedims(
-            N_grid[i] .* permutedims(sub_grid, permuted_dims), permuted_dims)
-        # Assign the permuted grid to the corresponding slice of sub_grids
-        sub_grids[:, :, i] = permuted_grid
-    end
-    # Return the reshaped sub_grids
-    return reshape(sub_grids, (prod(N)..., dims))
-end
-
-function construct_spectral_filter(k_mats, max_k)
-    # Get the dimensions of k_mats without the last dimension
-    N = size(k_mats)[1:(end - 1)]
-    # Initialize the filter as an array of ones with the same dimensions as N
-    filter = ones(N)
-    # Calculate the square of the maximum frequency
-    max_k_squared = max_k^2
-    # Loop over all permutations of the dimensions
-    for i in CartesianIndices(N)
-        # Calculate the square of the Euclidean norm of the Fourier frequencies for the current permutation
-        k_squared = sum(k_mats[i] .^ 2)
-        # If the square of the Euclidean norm is greater than or equal to the square of the maximum frequency, set the corresponding element of the filter to 0
-        if k_squared >= max_k_squared
-            filter[i] = 0
+# Now we create the initial condition for the Burgers equation. 
+# We start defining a gaussian pulse centered in the grid.:
+function initialize_uv_gaussian(grid, u_bkg, v_bkg, sigma)
+    u_initial = zeros(MY_TYPE, grid.nux, grid.nuy)
+    v_initial = zeros(MY_TYPE, grid.nvx, grid.nvy)
+    # Create a Gaussian pulse centered in the grid
+    for i in 1:(grid.nvx)
+        for j in 1:(grid.nvy)
+            x = i - grid.nvx / 2
+            y = j - grid.nvy / 2
+            v_initial[i, j] = v_bkg * exp(-(x^2 + y^2) / (2 * sigma^2))
+            u_initial[i, j] = u_bkg * exp(-(x^2 + y^2) / (2 * sigma^2))
         end
     end
-    # Return the filter
-    return filter
+
+    return u_initial, v_initial
 end
 
-function generate_random_field(grid, max_k; norm = 1, samples = (1, 1))
-    # Get the number of dimensions
-    dims = grid.N
-    # Construct the Fourier frequencies and the spectral filter
-    k = construct_k(grid)
-    filter = construct_spectral_filter(k, max_k)
-    # Generate random coefficients in Fourier space
-    coefs = (rand(Uniform(-1, 1), (dims..., samples...)) +
-             rand(Uniform(-1, 1), (dims..., samples...)) * (0 + 1im))
-    # Apply the spectral filter and transform back to real space
-    result = real(ifft(filter .* coefs, dims))
-    # Normalize the result
-    energy = sum(result .^ 2) / prod(dims)
-    result = result / sqrt(energy) * norm
-    return result
-end
+u_initial, v_initial = initialize_uv_gaussian(grid_B, 2.0f0, 2.0f0, 20);
+# We can now define the initial condition as a flattened concatenated array
+uv0 = vcat(reshape(u_initial, grid_B.nux * grid_B.nuy, 1),
+    reshape(v_initial, grid_B.nvx * grid_B.nvy, 1))
 
-# then we can generate the initial conditions
-max_k = 10
-energy_norm = 1
-number_of_simulations = 5
-uv0 = generate_random_field(grid_B,
-    max_k,
-    norm = energy_norm,
-    samples = (1, number_of_simulations)
-)
-
-# Short *burnout run* to get rid of the initial artifacts
-trange_burn = (0.0f0, 10.0f0)
-dt, saveat = (1e-2, 5)
-burnout_CNODE = NeuralODE(f_CNODE,
+# The first phase of the Burger solution will be the formation of the shock. We use a small time step to resolve the shock formation.
+import DiffEqFlux: NeuralODE
+t_shock = 2.5f0
+dt_shock = 0.005f0
+trange_burn = (0.0f0, t_shock)
+saveat_shock = 0.01f0
+shock_CNODE = NeuralODE(f_CNODE,
     trange_burn,
     solver_algo,
     adaptive = false,
-    dt = dt,
-    saveat = saveat);
-burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ, st)[1]);
+    dt = dt_shock,
+    saveat = saveat_shock);
+shock_CNODE_solution = Array(shock_CNODE(uv0, θ, st)[1])
+uv_shock = shock_CNODE_solution[:, :, 1, end];
 
-# We want to solve the convection diffusion equation
+# And we unpack the solution to get the two species from
+u_shock = reshape(shock_CNODE_solution[1:(grid_B.Nu), :, :],
+    grid_B.nux,
+    grid_B.nuy,
+    size(shock_CNODE_solution, 2),
+    :)
+v_shock = reshape(shock_CNODE_solution[(grid_B.Nu + 1):end, :, :],
+    grid_B.nvx,
+    grid_B.nvy,
+    size(shock_CNODE_solution, 2),
+    :);
 
-# this is the equation we want to solve
+# Plot 
+x = range(0, 2π, length = grid_B.nux)
+y = range(0, 2π, length = grid_B.nuy)
+using Plots #, Plotly
+anim = Animation()
+fig = plot(layout = (1, 2), size = (400, 800))
+@gif for i in 1:2:size(u_shock, 4)
+    p1 = surface(x, y, u_shock[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "u", title = "u field", camera = (45, 45))
+    p2 = surface(x, y, v_shock[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "v", title = "v field", camera = (45, 45))
 
-# write it as a system of first order ODEs
-
-# create the grid
-x = collect(LinRange(-pi, pi, 101))
-y = collect(LinRange(-pi, pi, 101))
-# so we get this dx and dy (constant grid)
-dx = x[2] - x[1]
-dy = y[2] - y[1]
-# and the initial condition is random 
-c0 = rand(101, 101)
-# which is a scalar field because we are looking for the concentration of a single species
-
-# the user specifies this equation
-function gen_conv_diff_f(speed, viscosity, dx, dy)
-    # Derivatives using finite differences
-    function first_derivative(u, Δx, Δy)
-        du_dx = zeros(size(u))
-        du_dy = zeros(size(u))
-
-        du_dx[:, 2:(end - 1)] = (u[:, 3:end] - u[:, 1:(end - 2)]) / (2 * Δx)
-        du_dx[:, 1] = (u[:, 2] - u[:, end]) / (2 * Δx)
-        du_dx[:, end] = (u[:, 1] - u[:, end - 1]) / (2 * Δx)
-
-        du_dy[2:(end - 1), :] = (u[3:end, :] - u[1:(end - 2), :]) / (2 * Δy)
-        du_dy[1, :] = (u[2, :] - u[end, :]) / (2 * Δy)
-        du_dy[end, :] = (u[1, :] - u[end - 1, :]) / (2 * Δy)
-
-        return du_dx, du_dy
-    end
-    function second_derivative(u, Δx, Δy)
-        d2u_dx2 = zeros(size(u))
-        d2u_dy2 = zeros(size(u))
-
-        d2u_dx2[:, 2:(end - 1)] = (u[:, 3:end] - 2 * u[:, 2:(end - 1)] +
-                                   u[:, 1:(end - 2)]) / (Δx^2)
-        d2u_dx2[:, 1] = (u[:, 2] - 2 * u[:, 1] + u[:, end]) / (Δx^2)
-        d2u_dx2[:, end] = (u[:, 1] - 2 * u[:, end] + u[:, end - 1]) / (Δx^2)
-
-        d2u_dy2[2:(end - 1), :] = (u[3:end, :] - 2 * u[2:(end - 1), :] +
-                                   u[1:(end - 2), :]) / (Δy^2)
-        d2u_dy2[1, :] = (u[2, :] - 2 * u[1, :] + u[end, :]) / (Δy^2)
-        d2u_dy2[end, :] = (u[1, :] - 2 * u[end, :] + u[end - 1, :]) / (Δy^2)
-
-        return d2u_dx2, d2u_dy2
-    end
-
-    # Convection-diffusion equation
-    function f_cd(u,
-            t,
-            ddx_dy = first_derivative,
-            d2dx2_d2dy2 = second_derivative,
-            viscosity = viscosity,
-            speed = speed,
-            dx = dx,
-            dy = dy)
-        du_dx, du_dy = ddx_ddy(u, dx, dy)
-        d2u_dx2, d2u_dy2 = d2dx2_d2dy2(u, dx, dy)
-        return -speed[1] * du_dx - speed[2] * du_dy .+ viscosity[1] * d2u_dx2 .+
-               viscosity[2] * d2u_dy2
-    end
-    return f_cd
+    title = "Time $(round(i*saveat_shock, digits=2))"
+    fig = plot(p1, p2, layout = (1, 2), title = title)
+    frame(anim, fig)
 end
 
-# So this is the force
-f_cd(u) = gen_conv_diff_f([0.1, 0.1], [0.00001, 0.00001], dx, dy)
+# Then there is a phase of shock dissipation
+t_diss = 35.0f0
+dt_diss = 0.01f0
+trange_burn = (0.0f0, t_diss)
+saveat_diss = 0.4f0
+diss_CNODE = NeuralODE(f_CNODE,
+    trange_burn,
+    solver_algo,
+    adaptive = false,
+    dt = dt_diss,
+    saveat = saveat_diss);
+diss_CNODE_solution = Array(diss_CNODE(uv_shock, θ, st)[1])
+uv_diss = diss_CNODE_solution[:, :, end];
+u_diss = reshape(diss_CNODE_solution[1:(grid_B.Nu), :, :],
+    grid_B.nux,
+    grid_B.nuy,
+    size(diss_CNODE_solution, 2),
+    :)
+v_diss = reshape(diss_CNODE_solution[(grid_B.Nu + 1):end, :, :],
+    grid_B.nvx,
+    grid_B.nvy,
+    size(diss_CNODE_solution, 2),
+    :);
+anim = Animation()
+fig = plot(layout = (1, 2), size = (400, 800))
+@gif for i in 1:2:size(u_diss, 4)
+    p1 = surface(x, y, u_diss[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "u", title = "u field", camera = (45, 45))
+    p2 = surface(x, y, v_diss[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "v", title = "v field", camera = (45, 45))
 
-# create the NN
-NN = create_nn_cd()
+    title = "Time $(round(i*saveat_diss, digits=2))"
+    fig = plot(p1, p2, layout = (1, 2), title = title)
+    frame(anim, fig)
+end
 
-# * We create the right hand side of the NODE, by combining the NN with f_u 
-f_NODE = create_NODE_cd(NN, p; is_closed = true)
-# and get the parametrs that you want to train
-θ, st = Lux.setup(rng, f_NODE)
+# And then the Burgers equation reaches a steady state
+t_steady = 150.0f0
+dt_steady = 0.1f0
+trange_burn = (0.0f0, 100.0f0)
+saveat_steady = 2.0f0
+steady_CNODE = NeuralODE(f_CNODE,
+    trange_burn,
+    solver_algo,
+    adaptive = false,
+    dt = dt_steady,
+    saveat = saveat_steady);
+steady_CNODE_solution = Array(steady_CNODE(uv_diss, θ, st)[1])
+uv_steady = steady_CNODE_solution[:, :, end];
+u_steady = reshape(steady_CNODE_solution[1:(grid_B.Nu), :, :],
+    grid_B.nux,
+    grid_B.nuy,
+    size(steady_CNODE_solution, 2),
+    :)
+v_steady = reshape(steady_CNODE_solution[(grid_B.Nu + 1):end, :, :],
+    grid_B.nvx,
+    grid_B.nvy,
+    size(steady_CNODE_solution, 2),
+    :);
+anim = Animation()
+fig = plot(layout = (1, 2), size = (400, 800))
+@gif for i in 1:2:size(u_steady, 4)
+    p1 = surface(x, y, u_steady[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "u", title = "u field", camera = (45, 45))
+    p2 = surface(x, y, v_steady[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "v", title = "v field", camera = (45, 45))
+
+    title = "Time $(round(i*saveat_steady, digits=2))"
+    fig = plot(p1, p2, layout = (1, 2), title = title)
+    frame(anim, fig)
+end
+
+# Now plot the whole trajectory
+u_total = cat(u_shock, u_diss, u_steady, dims = 4)
+v_total = cat(v_shock, v_diss, v_steady, dims = 4)
+t_total = vcat(0:saveat_shock:t_shock, t_shock:saveat_diss:(t_shock + t_diss),
+    (t_shock + t_diss):saveat_steady:(t_shock + t_diss + t_steady))
+label = ["Shock" for i in 1:size(u_shock, 4)]
+append!(label, ["Dissipation" for i in 1:size(u_diss, 4)])
+append!(label, ["Steady" for i in 1:size(u_steady, 4)])
+anim = Animation()
+fig = plot(layout = (1, 2), size = (400, 800))
+@gif for i in 1:2:size(u_total, 4)
+    p1 = surface(x, y, u_total[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "u", title = "u field", camera = (45, 45))
+    p2 = surface(x, y, v_total[:, :, 1, i], color = :viridis, cbar = false, xlabel = "x",
+        ylabel = "y", zlabel = "v", title = "v field", camera = (45, 45))
+
+    title = "Time $(round(t_total[i], digits=2)) $(label[i])"
+    fig = plot(p1, p2, layout = (1, 2), title = title)
+    frame(anim, fig)
+end
+if isdir("./plots")
+    gif(anim, "plots/03.01_Burgers.gif", fps = 8)
+else
+    gif(anim, "examples/plots/03.01_Burgers.gif", fps = 8)
+end
