@@ -113,9 +113,13 @@ One of the main goal of this repository will be to use CNODEs like eq.(2.1.0) in
 
 
 
-### Example 4 : Burgers
-* 04.01 Solve Burgers as single equation and learn the closure. Use [this implementation](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials) as a baseline.
-* 04.02 Add a second equation of a projection of the solution, with no physical force and only NN to evolve it
+### Example 3 : 1D Burgers
+* 03.01 learn the closure of a LES 
+* 03.02 Add an extra equation of a projection of the solution, with no physical force and only NN to evolve it
+
+### Example 4 : 2D Burgers
+* 04.01 DNS Burgers 
+...
 
 ### Example 5 : Navier-Stokes
 * 05.01 Solve NS as single equation in spectral space, by adapting[this implementation](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials). The training of this has to be tested
