@@ -2,7 +2,7 @@
 # TODO: [!] this has to be tested carefully
 
 function first_derivatives(u, Δx, Δy = 0.0f0, Δz = 0.0f0)
-    dims = ndims(u)
+    dims = ndims(u) - 1 # Subtract 1 for the batch dimension
     if dims == 1
         du_dx = zeros(size(u))
         du_dx[2:(end - 1)] = (u[3:end] - u[1:(end - 2)]) / (2 * Δx)
