@@ -1,93 +1,95 @@
 ```julia
 import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool
-
-"""
-    create_f_NODE(NN, f_u; is_closed=false)
-
-Create a Neural ODE (NODE) using ResNet skip blocks to add the closure.
 ```
 
-Arguments
+Returns the function to linearize the input
 
 ```julia
-- `NN`: The neural network model.
-- `f_u`: The closure function.
-- `is_closed`: A boolean indicating whether to add the closure or not. Default is `false`.
+function Linearize_in(grids)
+    dim = length(grids)
+    if dim == 1
+        return u -> let u = u
 ```
 
-Returns
+make u linear
 
 ```julia
-- The created Neural ODE (NODE) model.
-"""
-function create_f_NODE(NN, f_u; is_closed = false)
-    return Chain(SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)))
+            u = reshape(u, grids[1].N, size(u)[end])
+            u
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1], v = uv[2]
+```
+
+make u and v linear
+
+```julia
+            u = reshape(u, grids[1].N, size(u)[end])
+            v = reshape(v, grids[2].N, size(v)[end])
+            vcat(u, v)
+        end
+    elseif dim == 3
+        return uvw -> let u = uv[1], v = uv[2], w = uv[3]
+```
+
+make u, v and w linear
+
+```julia
+            u = reshape(u, grids[1].N, size(u)[end])
+            v = reshape(v, grids[2].N, size(v)[end])
+            w = reshape(w, grids[3].N, size(w)[end])
+            vcat(u, v, w)
+        end
+    end
 end
 
-"""
-    create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
-
-Create a neural network model for the Coupled Neural ODE (CNODE) approach.
+function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
+        is_closed = false, gpu_mode = false)
 ```
 
-Arguments
+Get the number of equations from the number of grids passed
 
 ```julia
-- `F_u`: Function that defines the right-hand side of the CNODE for the variable `u`.
-- `G_v`: Function that defines the right-hand side of the CNODE for the variable `v`.
-- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
-- `NN_u` (optional): Neural network model for the variable `u`. Default is `nothing`.
-- `NN_v` (optional): Neural network model for the variable `v`. Default is `nothing`.
-- `is_closed` (optional): Boolean indicating whether the CNODE is closed or not. Default is `false`.
+    dim = length(grids)
 ```
 
-Returns
+Check which grids need to be resized
 
 ```julia
-- The created CNODE model.
-"""
-function create_f_CNODE(create_forces, force_params, grid, NN_u = nothing,
-        NN_v = nothing; is_closed = false, gpu_mode = false)
+    if dim > 1
+        max_dx = maximum([g.dx for g in grids])
+        max_dy = maximum([g.dy for g in grids])
+        grids_to_rescale = [g.dx != max_dx || g.dy != max_dy ? 1 : 0 for g in grids]
+        for (i, needs_rescaling) in enumerate(grids_to_rescale)
+            if needs_rescaling == 1
+                println("Grid $i needs to be rescaled.")
+            end
+        end
+    end
 ```
 
-Since I will be upscaling v, I need to define a new grid to pass to the force
+Check if you want to use a GPU
 
 ```julia
-    grid_for_force = Grid(grid.dux,
-        grid.duy,
-        grid.nux,
-        grid.nuy,
-        grid.dux,
-        grid.duy,
-        grid.nux,
-        grid.nuy,
-        convert_to_float32 = true)
     if gpu_mode
         if !CUDA.functional()
             println("ERROR: no GPU avail")
         end
-        grid_for_force = cu(grid_for_force)
-    end
-    F = create_forces(grid_for_force, force_params)
-```
-
-check if v has to be rescaled or not
-
-```julia
-    if grid.dux != grid.dvx || grid.duy != grid.dvy
-        println("Resizing v to the same grid as u")
-        resize_v = true
-    else
-        println("No need to resize v")
-        resize_v = false
+        grids = cu(grids)
     end
 ```
 
-Get the functions that will downscale and upscale the uv field
+Create the forces
 
 ```julia
-    Upscaler = upscale_v(grid, resize_v)
-    Downscaler = downscale_v(grid, resize_v)
+    F = create_forces(grids, force_params)
+```
+
+Get the functions that will downscale and upscale the field s
+
+```julia
+    Upscaler = upscale_v(grids, grids_to_rescale, max_dx, max_dy)
+    Downscaler = downscale_v(grids, grids_to_rescale, max_dx, max_dy)
 ```
 
 Check if you want to close the CNODE or not
@@ -155,29 +157,37 @@ Arguments:
 Returns:
 - Function that takes a tuple (u, v) returns the linearized concatenation of `u` and `v`.
 """
-function downscale_v(grid, resize_v = false)
-    if !resize_v
-        return Chain(uv -> let u = uv[1], v = uv[2]
-            #println("in down")
-            #println(typeof(u))
+function downscale_v(grids, grids_to_rescale, max_dx, max_dy)
+    dim = length(grids)
 ```
 
-make u and v linear
+Get the explicit function to linearize the input
 
 ```julia
-            u = reshape(u, grid.Nu, size(u)[end])
-            v = reshape(v, grid.Nv, size(v)[end])
-            #println("out down")
-            #println(typeof(u))
-            #println(typeof(vcat(u, v)))
+    linearize_layer = Linearize_in(grids)
+
+    if dim == 1 || !any(grids_to_rescale)
 ```
 
-and concatenate
+There is no need to downscale
 
 ```julia
-            vcat(u, v)
-        end)
+        return linearize_layer
     else
+```
+
+To downscale we do the following:
+1. Create a skippable layer that:
+      a. Extracts the u-v-w component that needs to be downscaled
+      b. Upscales it to twice the target size
+      c. Applies mean pooling
+2. Apply a skip connection that gets scaled and unscaled u-v-w components
+3. Concatenate the u-v-w components and return them
+
+TODO !!! This does nothing for now
+
+```julia
+        error("Not implemented yet")
         dw_v = Chain(
 ```
 
@@ -233,7 +243,50 @@ Arguments:
 Returns:
 - Function that reshapes `u` and `v` on the grid and returns a tuple (u, v)
 """
-function upscale_v(grid, resize_v = false)
+```
+
+Returns the function to concatenate
+
+```julia
+function Concatenate_in(grids)
+    dim = length(grids)
+    if dim == 1
+        return u -> let u = u
+```
+
+add a placeholder dimension for the channels
+
+```julia
+            u = reshape(u, grids[1].nx, 1, size(u)[end])
+            u
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
+```
+
+reshape u and v on their grid while adding a placeholder dimension for the channels
+
+```julia
+            u = reshape(u, grid[1].nx, grid[2].ny, 1, size(u, 2))
+            v = reshape(v, grid[2].nx, grid[2].ny, 1, size(v, 2))
+            (u, v)
+        end
+    elseif dim == 3
+        return uvw -> let u = uvw[1:(grids[1].N), :],
+            v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
+            w = uvw[(grids[1].N + grids[2].N + 1):end, :]
+```
+
+reshape u, v and w on their grid while adding a placeholder dimension for the channels
+
+```julia
+            u = reshape(u, grid[1].nx, grid[1].ny, 1, size(u, 2))
+            v = reshape(v, grid[2].nx, grid[2].ny, 1, size(v, 2))
+            w = reshape(w, grid[3].nx, grid[3].ny, 1, size(w, 2))
+            (u, v, w)
+        end
+    end
+end
 ```
 
 Generate the layer that upscales v
@@ -241,20 +294,24 @@ expects as input the linearized concatenation of u and v
 returns a tuple (u,v)
 
 ```julia
-    if !resize_v
-        return Chain(uv -> let u = uv[1:(grid.Nu), :], v = uv[(grid.Nu + 1):end, :]
-            #println("in upscale")
-            #println(typeof(u))
+function upscale_v(grids, grids_to_rescale, max_dx, max_dy)
+    dim = length(grids)
 ```
 
-reshape u and v on the grid
+Get the explicit function to concatenate the input
 
 ```julia
-            u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
-            v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
-            (u, v)
-        end)
+    concatenate_layer = Concatenate_in(grids)
+
+    if dim == 1 || !any(grids_to_rescale)
+        return concatenate_layer
     else
+```
+
+TODO!!! This does nothing for now
+
+```julia
+        error("Not implemented yet")
         up_v = Chain(
 ```
 

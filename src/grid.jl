@@ -1,55 +1,28 @@
 """
     struct Grid
 
-This object contains the grid information.
-TODO: This may need to allow for multiple dimensions.
+This object contains the grid information. It can handle 1D, 2D, and 3D grids.
 
 Fields:
-- `dux::Float64`: The grid spacing in the x-direction for u.
-- `duy::Float64`: The grid spacing in the y-direction for u.
-- `nux::Int`: The number of grid points in the x-direction for u.
-- `nuy::Int`: The number of grid points in the y-direction for u.
-- `dvx::Float64`: The grid spacing in the x-direction for v.
-- `dvy::Float64`: The grid spacing in the y-direction for v.
-- `nvx::Int`: The number of grid points in the x-direction for v.
-- `nvy::Int`: The number of grid points in the y-direction for v.
-- `Nu::Int`: The total number of elements for u.
-- `Nv::Int`: The total number of elements for v.
-- `Nd::Int`: The total number of dimensions.
+- `dim::Int`: The dimensionality of the grid.
+- `dx::Union{Float32, Float64}`: The grid spacing in the x-direction.
+- `dy::Union{Float32, Float64}`: The grid spacing in the y-direction. Default is 0 for 1D grid.
+- `dz::Union{Float32, Float64}`: The grid spacing in the z-direction. Default is 0 for 1D and 2D grids.
+- `nx::Int`: The number of grid points in the x-direction.
+- `ny::Int`: The number of grid points in the y-direction. Default is 0 for 1D grid.
+- `nz::Int`: The number of grid points in the z-direction. Default is 0 for 1D and 2D grids.
+- `N::Int`: The total number of elements in the grid.
 
 Constructor:
-- `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
+- `Grid(dim::Int, dx::Union{Float32, Float64}, dy::Union{Float32, Float64} = 0, dz::Union{Float32, Float64} = 0, nx::Int, ny::Int = 0, nz::Int = 0, convert_to_float32::Bool = false)`: Constructs a `Grid` object with the given grid parameters. The `dy`, `dz`, `ny`, and `nz` parameters can be omitted for 1D and 2D grids. If `convert_to_float32` is `true`, the grid spacings are converted to `Float32`.
 """
-struct Grid
-    dux::Union{Float32, Float64}
-    duy::Union{Float32, Float64}
-    nux::Int
-    nuy::Int
-    dvx::Union{Float32, Float64}
-    dvy::Union{Float32, Float64}
-    nvx::Int
-    nvy::Int
-    Nu::Int
-    Nv::Int
-    Nd::Int
-
-    function Grid(dux::Union{Float32, Float64},
-            duy::Union{Float32, Float64},
-            nux::Int,
-            nuy::Int,
-            dvx::Union{Float32, Float64},
-            dvy::Union{Float32, Float64},
-            nvx::Int,
-            nvy::Int;
-            convert_to_float32::Bool = false)
-        Nu = nux * nuy
-        Nv = nvx * nvy
-        Nd = 2 #TODO: This struct be generalized to handle multiple dimensions
-        if convert_to_float32
-            new(Float32(dux), Float32(duy), nux, nuy,
-                Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv, Nd)
-        else
-            new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv, Nd)
-        end
-    end
+Base.@kwdef struct Grid
+    dim::Int
+    dx::Union{Float32, Float64}
+    dy::Union{Float32, Float64} = 0.0f0
+    dz::Union{Float32, Float64} = 0.0f0
+    nx::Int
+    ny::Int = 0
+    nz::Int = 0
+    N::Int = nx * max(1, ny) * max(1, nz)
 end

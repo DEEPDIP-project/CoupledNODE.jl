@@ -21,9 +21,9 @@ end
 # So the first step is to define the grid that we are going to use
 import CoupledNODE: Grid
 # MAKE THE GRID 1D!
-dux = duy = dvx = dvy = 2π / 100
-nux = nuy = nvx = nvy = 100
-grid_B = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, convert_to_float32 = true);
+dux = duy = 2π / 100
+nux = nuy = 100
+xgrid_B = Grid(dim = 1, dx = dux, dy = duy, nx = nux, ny = nuy)
 
 # The following function constructs the right-hand side of the Burgers equation:
 import CoupledNODE: Laplacian, first_derivatives
