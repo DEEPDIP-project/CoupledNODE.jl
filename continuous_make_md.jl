@@ -5,10 +5,11 @@ using Pkg
 Pkg.add("Literate")
 using Literate
 using FileWatching
+using Glob
 
-cd("examples")
+cd("examples/src")
 
-files = glob("Example*jl")
+files = glob("*jl")
 
 while true
     for file in files
@@ -18,5 +19,5 @@ while true
     end
 
     #watch_file("Example1.jl")
-    watch_folder("examples")
+    watch_folder("examples/src")
 end

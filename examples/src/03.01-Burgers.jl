@@ -20,65 +20,68 @@ end
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
 # So the first step is to define the grid that we are going to use
 import CoupledNODE: Grid
-# MAKE THE GRID 1D!
-dux = duy = 2π / 100
-nux = nuy = 100
-xgrid_B = Grid(dim = 1, dx = dux, dy = duy, nx = nux, ny = nuy)
+nux = 100
+dux = 2π / nux
+xgrid_B = Grid(dim = 1, dx = dux, nx = nux)
 
 # The following function constructs the right-hand side of the Burgers equation:
 import CoupledNODE: Laplacian, first_derivatives
 using Zygote
-function create_burgers_rhs(grid, force_params)
+function create_burgers_rhs(grids, force_params)
     ν = force_params[1]
 
-    function FG(u, v)
-        du_dx, du_dy = first_derivatives(u, grid.dux, grid.duy)
-        dv_dx, dv_dy = first_derivatives(v, grid.dvx, grid.dvy)
-        F = Zygote.@ignore -u .* du_dx - v .* du_dy .+
-                           ν * Laplacian(u, grid.dux^2, grid.duy^2)
-        G = Zygote.@ignore -u .* dv_dx - v .* dv_dy .+
-                           ν * Laplacian(v, grid.dvx^2, grid.dvy^2)
-        return F, G
+    function Force(u)
+        du_dx = first_derivatives(u, grids[1].dx)
+        F = Zygote.@ignore -u .* du_dx +
+                           ν * Laplacian(u, grids[1].dx^2)
+        return F
     end
-    return FG
+    return Force
 end
-# Notice that compared to the Gray-Scott example we are returning a single function that computes both components of the force at the same time. This is because the Burgers equation is a system of two coupled PDEs so we want to avoid recomputing the derivatives a second time.
 
 # Let's set the parameters for the Burgers equation
-ν = 0.005f0
+ν = 0.01f0
 # and we pack them into a tuple for the rhs Constructor
 force_params = (ν,)
+# we also need to pack the grid into a tuple
+grid_B = (xgrid_B,)
 
 # Now we can create the right-hand side of the NODE
-FG = create_burgers_rhs(grid_B, force_params)
+F = create_burgers_rhs(grid_B, force_params)
+
+# We can now generate the initial conditions for the Burgers equation. We will use a combination of sine waves and noise to create the initial conditions.
+function generate_initial_conditions(n_samples::Int)
+    x = range(0, stop = 2π, length = nux)
+    freqs = [2π, 4π, 6π]  # Frequencies of sine waves
+    amplitudes = [1.0, 0.5, 0.3]  # Amplitudes of sine waves
+
+    u0_list = Array{Float32, 2}(undef, nux, n_samples)
+
+    for j in 1:n_samples
+        u0 = @view u0_list[:, j]
+        u0 .= 0.0
+        for i in 1:length(freqs)
+            u0 .+= amplitudes[i] * sin.(freqs[i] * x)
+        end
+        # Add random noise
+        u0 .+= 0.1 * randn(nux)
+    end
+    return u0_list
+end
+
+u_0 = generate_initial_conditions(4)
+
+x = range(0, stop = 2π, length = nux)
+using Plots
+#plot(x, u_0, label = ["Sample 1" "Sample 2" "Sample 3" "Sample 4"], xlabel = "x", ylabel = "u", title = "Initial conditions for the Burgers equation")
+
+F(u_0)
+
 include("./../coupling_functions/functions_NODE.jl")
 f_CNODE = create_f_CNODE(create_burgers_rhs, force_params, grid_B; is_closed = false);
 import Random, LuxCUDA, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
-
-# Now we create the initial condition for the Burgers equation. 
-# We start defining a gaussian pulse centered in the grid.:
-function initialize_uv_gaussian(grid, u_bkg, v_bkg, sigma)
-    u_initial = zeros(MY_TYPE, grid.nux, grid.nuy)
-    v_initial = zeros(MY_TYPE, grid.nvx, grid.nvy)
-    # Create a Gaussian pulse centered in the grid
-    for i in 1:(grid.nvx)
-        for j in 1:(grid.nvy)
-            x = i - grid.nvx / 2
-            y = j - grid.nvy / 2
-            v_initial[i, j] = v_bkg * exp(-(x^2 + y^2) / (2 * sigma^2))
-            u_initial[i, j] = u_bkg * exp(-(x^2 + y^2) / (2 * sigma^2))
-        end
-    end
-
-    return u_initial, v_initial
-end
-
-u_initial, v_initial = initialize_uv_gaussian(grid_B, 2.0f0, 2.0f0, 20);
-# We can now define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid_B.nux * grid_B.nuy, 1),
-    reshape(v_initial, grid_B.nvx * grid_B.nvy, 1))
 
 # The first phase of the Burger solution will be the formation of the shock. We use a small time step to resolve the shock formation.
 import DiffEqFlux: NeuralODE

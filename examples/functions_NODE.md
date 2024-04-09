@@ -56,19 +56,22 @@ Get the number of equations from the number of grids passed
 Check which grids need to be resized
 
 ```julia
+    max_dx = maximum([g.dx for g in grids])
+    max_dy = maximum([g.dy for g in grids])
     if dim > 1
-        max_dx = maximum([g.dx for g in grids])
-        max_dy = maximum([g.dy for g in grids])
         grids_to_rescale = [g.dx != max_dx || g.dy != max_dy ? 1 : 0 for g in grids]
         for (i, needs_rescaling) in enumerate(grids_to_rescale)
             if needs_rescaling == 1
                 println("Grid $i needs to be rescaled.")
             end
         end
+    else
+        grids_to_rescale = [0]
     end
 ```
 
 Check if you want to use a GPU
+TODO: is this necessary?
 
 ```julia
     if gpu_mode
@@ -113,10 +116,27 @@ remove the placeholder dimension for the channels
     else
 ```
 
-Define the NN term that concatenates the output of the NN_u and NN_v
+Define the NN term that concatenates the output of the NNs
 
 ```julia
-        NN_closure = Parallel(nothing, NN_u, NN_v)
+        if dim == 1
+            if length(NNs) != 1
+                error("ERROR: NNs should be a single NN for 1D problems")
+            end
+            NN_closure = Parallel(nothing, NNs[1])
+        elseif dim == 2
+            if length(NNs) != 2
+                error("ERROR: NNs should be a tuple of two NNs for 2D problems")
+            end
+            NN_closure = Parallel(nothing, NNs[1], NNs[2])
+        elseif dim == 3
+            if length(NNs) != 3
+                error("ERROR: NNs should be a tuple of three NNs for 3D problems")
+            end
+            NN_closure = Parallel(nothing, NNs[1], NNs[2], NNs[3])
+        else
+            error("ERROR: Unsupported number of dimensions: $dim")
+        end
 ```
 
 And use it to close the CNODE
