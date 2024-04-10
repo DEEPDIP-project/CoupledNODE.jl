@@ -36,14 +36,14 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
     max_dx = maximum([g.dx for g in grids])
     max_dy = maximum([g.dy for g in grids])
     if dim > 1
-        grids_to_rescale = [g.dx != max_dx || g.dy != max_dy ? 1 : 0 for g in grids]
+        grids_to_rescale = [g.dx != max_dx || g.dy != max_dy ? true : false for g in grids]
         for (i, needs_rescaling) in enumerate(grids_to_rescale)
-            if needs_rescaling == 1
+            if needs_rescaling
                 println("Grid $i needs to be rescaled.")
             end
         end
     else
-        grids_to_rescale = [0]
+        grids_to_rescale = [false]
     end
 
     # Check if you want to use a GPU
@@ -59,21 +59,18 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
     F = create_forces(grids, force_params)
 
     # Get the functions that will downscale and upscale the field s
-    Upscaler = upscale_v(grids, grids_to_rescale, max_dx, max_dy)
-    Downscaler = downscale_v(grids, grids_to_rescale, max_dx, max_dy)
+    upscale = Upscaler(grids, grids_to_rescale, max_dx, max_dy)
+    downscale = Downscaler(grids, grids_to_rescale, max_dx, max_dy)
+
+    # Define the force layer
+    apply_force = Force_layer(F, grids)
 
     # Check if you want to close the CNODE or not
     if !is_closed
         return Chain(
-            Upscaler,
-            uv -> let u = uv[1], v = uv[2]
-                # Return a tuple of the right hand side of the CNODE
-                # remove the placeholder dimension for the channels
-                u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u, 4))
-                v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v, 4))
-                F(u, v)
-            end,
-            Downscaler)
+            upscale,
+            apply_force,
+            downscale)
     else
         # Define the NN term that concatenates the output of the NNs
         if dim == 1
@@ -96,7 +93,8 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
         end
 
         # And use it to close the CNODE
-        return Chain(Upscaler,
+        return Chain(
+            upscale,
             # For the NN I want u and v concatenated in the channel dimension
             uv -> let u = uv[1], v = uv[2]
                 cat(u, v, dims = 3)
@@ -106,7 +104,8 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
                 (f_NN, uv) -> let u = uv[:, :, 1, :], v = uv[:, :, 2, :]
                     F(u, v) + f_NN
                 end),
-            Downscaler)
+            downscale
+            )
     end
 end
 
@@ -123,7 +122,7 @@ Arguments:
 Returns:
 - Function that takes a tuple (u, v) returns the linearized concatenation of `u` and `v`.
 """
-function downscale_v(grids, grids_to_rescale, max_dx, max_dy)
+function Downscaler(grids, grids_to_rescale, max_dx, max_dy)
     dim = length(grids)
     # Get the explicit function to linearize the input
     linearize_layer = Linearize_in(grids)
@@ -189,8 +188,8 @@ function Concatenate_in(grids)
     elseif dim == 2
         return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
             # reshape u and v on their grid while adding a placeholder dimension for the channels
-            u = reshape(u, grid[1].nx, grid[2].ny, 1, size(u, 2))
-            v = reshape(v, grid[2].nx, grid[2].ny, 1, size(v, 2))
+            u = reshape(u, grids[1].nx, grids[2].ny, 1, size(u)[end])
+            v = reshape(v, grids[2].nx, grids[2].ny, 1, size(v)[end])
             (u, v)
         end
     elseif dim == 3
@@ -198,9 +197,9 @@ function Concatenate_in(grids)
             v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
             w = uvw[(grids[1].N + grids[2].N + 1):end, :]
             # reshape u, v and w on their grid while adding a placeholder dimension for the channels
-            u = reshape(u, grid[1].nx, grid[1].ny, 1, size(u, 2))
-            v = reshape(v, grid[2].nx, grid[2].ny, 1, size(v, 2))
-            w = reshape(w, grid[3].nx, grid[3].ny, 1, size(w, 2))
+            u = reshape(u, grids[1].nx, grids[1].ny, 1, size(u)[end])
+            v = reshape(v, grids[2].nx, grids[2].ny, 1, size(v)[end])
+            w = reshape(w, grids[3].nx, grids[3].ny, 1, size(w)[end])
             (u, v, w)
         end
     end
@@ -208,7 +207,7 @@ end
 # Generate the layer that upscales v
 # expects as input the linearized concatenation of u and v
 # returns a tuple (u,v)
-function upscale_v(grids, grids_to_rescale, max_dx, max_dy)
+function Upscaler(grids, grids_to_rescale, max_dx, max_dy)
     dim = length(grids)
     # Get the explicit function to concatenate the input
     concatenate_layer = Concatenate_in(grids)
@@ -233,5 +232,34 @@ function upscale_v(grids, grids_to_rescale, max_dx, max_dy)
                 u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
                 (u, v_up)
             end))
+    end
+end
+
+
+function Force_layer(F, grids)
+    dim = length(grids)
+    if dim == 1
+        return uv -> let u = uv
+            # make u linear
+            u = reshape(u, grids[1].N, size(u, 3))
+            F(u)
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1], v = uv[2]
+            # make u and v linear
+            u = reshape(u, grids[1].nx, grids[1].ny, size(u, 4))
+            v = reshape(v, grids[2].nx, grids[2].ny, size(v, 4))
+            F(u, v)
+        end
+    elseif dim == 3
+        return uv -> let u = uv[1], v = uv[2], w = uv[3]
+            # make u, v and w linear
+            u = reshape(u, grids[1].nx, grids[1].ny, grids[1].nz, size(u, 5))
+            v = reshape(v, grids[2].nx, grids[2].ny, grids[2].nz, size(v, 5))
+            w = reshape(w, grids[3].nx, grids[3].ny, grids[3].nz, size(w, 5))
+            F(u, v, w)
+        end
+    else
+        error("ERROR: Unsupported number of dimensions: $dim")
     end
 end
