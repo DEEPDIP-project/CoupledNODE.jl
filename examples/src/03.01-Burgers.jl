@@ -12,10 +12,12 @@ end
 
 # # Burgers equations
 # In this example, we will solve the Burgers equation in using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
+# $$
 # \begin{equation}
 # \frac{\partial u}{\partial t} = - u \frac{\partial u}{\partial x} + \nu \frac{\partial u^2}{\partial x^2}
 # \end{equation}
-# where $u(x,t)$ is the velocity of the fluid, $\nu$ is the viscosity coefficient, and x$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in one spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
+# $$
+# where $u(x,t)$ is the velocity of the fluid, $\nu$ is the viscosity coefficient, and $(x,y)$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in one spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
 # So the first step is to define the grid that we are going to use
@@ -121,9 +123,14 @@ end
 # Energy
 
 # PDEs like the Burgers equation conserve energy. If we discretize the Burgers equation the energy conservation takes the following form:
+# $$
 # \begin{equation}
 # \frac{dE}{dt} = -\int \left(u \frac{\partial u}{\partial x} - \nu \frac{\partial u^2}{\partial x^2}\right) dx
 # \end{equation}
+# $$
 # where $E$ is the energy of the system. The energy is given by:
+# $$
 # \begin{equation}
 # E = \int \left(\frac{1}{2} u^2 + \nu \left(\frac{\partial u}{\partial x}\right)^2\right) dx
+# \end{equation}
+# $$
