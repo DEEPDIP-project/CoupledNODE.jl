@@ -26,8 +26,8 @@ dux = 2π / nux
 duy = 2π / nuy
 dvx = 2π / nvx
 dvy = 2π / nvy
-grid_u = Grid(dim=2,dx = dux, dy = duy, nx = nux, ny = nuy);
-grid_v = Grid(dim=2,dx = dvx, dy = dvy, nx = nvx, ny = nvy);
+grid_u = Grid(dim = 2, dx = dux, dy = duy, nx = nux, ny = nuy);
+grid_v = Grid(dim = 2, dx = dvx, dy = dvy, nx = nvx, ny = nvy);
 
 # The following function constructs the right-hand side of the Burgers equation:
 import CoupledNODE: Laplacian, first_derivatives
@@ -54,7 +54,6 @@ end
 force_params = (ν,)
 # we also need to pack the grids into a tuple
 grid_B = (grid_u, grid_v)
-
 
 # Now we can create the right-hand side of the NODE
 FG = create_burgers_rhs(grid_B, force_params)

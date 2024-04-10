@@ -105,7 +105,7 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
                     F(u, v) + f_NN
                 end),
             downscale
-            )
+        )
     end
 end
 
@@ -234,7 +234,6 @@ function Upscaler(grids, grids_to_rescale, max_dx, max_dy)
             end))
     end
 end
-
 
 function Force_layer(F, grids)
     dim = length(grids)

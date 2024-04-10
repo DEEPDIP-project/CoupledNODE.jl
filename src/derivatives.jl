@@ -95,11 +95,14 @@ function circular_pad(u, dims)
         u_padded = vcat(add_dim_1(u[end, :]), u, add_dim_1(u[1, :]))
     elseif dims == 2
         u_padded = vcat(add_dim_1(u[end, :, :]), u, add_dim_1(u[1, :, :]))
-        u_padded = hcat(add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
+        u_padded = hcat(
+            add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
     elseif dims == 3
         u_padded = vcat(add_dim_1(u[end, :, :, :]), u, add_dim_1(u[1, :, :, :]))
-        u_padded = hcat(add_dim_2(u_padded[:, end, :, :]), u_padded, add_dim_2(u_padded[:, 1, :, :]))
-        u_padded = cat(add_dim_3(u_padded[:, :, end, :]), u_padded, add_dim_3(u_padded[:, :, 1, :]), dims = 3)
+        u_padded = hcat(
+            add_dim_2(u_padded[:, end, :, :]), u_padded, add_dim_2(u_padded[:, 1, :, :]))
+        u_padded = cat(add_dim_3(u_padded[:, :, end, :]), u_padded,
+            add_dim_3(u_padded[:, :, 1, :]), dims = 3)
     end
     return u_padded
 end
