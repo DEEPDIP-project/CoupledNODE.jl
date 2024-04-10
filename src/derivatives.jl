@@ -76,26 +76,30 @@ end
 #    return d2u_dx2, d2u_dy2
 #end
 
+function add_dim_1(x)
+    return reshape(x, 1, size(x)...)
+end
+
+function add_dim_2(x)
+    s = size(x)
+    return reshape(x, s[1], 1, s[2:end]...)
+end
+
+function add_dim_3(x)
+    s = size(x)
+    return reshape(x, s[1:2]..., 1, s[3:end]...)
+end
+
 function circular_pad(u, dims)
     if dims == 1
-        add_dim_1(x) = reshape(x, 1, size(x)...)
-        add_dim_2(x) = reshape(x, size(x, 1), 1, size(x, 2))
         u_padded = vcat(add_dim_1(u[end, :]), u, add_dim_1(u[1, :]))
     elseif dims == 2
-        add_dim_1(x) = reshape(x, 1, size(x)...)
-        add_dim_2(x) = reshape(x, size(x, 1), 1, size(x, 2))
         u_padded = vcat(add_dim_1(u[end, :, :]), u, add_dim_1(u[1, :, :]))
-        u_padded = hcat(
-            add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
-    elseif dims == 2
-        add_dim_1(x) = reshape(x, 1, size(x)...)
-        add_dim_2(x) = reshape(x, size(x, 1), 1, size(x, 2), size(x, 3))
-        add_dim_3(x) = reshape(x, size(x, 1), size(x, 2), 1, size(x, 3))
+        u_padded = hcat(add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
+    elseif dims == 3
         u_padded = vcat(add_dim_1(u[end, :, :, :]), u, add_dim_1(u[1, :, :, :]))
-        u_padded = hcat(
-            add_dim_2(u_padded[:, end, :, :]), u_padded, add_dim_2(u_padded[:, 1, :, :]))
-        u_padded = cat(add_dim_3(u_padded[:, :, end, :]), u_padded,
-            add_dim_3(u_padded[:, :, 1, :]), dims = 3)
+        u_padded = hcat(add_dim_2(u_padded[:, end, :, :]), u_padded, add_dim_2(u_padded[:, 1, :, :]))
+        u_padded = cat(add_dim_3(u_padded[:, :, end, :]), u_padded, add_dim_3(u_padded[:, :, 1, :]), dims = 3)
     end
     return u_padded
 end
