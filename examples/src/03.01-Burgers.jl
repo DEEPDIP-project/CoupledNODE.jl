@@ -78,13 +78,11 @@ end
 
 u_0 = generate_initial_conditions(4)
 
-
 include("./../coupling_functions/functions_NODE.jl")
 f_CNODE = create_f_CNODE(create_burgers_rhs, force_params, grid_B; is_closed = false);
 import Random, LuxCUDA, Lux
 rng = Random.seed!(1234)
 θ, st = Lux.setup(rng, f_CNODE);
-
 
 # The first phase of the Burger solution will be the formation of the shock. We use a small time step to resolve the shock formation.
 import DiffEqFlux: NeuralODE
@@ -101,15 +99,15 @@ shock_CNODE = NeuralODE(f_CNODE,
 u_shock = Array(shock_CNODE(u_0, θ, st)[1])
 
 # Plot 
-using Plots 
+using Plots
 x = range(0, stop = 2π, length = nux)
 anim = Animation()
 fig = plot(layout = (4, 1), size = (300, 700))
 @gif for i in 1:2:size(u_shock, 3)
-    p1 = plot(x, u_shock[:, 1, i], xlabel = "x", ylabel = "u", legend=false)
-    p2 = plot(x, u_shock[:, 2, i], xlabel = "x", ylabel = "u", legend=false)
-    p3 = plot(x, u_shock[:, 3, i], xlabel = "x", ylabel = "u", legend=false)
-    p4 = plot(x, u_shock[:, 4, i], xlabel = "x", ylabel = "u", legend=false)
+    p1 = plot(x, u_shock[:, 1, i], xlabel = "x", ylabel = "u", legend = false)
+    p2 = plot(x, u_shock[:, 2, i], xlabel = "x", ylabel = "u", legend = false)
+    p3 = plot(x, u_shock[:, 3, i], xlabel = "x", ylabel = "u", legend = false)
+    p4 = plot(x, u_shock[:, 4, i], xlabel = "x", ylabel = "u", legend = false)
     fig = plot(p1, p2, p3, p4, layout = (4, 1))
     frame(anim, fig)
 end
