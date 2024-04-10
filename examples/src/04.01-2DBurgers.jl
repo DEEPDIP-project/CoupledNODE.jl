@@ -12,11 +12,14 @@ end
 
 # # 2D Burgers equations
 # In this example, we will solve the Burgers equation in 2D using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
+# $$
 # \begin{equation}
 # \frac{\partial u}{\partial t} = - u \frac{\partial u}{\partial x} - v \frac{\partial u}{\partial y} + \nu \Delta u
 # \frac{\partial v}{\partial t} = - u \frac{\partial v}{\partial x} - v \frac{\partial v}{\partial y} + \nu \Delta v
 # \end{equation}
-# where $\bm{u} = \left\{u(x,y,t), v(x,y,t)\right\}$ is the velocity field, $\nu$ is the viscosity coefficient, and $(x,y)$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in two spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
+# $$
+# where $\bm{u} = \left\{u(x,y,t), v(x,y,t)\right\}$ is the velocity field, $\nu$ is the viscosity coefficient, and ($x$,$y$) and $t$ are the spatial and temporal coordinates, respectively. 
+# The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in two spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
 # So the first step is to define the grid that we are going to use
