@@ -21,6 +21,9 @@
 # contains information for construction the network.
 
 import Lux
+if CUDA.functional()
+    import LuxCUDA
+end
 import FFTW: fft, ifft
 import Random: AbstractRNG
 
