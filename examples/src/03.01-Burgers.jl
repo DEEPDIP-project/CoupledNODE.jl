@@ -75,9 +75,9 @@ function generate_initial_conditions(n_samples::Int, grids)
         u0 .+= smooth_amplitude * sin.(smooth_freq .* x .+ smooth_phase_shift)
 
         # Shock component (e.g., square wave)
-        shock_amplitude = 1.0
-        shock_position = rand() * 2π  # Position where the shock occurs
-        u0[x .>= shock_position] .+= shock_amplitude
+        shock_amplitude = 5.0 * rand()
+        shock_positions = sort(rand(2) * 2π)
+        u0[(x .>= shock_positions[1]) .& (x .<= shock_positions[2])] .+= shock_amplitude
 
         # Normalize the initial conditions
         u0 ./= maximum(u0)
@@ -120,9 +120,8 @@ rng = Random.seed!(1234)
 
 # Now solve the LES and the DNS
 import DiffEqFlux: NeuralODE
-t_shock = 20.0f0
-dt_dns = 0.001f0
-dt_les = dt_dns * 0.1f0
+t_shock = 50.0f0
+dt_dns = 0.005f0
 dt_les = dt_dns
 trange_burn = (0.0f0, t_shock)
 saveat_shock = 0.2f0
@@ -168,20 +167,132 @@ end
 # ## A-priori fitting
 
 # Generate data
-nsamples = 100
-all_u0_dns = generate_initial_conditions(nsamples, grid_B_dns)
-all_u0_les = zeros(Float32, nux_les, size(all_u0_dns, 2))
-all_F_dns = F_dns(all_u0_dns)
-target_F = zeros(Float32, nux_les, size(all_u0_dns, 2))
-for i in 1:size(all_u0_dns, 2)
-    itp = LinearInterpolation(xdns, all_u0_dns[:, i], extrapolation_bc = Flat())
-    all_u0_les[:, i] = itp[xles]
-    # The target of the a-priori fitting is the filtered DNS force
-    itp = LinearInterpolation(xdns, all_F_dns[:, i], extrapolation_bc = Flat())
-    target_F[:, i] = itp[xles]
+nsamples = 30
+all_u0_dns = generate_initial_conditions(nsamples, grid_B_dns);
+all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
+
+# Interpolate and get the force
+all_u_les = zeros(Float32, nux_les, size(all_u_dns)[2:end]...);
+all_F_dns = F_dns(reshape(
+    all_u_dns, size(all_u_dns, 1), size(all_u_dns, 2) * size(all_u_dns, 3)));
+all_F_dns = reshape(all_F_dns, size(all_u_dns));
+target_F = zeros(Float32, nux_les, size(all_u_dns)[2:end]...);
+
+for i in 1:size(all_u_dns, 2)
+    for t in 1:size(all_u_dns, 3)
+        # Interepolate the DNS data to the LES grid
+        itp = LinearInterpolation(xdns, all_u_dns[:, i, t], extrapolation_bc = Flat())
+        all_u_les[:, i, t] = itp[xles]
+        # The target of the a-priori fitting is the filtered DNS force
+        itp = LinearInterpolation(xdns, all_F_dns[:, i, t], extrapolation_bc = Flat())
+        target_F[:, i, t] = itp[xles]
+    end
 end
 
-# (you have to simulate them ^ ! not only at t=0)
+# Now create the the Neural Network
+# TODO: atm the FNO is implemented for 2d only 
+import CoupledNODE: create_fno_model
+ch_fno = [2, 5, 5, 5, 2];
+kmax_fno = [8, 8, 8, 8];
+σ_fno = [Lux.gelu, Lux.gelu, Lux.gelu, identity]; # TODO: this should not require a call to Lux for gelu
+NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno);
+
+#using Lux
+using Lux
+NN_u = Chain(
+    Dense(nux_les, nux_les),
+    gelu,
+    u -> let u = u
+        u = reshape(u, size(u, 1), size(u, 3))
+        u
+    end
+)
+# pack the NNs
+NNs = (NN_u,);
+
+# Use it to create the cnode
+include("./../coupling_functions/functions_NODE.jl")
+f_CNODE = create_f_CNODE(
+    create_burgers_rhs, force_params, grid_B_les, NNs; is_closed = true)
+θ, st = Lux.setup(rng, f_CNODE);
+
+# Reshape in and target to have sample and t  in the same dimension (makes sense in a-priori fitting)
+all_u_les = reshape(all_u_les, nux_les, size(all_u_les)[2] * size(all_u_les)[3])
+target_F = reshape(target_F, nux_les, size(target_F)[2] * size(target_F)[3])
+
+# TEST the force
+f_CNODE(all_u_les, θ, st)
+
+# a priori fitting
+# TODO: the one implemented in src is only for 2d data i think, so i redefined here the 1d. We should generalize.
+using Zygote, Random
+function create_randloss_derivative(initial_data,
+        F_target,
+        f,
+        st;
+        nuse = size(initial_data, 2),
+        λ = 0)
+    d = ndims(initial_data)
+    nsample = size(initial_data, d)
+    function randloss(θ)
+        i = Zygote.@ignore sort(shuffle(1:nsample)[1:nuse])
+        x_use = Zygote.@ignore ArrayType(selectdim(initial_data, d, i))
+        y_use = Zygote.@ignore ArrayType(selectdim(F_target, d, i))
+        mean_squared_error(f, st, x_use, y_use, θ, λ)
+    end
+end
+function mean_squared_error(f, st, x, y, θ, λ)
+    println(size(x))
+    println(size(y))
+    prediction = Array(f(x, θ, st)[1])
+    println(size(prediction))
+    total_loss = sum(abs2, prediction - y) / sum(abs2, y)
+    return total_loss + λ * norm(θ, 1), nothing
+end
+
+myloss = create_randloss_derivative(all_u_les,
+    target_F,
+    f_CNODE,
+    st;
+    nuse = 16,
+    λ = 0);
+
+# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
+lhist = [];
+## Initialize and trigger the compilation of the model
+using ComponentArrays
+pinit = ComponentArrays.ComponentArray(θ);
+myloss(pinit);
+## [!] Check that the loss does not get type warnings, otherwise it will be slower
+
+# We transform the NeuralODE into an optimization problem
+## Select the autodifferentiation type
+import OptimizationOptimisers: Optimization
+adtype = Optimization.AutoZygote();
+optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
+optprob = Optimization.OptimizationProblem(optf, pinit);
+
+# Select the training algorithm:
+# In the previous example we have used a classic gradient method like Adam:
+import OptimizationOptimisers: OptimiserChain, Adam
+algo = OptimiserChain(Adam(1.0e-3));
+# notice however that CNODEs can be trained with any Julia optimizer, including the ones from the `Optimization` package like LBFGS
+import OptimizationOptimJL: Optim
+algo = Optim.LBFGS();
+# or even gradient-free methods like CMA-ES that we use for this example
+using OptimizationCMAEvolutionStrategy, Statistics
+algo = CMAEvolutionStrategyOpt();
+
+# ### Train the CNODE
+import CoupledNODE: callback
+result_neuralode = Optimization.solve(optprob,
+    algo;
+    callback = callback,
+    maxiters = 150);
+pinit = result_neuralode.u;
+θ = pinit;
+optprob = Optimization.OptimizationProblem(optf, pinit);
+# (Notice that the block above can be repeated to continue training, however don't do that with CMA-ES since it will restart from a random initial population)
 
 # ## Energy
 

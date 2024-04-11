@@ -92,18 +92,12 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
             error("ERROR: Unsupported number of dimensions: $dim")
         end
 
+        close_layer = Closure(grids, F, NN_closure)
+
         # And use it to close the CNODE
         return Chain(
             upscale,
-            # For the NN I want u and v concatenated in the channel dimension
-            uv -> let u = uv[1], v = uv[2]
-                cat(u, v, dims = 3)
-            end,
-            # Apply the right hand side of the CNODE 
-            SkipConnection(NN_closure,
-                (f_NN, uv) -> let u = uv[:, :, 1, :], v = uv[:, :, 2, :]
-                    F(u, v) + f_NN
-                end),
+            close_layer,
             downscale
         )
     end
@@ -235,6 +229,8 @@ function Upscaler(grids, grids_to_rescale, max_dx, max_dy)
     end
 end
 
+# Works only without the NN due to input shape
+# TODO: make the shape more consistent, such that we can use the same layer for with and without NN
 function Force_layer(F, grids)
     dim = length(grids)
     if dim == 1
@@ -258,6 +254,29 @@ function Force_layer(F, grids)
             w = reshape(w, grids[3].nx, grids[3].ny, grids[3].nz, size(w, 5))
             F(u, v, w)
         end
+    else
+        error("ERROR: Unsupported number of dimensions: $dim")
+    end
+end
+
+# This function applies the right hand side of the CNODE, by summing force and closure NN
+function Closure(grids, F, NN_closure)
+    dim = length(grids)
+    if dim == 1
+        return SkipConnection(NN_closure,
+            (f_NN, u) -> let u = u
+                # remove the channel dimension
+                u = reshape(u, grids[1].nx, size(u)[end])
+                F(u) + f_NN[1]
+            end)
+    elseif dim == 2
+        return SkipConnection(NN_closure,
+            (f_NN, uv) -> let u = uv[1], v = uv[2]
+                # make u and v linear and remove the channel dimension
+                u = reshape(u, grids[1].nx, grids[1].ny, size(u)[end])
+                v = reshape(v, grids[2].nx, grids[2].ny, size(v)[end])
+                F(u, v) + f_NN # TODO: this does not work because f_NN is a tuple of nn
+            end)
     else
         error("ERROR: Unsupported number of dimensions: $dim")
     end
