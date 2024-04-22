@@ -170,3 +170,159 @@ fig = plot(layout = (3, 1), size = (800, 300))
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
 end
+
+# ****************
+#region
+#using NNlib, ComponentArrays, FFTW
+#
+#function create_model(chain, rng)
+#    ## Create parameter vector and empty state
+#    θ, state = Lux.setup(rng, chain)
+#
+#    ## Convert nested named tuples of arrays to a ComponentArray,
+#    ## which behaves like a long vector
+#    θ = ComponentArray(θ)
+#
+#    ## Convenience wrapper for empty state in input and output
+#    m(v, θ) = first(chain(v, θ, state))
+#
+#    ## Return model and initial parameters
+#    m, θ
+#end
+#struct FourierLayer{A,F} <: Lux.AbstractExplicitLayer
+#    kmax::Int
+#    cin::Int
+#    cout::Int
+#    σ::A
+#    init_weight::F
+#end
+#
+#FourierLayer(kmax, ch::Pair{Int,Int}; σ = identity, init_weight = glorot_uniform) =
+#    FourierLayer(kmax, first(ch), last(ch), σ, init_weight)
+#
+#length(methods(Lux.initialparameters))
+#
+#Lux.initialparameters(rng::AbstractRNG, (; kmax, cin, cout, init_weight)::FourierLayer) = (;
+#    spatial_weight = init_weight(rng, cout, cin),
+#    spectral_weights = init_weight(rng, kmax + 1, cout, cin, 2),
+#)
+#Lux.initialstates(::AbstractRNG, ::FourierLayer) = (;)
+#Lux.parameterlength((; kmax, cin, cout)::FourierLayer) =
+#    cout * cin + (kmax + 1) * 2 * cout * cin
+#Lux.statelength(::FourierLayer) = 0
+#
+### Pretty printing
+#function Base.show(io::IO, (; kmax, cin, cout, σ)::FourierLayer)
+#    print(io, "FourierLayer(", kmax)
+#    print(io, ", ", cin, " => ", cout)
+#    print(io, "; σ = ", σ)
+#    print(io, ")")
+#end
+#
+### One more method now
+#length(methods(Lux.initialparameters))
+#
+### This makes FourierLayers callable
+#function ((; kmax, cout, cin, σ)::FourierLayer)(x, params, state)
+#    nx = size(x, 1)
+#
+#    ## Destructure params
+#    ## The real and imaginary parts of R are stored in two separate channels
+#    W = params.spatial_weight
+#    W = reshape(W, 1, cout, cin)
+#    R = params.spectral_weights
+#    R = selectdim(R, 4, 1) .+ im .* selectdim(R, 4, 2)
+#
+#    ## Spatial part (applied point-wise)
+#    y = reshape(x, nx, 1, cin, :)
+#    y = sum(W .* y; dims = 3)
+#    y = reshape(y, nx, cout, :)
+#
+#    ## Spectral part (applied mode-wise)
+#    ##
+#    ## Steps:
+#    ##
+#    ## - go to complex-valued spectral space
+#    ## - chop off high wavenumbers
+#    ## - multiply with weights mode-wise
+#    ## - pad with zeros to restore original shape
+#    ## - go back to real valued spatial representation
+#    ikeep = 1:kmax+1
+#    nkeep = kmax + 1
+#    z = rfft(x, 1)
+#    z = z[ikeep, :, :]
+#    z = reshape(z, nkeep, 1, cin, :)
+#    z = sum(R .* z; dims = 3)
+#    z = reshape(z, nkeep, cout, :)
+#    z = vcat(z, zeros(nx ÷ 2 + 1 - kmax - 1, size(z, 2), size(z, 3)))
+#    z = irfft(z, nx, 1)
+#
+#    ## Outer layer: Activation over combined spatial and spectral parts
+#    ## Note: Even though high wavenumbers are chopped off in `z` and may
+#    ## possibly not be present in the input at all, `σ` creates new high
+#    ## wavenumbers. High wavenumber functions may thus be represented using a
+#    ## sequence of Fourier layers. In this case, the `y`s are the only place
+#    ## where information contained in high input wavenumbers survive in a
+#    ## Fourier layer.
+#    w = σ.(z .+ y)
+#
+#    ## Fourier layer does not modify state
+#    w, state
+#end
+#
+#
+#function create_fno(; channels, kmax, activations, rng, input_channels = (u -> u,))
+#    ## Add number of input channels
+#    channels = [length(input_channels); channels]
+#
+#    ## Model
+#    create_model(
+#        Chain(
+#            ## Create singleton channel
+#            #u -> reshape(u, size(u, 1), 1, size(u, 2)),
+#
+#            ## Create input channels
+#            u -> hcat(map(i -> i(u), input_channels)...),
+#
+#            ## Some Fourier layers
+#            (
+#                FourierLayer(kmax[i], channels[i] => channels[i+1]; σ = activations[i]) for
+#                i ∈ eachindex(kmax)
+#            )...,
+#
+#            ## Put channels in first dimension
+#            u -> permutedims(u, (2, 1, 3)),
+#
+#            ## Compress with a final dense layer
+#            Dense(channels[end] => 2 * channels[end], gelu),
+#            Dense(2 * channels[end] => 1; use_bias = false),
+#
+#            ## Put channels back after spatial dimension
+#            u -> permutedims(u, (2, 1, 3)),
+#
+#            ## Remove singleton channel
+#            u -> reshape(u, size(u, 1), size(u, 3)),
+#        ),
+#        rng,
+#    )
+#end
+#
+## ## Getting to business: Training and comparing closure models
+##
+## We now create a closure model. Note that the last activation is `identity`, as we
+## don't want to restrict the output values. We can inspect the structure in the
+## wrapped Lux `Chain`.
+#
+#
+#m_fno, θ_fno = create_fno(;
+#    channels = [5, 5, 5, 5],
+#    kmax = [16, 16, 16, 8],
+#    activations = [gelu, gelu, gelu, identity],
+#    #input_channels = (u -> u, u -> u .^ 2),
+#    input_channels = (u -> u,),
+#    rng,
+#)
+#m_fno.chain
+#
+#NN_u = m_fno.chain
+#endregion
