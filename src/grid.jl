@@ -25,4 +25,9 @@ Base.@kwdef struct Grid
     ny::Int = 0
     nz::Int = 0
     N::Int = nx * max(1, ny) * max(1, nz)
+    x::Union{Vector{Float32}, Vector{Float64}} = collect(0:dx:((nx - 1) * dx))
+    y::Union{Vector{Float32}, Vector{Float64}, Nothing} = dy == 0 ? nothing :
+                                                          collect(0:dy:((ny - 1) * dy))
+    z::Union{Vector{Float32}, Vector{Float64}, Nothing} = dz == 0 ? nothing :
+                                                          collect(0:dz:((nz - 1) * dz))
 end

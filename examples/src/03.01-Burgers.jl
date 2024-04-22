@@ -10,12 +10,6 @@ if CUDA.functional()
     const solver_algo = GPUTsit5()
 end
 
-# TODO: organize this example better (maybe split?)
-# what do we see here?
-# the a priori fitting works (low error), but the solver is not so good
-# Do we implement here Toby's approach?
-# yes but first we need to move large functions to the src folder!
-
 # # Burgers equations
 # In this example, we will solve the Burgers equation in using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
 # $$
@@ -28,12 +22,12 @@ end
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
 # So the first step is to define the grid that we are going to use.
 # We define a DNS and a LES
-import CoupledNODE: Grid
+include("./../../src/grid.jl")
 nux_dns = 1024
-dux_dns = 2π / (nux_dns + 1)
+dux_dns = 2π / nux_dns
 grid_u_dns = Grid(dim = 1, dx = dux_dns, nx = nux_dns)
 nux_les = 32
-dux_les = 2π / (nux_les + 1)
+dux_les = 2π / nux_les
 grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 
 # The following function constructs the right-hand side of the Burgers equation:
@@ -138,12 +132,6 @@ function generate_initial_conditions(
 end
 
 u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
-# To get the initial condition of the LES we filter the data already generated
-# TODO make the x array part of the grid structure
-xdns = range(0, stop = 2π, length = nux_dns + 1)
-xdns = xdns[1:(end - 1)]
-xles = range(0, stop = 2π, length = nux_les + 1)
-xles = xles[1:(end - 1)]
 
 # ### Filter
 using SparseArrays, Plots
@@ -156,7 +144,7 @@ kernel = gaussian
 ## Discrete filter matrix (with periodic extension and threshold for sparsity)
 Φ = sum(-1:1) do z
     z *= 2π
-    d = @. xles - xdns' - z
+    d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
     @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
 end
 Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
@@ -168,14 +156,14 @@ heatmap(Φ; yflip = true, xmirror = true, title = "Filter matrix")
 u0_les = Φ * u0_dns
 
 using Plots
-plot(xles, u0_les, layout = (3, 1), size = (800, 300),
+plot(grid_B_les[1].x, u0_les, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "u", linetype = :steppre)
-plot!(xdns, u0_dns, linetype = :steppre, label = "DNS")
+plot!(grid_B_dns[1].x, u0_dns, linetype = :steppre, label = "DNS")
 # Plot with periodicity to check if continuity is correct
 width = 2π
-xles2 = [xles; xles .+ width]
+xles2 = [grid_B_les[1].x; grid_B_les[1].x .+ width]
 u0_les2 = [u0_les; u0_les]
-xdns2 = [xdns; xdns .+ width]
+xdns2 = [grid_B_dns[1].x; grid_B_dns[1].x .+ width]
 u0_dns2 = [u0_dns; u0_dns]
 plot(xles2, u0_les2, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "u", linetype = :steppre)
@@ -187,7 +175,7 @@ plot(xles2[1:(end - 1)], diff(u0_les2, dims = 1), layout = (3, 1), size = (800, 
 plot!(xdns2[1:(end - 1)], diff(u0_dns2, dims = 1), linetype = :steppre, label = "DNS")
 
 # Create the right-hand side of the NODE
-# TODO: make this the src, but make it compatible with previous examples
+# TODO: is this compatible with previous examples?
 include("./../../src/NODE.jl")
 f_dns = create_f_CNODE(create_burgers_rhs, force_params, grid_B_dns; is_closed = false);
 f_les = create_f_CNODE(create_burgers_rhs, force_params, grid_B_les; is_closed = false);
@@ -204,9 +192,7 @@ plot(xles, outf_les, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "F", linetype = :steppre)
 plot!(xdns, outf_dns, linetype = :steppre, label = "DNS")
 # Plot with periodicity
-xdns2 = [xdns; xdns .+ width]
 outf_dns2 = [outf_dns; outf_dns]
-xles2 = [xles; xles .+ width]
 outf_les2 = [outf_les; outf_les]
 plot(xles2, outf_les2, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "F", linetype = :steppre)
@@ -316,161 +302,6 @@ ch_fno = [5, 5, 5, 5];
 kmax_fno = [16, 16, 16, 8];
 σ_fno = [gelu, gelu, gelu, identity];
 NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
-
-#region
-#using NNlib, ComponentArrays, FFTW
-#
-#function create_model(chain, rng)
-#    ## Create parameter vector and empty state
-#    θ, state = Lux.setup(rng, chain)
-#
-#    ## Convert nested named tuples of arrays to a ComponentArray,
-#    ## which behaves like a long vector
-#    θ = ComponentArray(θ)
-#
-#    ## Convenience wrapper for empty state in input and output
-#    m(v, θ) = first(chain(v, θ, state))
-#
-#    ## Return model and initial parameters
-#    m, θ
-#end
-#struct FourierLayer{A,F} <: Lux.AbstractExplicitLayer
-#    kmax::Int
-#    cin::Int
-#    cout::Int
-#    σ::A
-#    init_weight::F
-#end
-#
-#FourierLayer(kmax, ch::Pair{Int,Int}; σ = identity, init_weight = glorot_uniform) =
-#    FourierLayer(kmax, first(ch), last(ch), σ, init_weight)
-#
-#length(methods(Lux.initialparameters))
-#
-#Lux.initialparameters(rng::AbstractRNG, (; kmax, cin, cout, init_weight)::FourierLayer) = (;
-#    spatial_weight = init_weight(rng, cout, cin),
-#    spectral_weights = init_weight(rng, kmax + 1, cout, cin, 2),
-#)
-#Lux.initialstates(::AbstractRNG, ::FourierLayer) = (;)
-#Lux.parameterlength((; kmax, cin, cout)::FourierLayer) =
-#    cout * cin + (kmax + 1) * 2 * cout * cin
-#Lux.statelength(::FourierLayer) = 0
-#
-### Pretty printing
-#function Base.show(io::IO, (; kmax, cin, cout, σ)::FourierLayer)
-#    print(io, "FourierLayer(", kmax)
-#    print(io, ", ", cin, " => ", cout)
-#    print(io, "; σ = ", σ)
-#    print(io, ")")
-#end
-#
-### One more method now
-#length(methods(Lux.initialparameters))
-#
-### This makes FourierLayers callable
-#function ((; kmax, cout, cin, σ)::FourierLayer)(x, params, state)
-#    nx = size(x, 1)
-#
-#    ## Destructure params
-#    ## The real and imaginary parts of R are stored in two separate channels
-#    W = params.spatial_weight
-#    W = reshape(W, 1, cout, cin)
-#    R = params.spectral_weights
-#    R = selectdim(R, 4, 1) .+ im .* selectdim(R, 4, 2)
-#
-#    ## Spatial part (applied point-wise)
-#    y = reshape(x, nx, 1, cin, :)
-#    y = sum(W .* y; dims = 3)
-#    y = reshape(y, nx, cout, :)
-#
-#    ## Spectral part (applied mode-wise)
-#    ##
-#    ## Steps:
-#    ##
-#    ## - go to complex-valued spectral space
-#    ## - chop off high wavenumbers
-#    ## - multiply with weights mode-wise
-#    ## - pad with zeros to restore original shape
-#    ## - go back to real valued spatial representation
-#    ikeep = 1:kmax+1
-#    nkeep = kmax + 1
-#    z = rfft(x, 1)
-#    z = z[ikeep, :, :]
-#    z = reshape(z, nkeep, 1, cin, :)
-#    z = sum(R .* z; dims = 3)
-#    z = reshape(z, nkeep, cout, :)
-#    z = vcat(z, zeros(nx ÷ 2 + 1 - kmax - 1, size(z, 2), size(z, 3)))
-#    z = irfft(z, nx, 1)
-#
-#    ## Outer layer: Activation over combined spatial and spectral parts
-#    ## Note: Even though high wavenumbers are chopped off in `z` and may
-#    ## possibly not be present in the input at all, `σ` creates new high
-#    ## wavenumbers. High wavenumber functions may thus be represented using a
-#    ## sequence of Fourier layers. In this case, the `y`s are the only place
-#    ## where information contained in high input wavenumbers survive in a
-#    ## Fourier layer.
-#    w = σ.(z .+ y)
-#
-#    ## Fourier layer does not modify state
-#    w, state
-#end
-#
-#
-#function create_fno(; channels, kmax, activations, rng, input_channels = (u -> u,))
-#    ## Add number of input channels
-#    channels = [length(input_channels); channels]
-#
-#    ## Model
-#    create_model(
-#        Chain(
-#            ## Create singleton channel
-#            #u -> reshape(u, size(u, 1), 1, size(u, 2)),
-#
-#            ## Create input channels
-#            u -> hcat(map(i -> i(u), input_channels)...),
-#
-#            ## Some Fourier layers
-#            (
-#                FourierLayer(kmax[i], channels[i] => channels[i+1]; σ = activations[i]) for
-#                i ∈ eachindex(kmax)
-#            )...,
-#
-#            ## Put channels in first dimension
-#            u -> permutedims(u, (2, 1, 3)),
-#
-#            ## Compress with a final dense layer
-#            Dense(channels[end] => 2 * channels[end], gelu),
-#            Dense(2 * channels[end] => 1; use_bias = false),
-#
-#            ## Put channels back after spatial dimension
-#            u -> permutedims(u, (2, 1, 3)),
-#
-#            ## Remove singleton channel
-#            u -> reshape(u, size(u, 1), size(u, 3)),
-#        ),
-#        rng,
-#    )
-#end
-#
-## ## Getting to business: Training and comparing closure models
-##
-## We now create a closure model. Note that the last activation is `identity`, as we
-## don't want to restrict the output values. We can inspect the structure in the
-## wrapped Lux `Chain`.
-#
-#
-#m_fno, θ_fno = create_fno(;
-#    channels = [5, 5, 5, 5],
-#    kmax = [16, 16, 16, 8],
-#    activations = [gelu, gelu, gelu, identity],
-#    #input_channels = (u -> u, u -> u .^ 2),
-#    input_channels = (u -> u,),
-#    rng,
-#)
-#m_fno.chain
-#
-#NN_u = m_fno.chain
-#endregion
 
 # pack the NNs
 NNs = (NN_u,);
@@ -600,6 +431,7 @@ end
 # Let's try to fix this with a posteriori fitting:
 
 # ### A-posteriori fitting
+include("./../../src/loss_posteriori.jl")
 # First reset the NN
 NN_u_pos = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
 NNs_pos = (NN_u_pos,);
@@ -608,93 +440,6 @@ f_CNODE_pos = create_f_CNODE(
 θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos);
 f_CNODE_pos(all_u_les, θ_pos, st_pos)
 
-function create_randloss_MulDtO(
-        target, training_CNODE, st; nunroll, nintervals = 1,
-        noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
-    # TODO: there should be some check about the consistency of the input arguments
-    # Get the number of time steps 
-    d = ndims(target)
-    nt = size(target, d)
-    function randloss_MulDtO(θ)
-        # Compute the requested length of consecutive timesteps
-        # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0 
-        length_required = nintervals * (nunroll + 1) - noverlaps * (nintervals - 1)
-        # Zygote will select a random initial condition that can accomodate all the multishooting intervals
-        istart = Zygote.@ignore rand(1:(nt - length_required))
-        trajectory = Zygote.@ignore ArrayType(selectdim(target,
-            d,
-            istart:(istart + length_required)))
-        # and select a certain number of samples
-        trajectory = Zygote.@ignore trajectory[:, rand(1:size(trajectory, 2), nsamples), :]
-        # then return the loss for each multishooting set
-        loss_MulDtO_oneset(trajectory,
-            θ,
-            st,
-            training_CNODE,
-            nunroll = nunroll,
-            nintervals = nintervals,
-            noverlaps = noverlaps,
-            nsamples = nsamples,
-            λ_c = λ_c,
-            λ_l1 = λ_l1)
-    end
-end
-function loss_MulDtO_oneset(trajectory,
-        θ, st,
-        training_CNODE;
-        λ_c = 1e1,
-        λ_l1 = 1e1,
-        nunroll,
-        nintervals,
-        noverlaps,
-        nsamples = nsamples)
-    # Get the timesteps where the intervals start 
-    starting_points = [i == 0 ? 1 : i * (nunroll + 1 - noverlaps)
-                       for i in 0:(nintervals - 1)]
-    # Take all the time intervals and concatenate them in the batch dimension
-    list_tr = cat([trajectory[:, :, i:(i + nunroll)]
-                   for i in starting_points]...,
-        dims = 2)
-    # Get all the initial conditions 
-    list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
-        dims = 2)
-    # Use the differentiable solver to get the predictions
-    pred, target = predict_u_CNODE(list_starts, θ, st, training_CNODE, list_tr)
-    # the loss is the sum of the differences between the real trajectory and the predicted one
-    loss = sum(abs2, target[:, :, 2:end] .- pred[:, :, 2:end]) ./
-           sum(abs2, target[:, :, 2:end])
-
-    if λ_c > 0 && size(target, 3) == nunroll + 1
-        # //TODO check if the continuity term is correct
-        # Compute the continuity term by comparing end of one interval with the start of the next one
-        # (!) Remind that the trajectory is stored as: 
-        #   pred[grid, (nintervals*nsamples), nunroll+1]
-        # and we need to compare the last noverlaps points of an interval
-        pred_end = pred[:, :, (end - noverlaps + 1):end]
-        # with the first noverlaps points of the next interval EXCLUDING the initial condition 
-        # (which is already part of the loss function)
-        pred_start = pred[:, :, 2:(1 + noverlaps)]
-        continuity = 0
-        # loop over all the samples, which have been concatenated in dim 2
-        for s in 1:nsamples
-            # each sample contains nintervals, we need to shift the index by
-            s_shift = (s - 1) * nintervals
-            # loop over all the intervals for the sample (excluding the last one)
-            for i in 1:(nintervals - 1)
-                continuity += sum(abs,
-                    pred_end[:, s_shift + i] .- pred_start[:, s_shift + i + 1])
-            end
-        end
-    else
-        continuity = 0
-    end
-
-    return loss + (continuity * λ_c) + λ_l1 * norm(θ), nothing
-end
-function predict_u_CNODE(uv0, θ, st, training_CNODE, tg)
-    sol = Array(training_CNODE(uv0, θ, st)[1])
-    return sol[:, :, 1:nunroll], tg[:, :, 1:nunroll]
-end
 nunroll = 20
 nintervals = 5
 noverlaps = 1
@@ -715,7 +460,7 @@ myloss = create_randloss_MulDtO(all_u_les,
     noverlaps = noverlaps,
     nintervals = nintervals,
     nsamples = nsamples,
-    λ_c = 1e3,
+    λ_c = 0, ## TODO: TEST THIS!
     λ_l1 = 0);
 
 lhist = [];
@@ -756,17 +501,17 @@ fig = plot(layout = (3, 1), size = (800, 300))
     p1 = plot(xdns, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
     plot!(xles, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
-    plot!(xles, u_trained_test[:, 1, i], linetype = :steppre, label = "A-priori")
+    #plot!(xles, u_trained_test[:, 1, i], linetype = :steppre, label = "A-priori")
     plot!(xles, u_posteriori_test[:, 1, i], linetype = :steppre, label = "A-posteriori")
     p2 = plot(xdns, u_dns_test[:, 2, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
     plot!(xles, u_les_test[:, 2, i], linetype = :steppre, legend = false)
-    plot!(xles, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
+    #plot!(xles, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
     plot!(xles, u_posteriori_test[:, 2, i], linetype = :steppre, legend = false)
     p3 = plot(xdns, u_dns_test[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
     plot!(xles, u_les_test[:, 3, i], linetype = :steppre, legend = false)
-    plot!(xles, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
+    #plot!(xles, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
     plot!(xles, u_posteriori_test[:, 3, i], linetype = :steppre, legend = false)
     title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)

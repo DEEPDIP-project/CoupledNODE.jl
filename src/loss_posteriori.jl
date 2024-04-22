@@ -77,35 +77,9 @@ function loss_MulDtO_oneset_1(
 end
 
 # auxiliary function to solve the NeuralODE, given parameters p
-function predict_u_CNODE(uv0, θ, st, training_CNODE, tg)
+function predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
-    #tg_size = size(tg)
-    #println("sol size ", size(sol))
-    #println("tg size ", size(tg))
-    #println(sol[:,:,1] == tg[:,:,1])
-
-    ## handle unstable solver
-    #if any(isnan, sol)
-    #    # if some steps succesfully run, then use them for the loss
-    #    nok = 1
-    #    while any(isnan, sol[:, :, 1:nok])
-    #        nok += 1
-    #    end
-    #    if nok > 1
-    #        println("Unstability after ", nok, " steps")
-    #        tg = tg[:,:,1:nok]
-    #        sol = sol[:,:,1:nok]
-    #    else
-    #        # otherwise run the auxiliary solver
-    #        println("Using auxiliary solver ")
-    #        sol = Array(training_CNODE_2(uv0, θ, st)[1])
-    #        if any(isnan, sol)
-    #            println("ERROR: NaN detected in the prediction")
-    #            return fill(1e6 * sum(θ), tg_size)
-    #        end
-    #    end
-    #end
-    return sol, tg[:, :, 1:size(sol, 3)]
+    return sol[:, :, 1:nunroll], tg[:, :, 1:nunroll]
 end
 
 """
@@ -199,9 +173,10 @@ function loss_MulDtO_oneset(trajectory,
     list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
         dims = 2)
     # Use the differentiable solver to get the predictions
-    pred, list_tr = predict_u_CNODE(list_starts, θ, st, training_CNODE, list_tr)
+    pred, target = predict_u_CNODE(list_starts, θ, st, nunroll, training_CNODE, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
-    loss = sum(abs2, list_tr .- pred) ./ sum(abs2, list_tr)
+    loss = sum(abs2, target[:, :, 2:nunroll] .- pred[:, :, 2:nunroll]) ./
+           sum(abs2, target[:, :, 2:nunroll])
 
     if λ_c > 0 && size(list_tr, 3) == nunroll + 1
         # //TODO check if the continuity term is correct
