@@ -4,14 +4,15 @@
 function first_derivatives(u, Δx, Δy = 0.0f0, Δz = 0.0f0)
     dims = ndims(u) - 1 # Subtract 1 for the batch dimension
     if dims == 1
-        du_dx = zeros(size(u))
-        du_dx[2:(end - 1)] = (u[3:end] - u[1:(end - 2)]) / (2 * Δx)
-        du_dx[1] = (u[2] - u[end]) / (2 * Δx)
-        du_dx[end] = (u[1] - u[end - 1]) / (2 * Δx)
-        return du_dx
+        du_dx = similar(u)
+        du_dx[2:(end - 1), :] = (u[3:end, :] - u[1:(end - 2), :])
+        du_dx[1, :] = (u[2, :] - u[end, :])
+        du_dx[end, :] = (u[1, :] - u[end - 1, :])
+        return du_dx / (2 * Δx)
+        # TODO add : for sample dimension for 2D and 3D
     elseif dims == 2
-        du_dx = zeros(size(u))
-        du_dy = zeros(size(u))
+        du_dx = similar(u)
+        du_dy = similar(u)
 
         du_dx[2:(end - 1), :] = (u[3:end, :] - u[1:(end - 2), :]) / (2 * Δx)
         du_dx[1, :] = (u[2, :] - u[end, :]) / (2 * Δx)
@@ -23,9 +24,9 @@ function first_derivatives(u, Δx, Δy = 0.0f0, Δz = 0.0f0)
 
         return du_dx, du_dy
     elseif dims == 3
-        du_dx = zeros(size(u))
-        du_dy = zeros(size(u))
-        du_dz = zeros(size(u))
+        du_dx = similar(u)
+        du_dy = similar(u)
+        du_dz = similar(u)
 
         du_dx[2:(end - 1), :, :] = (u[3:end, :, :] - u[1:(end - 2), :, :]) / (2 * Δx)
         du_dx[1, :, :] = (u[2, :, :] - u[end, :, :]) / (2 * Δx)

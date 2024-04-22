@@ -76,61 +76,6 @@ function loss_MulDtO_oneset_1(
     return loss, nothing
 end
 
-"""
-    mean_squared_error(f, st, x, y, θ, λ)
-
-Random a priori loss function. Use this function to train the closure term to reproduce the right hand side.
-
-# Arguments:
-- `f`: Function that represents the model.
-- `st`: State of the model.
-- `x`: Input data.
-- `y`: Target data.
-- `θ`: Parameters of the model.
-- `λ`: Regularization parameter.
-
-# Returns:
-- `total_loss`: Mean squared error loss.
-"""
-function mean_squared_error(f, st, x, y, θ, λ)
-    prediction = Array(f(x, θ, st)[1])
-    total_loss = sum(abs2, prediction - y) / sum(abs2, y)
-    return total_loss + λ * norm(θ, 1), nothing
-end
-
-"""
-    create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
-
-Create a randomized loss function that compares the derivatives.
-This function creates a randomized loss function derivative by selecting a subset of the data. This is done because using the entire dataset at each iteration would be too expensive.
-
-# Arguments
-- `GS_data`: The input data.
-- `FG_target`: The target data.
-- `f`: The model function.
-- `st`: The model state.
-- `nuse`: The number of samples to use for the loss function. Defaults to the size of `GS_data`.
-- `λ`: The regularization parameter. Defaults to 0.
-
-# Returns
-A function `randloss` that computes the mean squared error loss using the selected subset of data.
-"""
-function create_randloss_derivative(GS_data,
-        FG_target,
-        f,
-        st;
-        nuse = size(GS_data, 2),
-        λ = 0)
-    d = ndims(GS_data)
-    nsample = size(GS_data, d)
-    function randloss(θ)
-        i = Zygote.@ignore sort(shuffle(1:nsample)[1:nuse])
-        x_use = Zygote.@ignore ArrayType(selectdim(GS_data, d, i))
-        y_use = Zygote.@ignore ArrayType(selectdim(FG_target, d, i))
-        mean_squared_error(f, st, x_use, y_use, θ, λ)
-    end
-end
-
 # auxiliary function to solve the NeuralODE, given parameters p
 function predict_u_CNODE(uv0, θ, st, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
