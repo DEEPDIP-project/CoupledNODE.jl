@@ -43,7 +43,6 @@ u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
 
-
 # ## Energy
 
 # PDEs like the Burgers equation conserve energy. If we discretize the Burgers equation the energy conservation takes the following form:
