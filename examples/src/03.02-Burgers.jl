@@ -37,29 +37,12 @@ F_les = create_burgers_rhs(grid_B_les, force_params)
 # and generate some initial conditions
 u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
 
-# ### Filter
-using SparseArrays, Plots
-# To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
+# Set the kernel size and get the gaussian filter
 ΔΦ = 5 * grid_B_les[1].dx
-## Filter kernel
-gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
-top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
-kernel = gaussian
-## Discrete filter matrix (with periodic extension and threshold for sparsity)
-Φ = sum(-1:1) do z
-    z *= 2π
-    d = @. xles - xdns' - z
-    @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
-end
-Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
-Φ = sparse(Φ)
-dropzeros!(Φ)
-heatmap(Φ; yflip = true, xmirror = true, title = "Filter matrix")
-
+Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
 
-# TODO: Filter should be generated from a function
 
 # ## Energy
 

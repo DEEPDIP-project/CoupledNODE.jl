@@ -136,20 +136,29 @@ u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
 # ### Filter
 using SparseArrays, Plots
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-ΔΦ = 5 * grid_B_les[1].dx
-## Filter kernel
-gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
-top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
-kernel = gaussian
-## Discrete filter matrix (with periodic extension and threshold for sparsity)
-Φ = sum(-1:1) do z
-    z *= 2π
-    d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
-    @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
+function create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, kernel_type)
+    ## Filter kernels
+    gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
+    top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
+
+    ## Choose kernel
+    kernel = kernel_type == "gaussian" ? gaussian : top_hat
+
+    ## Discrete filter matrix (with periodic extension and threshold for sparsity)
+    Φ = sum(-1:1) do z
+        z *= 2π
+        d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
+        @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
+    end
+    Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
+    Φ = sparse(Φ)
+    dropzeros!(Φ)
+    return Φ
 end
-Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
-Φ = sparse(Φ)
-dropzeros!(Φ)
+
+# Usage:
+ΔΦ = 5 * grid_B_les[1].dx
+Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 heatmap(Φ; yflip = true, xmirror = true, title = "Filter matrix")
 
 # Apply the filter to the initial condition
@@ -221,7 +230,6 @@ u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 u_les = Array(les(u0_les, θ_les, st_les)[1]);
 
 # Plot 
-# (this fail because of the LES, but this is actually the point of the example)
 using Plots
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
@@ -248,7 +256,7 @@ end
 # ## A-priori fitting
 
 # Generate data
-nsamples = 50
+nsamples = 500
 # since there are some ill initial conditions, we generate the data in batches and concatenate them
 all_u_dns = zeros(size(u_dns)[1], nsamples, size(u_dns)[3])
 batch_size = 10
