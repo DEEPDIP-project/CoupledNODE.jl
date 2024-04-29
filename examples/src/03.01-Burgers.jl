@@ -30,20 +30,9 @@ nux_les = 32
 dux_les = 2π / nux_les
 grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 
-# The following function constructs the right-hand side of the Burgers equation:
-import CoupledNODE: Laplacian, first_derivatives
-using Zygote
-function create_burgers_rhs_central(grids, force_params)
-    ν = force_params[1]
+include("./../../src/Burgers.jl")
 
-    function Force(u)
-        F = Zygote.@ignore -u .* first_derivatives(u, grids[1].dx) +
-                           ν * Laplacian(u, grids[1].dx^2)
-        return F
-    end
-    return Force
-end
-# However the one above is not  a good discretization for
+# However a central method is not  a good discretization for
 # dealing with shocks. Jameson proposes the following scheme instead:
 #
 # $$
@@ -57,22 +46,6 @@ end
 # where $ϕ_{n + 1 / 2}$ is the numerical flux from $u_n$ to $u_{n + 1}$
 # and $\mu_{n + 1 / 2}$ includes the original viscosity and a numerical viscosity.
 # This prevents oscillations near shocks.
-#
-# We can implement this as follows:
-function create_burgers_rhs(grids, force_params)
-    ν = force_params[1]
-    Δx = grids[1].dx
-
-    function Force(u)
-        # circshift handles periodic boundary conditions
-        u₊ = circshift(u, -1)
-        μ₊ = @. ν + Δx * abs(u + u₊) / 4 - Δx * (u₊ - u) / 12
-        ϕ₊ = @. (u^2 + u * u₊ + u₊^2) / 6 - μ₊ * (u₊ - u) / Δx
-        ϕ₋ = circshift(ϕ₊, 1)
-        return @. -(ϕ₊ - ϕ₋) / Δx
-    end
-    return Force
-end
 
 # Let's set the parameters for the Burgers equation
 ν = 0.001f0
@@ -113,49 +86,11 @@ F_les = create_burgers_rhs(grid_B_les, force_params)
 # Since the same Fourier basis can be reused multiple times, we write a
 # function that creates multiple initial condition samples in one go. Each
 # discrete $u_0$ vector is stored as a column in the resulting matrix.
-
-function generate_initial_conditions(
-        nx,
-        nsample;
-        kmax = 16,
-        decay = k -> (1 + abs(k))^(-6 / 5)
-)
-    ## Fourier basis
-    basis = [exp(2π * im * k * x / nx) for x in 1:nx, k in (-kmax):kmax]
-
-    ## Fourier coefficients with random phase and amplitude
-    c = [randn() * exp(-2π * im * rand()) * decay(k) for k in (-kmax):kmax, _ in 1:nsample]
-
-    ## Random data samples (real-valued)
-    ## Note the matrix product for summing over $k$
-    real.(basis * c)
-end
-
 u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
 
 # ### Filter
 using SparseArrays, Plots
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-function create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, kernel_type)
-    ## Filter kernels
-    gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
-    top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
-
-    ## Choose kernel
-    kernel = kernel_type == "gaussian" ? gaussian : top_hat
-
-    ## Discrete filter matrix (with periodic extension and threshold for sparsity)
-    Φ = sum(-1:1) do z
-        z *= 2π
-        d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
-        @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
-    end
-    Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
-    Φ = sparse(Φ)
-    dropzeros!(Φ)
-    return Φ
-end
-
 # Usage:
 ΔΦ = 5 * grid_B_les[1].dx
 Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
@@ -197,9 +132,9 @@ rng = Random.default_rng()
 # Plot the forces
 outf_dns = Array(f_dns(u0_dns, θ_dns, st_dns)[1])
 outf_les = Array(f_les(u0_les, θ_les, st_les)[1])
-plot(xles, outf_les, layout = (3, 1), size = (800, 300),
+plot(grid_B_les[1].x, outf_les, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "F", linetype = :steppre)
-plot!(xdns, outf_dns, linetype = :steppre, label = "DNS")
+plot!(grid_B_dns[1].x, outf_dns, linetype = :steppre, label = "DNS")
 # Plot with periodicity
 outf_dns2 = [outf_dns; outf_dns]
 outf_les2 = [outf_les; outf_les]
@@ -234,15 +169,15 @@ using Plots
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
 @gif for i in 1:2:size(u_dns, 3)
-    p1 = plot(xdns, u_dns[:, 1, i], xlabel = "x", ylabel = "u",
+    p1 = plot(grid_B_dns[1].x, u_dns[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
-    plot!(xles, u_les[:, 1, i], linetype = :steppre, label = "LES")
-    p2 = plot(xdns, u_dns[:, 2, i], xlabel = "x", ylabel = "u",
+    plot!(grid_B_les[1].x, u_les[:, 1, i], linetype = :steppre, label = "LES")
+    p2 = plot(grid_B_dns[1].x, u_dns[:, 2, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_les[:, 2, i], linetype = :steppre, legend = false)
-    p3 = plot(xdns, u_dns[:, 3, i], xlabel = "x", ylabel = "u",
+    plot!(grid_B_les[1].x, u_les[:, 2, i], linetype = :steppre, legend = false)
+    p3 = plot(grid_B_dns[1].x, u_dns[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_les[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_les[:, 3, i], linetype = :steppre, legend = false)
     title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
@@ -257,6 +192,7 @@ end
 
 # Generate data
 nsamples = 500
+nsamples = 50
 # since there are some ill initial conditions, we generate the data in batches and concatenate them
 all_u_dns = zeros(size(u_dns)[1], nsamples, size(u_dns)[3])
 batch_size = 10
@@ -265,7 +201,7 @@ for i in 1:n_batches
     good = 0
     all_u_dns_batch = zeros(size(u_dns)[1], batch_size, size(u_dns)[3])
     while good < size(u_dns)[3]
-        println("Regenerating batch $(i) (size: $(good) < $(size(u_dns)[3]))")
+        println("Generating batch $(i) (size: $(good) < $(size(u_dns)[3]))")
         all_u0_dns = generate_initial_conditions(grid_B_dns[1].nx, batch_size)
         all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
         good = size(all_u_dns_batch)[3]
@@ -288,19 +224,22 @@ all_u_les = reshape(all_u_les_flat, nux_les, size(all_u_dns)[2:end]...)
 target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
 
 # Compare LES force vs interpolated DNS force
-plot(xles, target_F[:, 1, 1], label = " Filtered DNS",
+plot(grid_B_les[1].x, target_F[:, 1, 1], label = " Filtered DNS",
     xlabel = "x", ylabel = "F", linetype = :steppre)
-plot!(xdns, all_F_dns[:, 1, 1], label = "DNS", linetype = :steppre)
-plot!(xles, F_les(all_u_les[:, 1, :])[:, 1], label = "LES", linetype = :steppre)
+plot!(grid_B_dns[1].x, all_F_dns[:, 1, 1], label = "DNS", linetype = :steppre)
+plot!(grid_B_les[1].x, F_les(all_u_les[:, 1, :])[:, 1], label = "LES", linetype = :steppre)
 # This is what we are trying to learn
-plot(xles, target_F[:, 1, 1] - F_les(all_u_les[:, 1, :])[:, 1], xlabel = "x",
+plot(grid_B_les[1].x, target_F[:, 1, 1] - F_les(all_u_les[:, 1, :])[:, 1], xlabel = "x",
     ylabel = "Commutator error", linetype = :steppre, legend = false)
 i = 3
-plot!(xles, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1], linetype = :steppre)
+plot!(grid_B_les[1].x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
+    linetype = :steppre)
 i = 4
-plot!(xles, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1], linetype = :steppre)
+plot!(grid_B_les[1].x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
+    linetype = :steppre)
 i = 5
-plot!(xles, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1], linetype = :steppre)
+plot!(grid_B_les[1].x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
+    linetype = :steppre)
 
 # Now create the the Neural Network
 #import CoupledNODE: create_fno_model
@@ -410,21 +349,24 @@ u_dns_test_filtered = reshape(
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
 @gif for i in 1:2:size(u_trained_test, 3)
-    p1 = plot(xdns, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
+    p1 = plot(grid_B_dns[1].x, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
-    plot!(xles, u_dns_test_filtered[:, 1, i], linetype = :steppre, label = "Filtered DNS")
-    plot!(xles, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
-    plot!(xles, u_trained_test[:, 1, i], linetype = :steppre, label = "Trained")
-    p2 = plot(xdns, u_dns_test[:, 2, i], xlabel = "x", ylabel = "u",
+    plot!(grid_B_les[1].x, u_dns_test_filtered[:, 1, i],
+        linetype = :steppre, label = "Filtered DNS")
+    plot!(grid_B_les[1].x, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
+    plot!(grid_B_les[1].x, u_trained_test[:, 1, i], linetype = :steppre, label = "Trained")
+    p2 = plot(grid_B_dns[1].x, u_dns_test[:, 2, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_dns_test_filtered[:, 2, i], linetype = :steppre, legend = false)
-    plot!(xles, u_les_test[:, 2, i], linetype = :steppre, legend = false)
-    plot!(xles, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
-    p3 = plot(xdns, u_dns_test[:, 3, i], xlabel = "x", ylabel = "u",
+    plot!(
+        grid_B_les[1].x, u_dns_test_filtered[:, 2, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_les_test[:, 2, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
+    p3 = plot(grid_B_dns[1].x, u_dns_test[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_dns_test_filtered[:, 3, i], linetype = :steppre, legend = false)
-    plot!(xles, u_les_test[:, 3, i], linetype = :steppre, legend = false)
-    plot!(xles, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
+    plot!(
+        grid_B_les[1].x, u_dns_test_filtered[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_les_test[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
     title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
@@ -506,21 +448,22 @@ u_posteriori_test = Array(trained_les(u0_test_les, θ_pos, st_pos)[1])
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
 @gif for i in 1:2:size(u_trained_test, 3)
-    p1 = plot(xdns, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
+    p1 = plot(grid_B_dns[1].x, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
-    plot!(xles, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
-    #plot!(xles, u_trained_test[:, 1, i], linetype = :steppre, label = "A-priori")
-    plot!(xles, u_posteriori_test[:, 1, i], linetype = :steppre, label = "A-posteriori")
-    p2 = plot(xdns, u_dns_test[:, 2, i], xlabel = "x", ylabel = "u",
+    plot!(grid_B_les[1].x, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
+    #plot!(grid_B_les[1].x, u_trained_test[:, 1, i], linetype = :steppre, label = "A-priori")
+    plot!(grid_B_les[1].x, u_posteriori_test[:, 1, i],
+        linetype = :steppre, label = "A-posteriori")
+    p2 = plot(grid_B_dns[1].x, u_dns_test[:, 2, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_les_test[:, 2, i], linetype = :steppre, legend = false)
-    #plot!(xles, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
-    plot!(xles, u_posteriori_test[:, 2, i], linetype = :steppre, legend = false)
-    p3 = plot(xdns, u_dns_test[:, 3, i], xlabel = "x", ylabel = "u",
+    plot!(grid_B_les[1].x, u_les_test[:, 2, i], linetype = :steppre, legend = false)
+    #plot!(grid_B_les[1].x, u_trained_test[:, 2, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_posteriori_test[:, 2, i], linetype = :steppre, legend = false)
+    p3 = plot(grid_B_dns[1].x, u_dns_test[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
-    plot!(xles, u_les_test[:, 3, i], linetype = :steppre, legend = false)
-    #plot!(xles, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
-    plot!(xles, u_posteriori_test[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_les_test[:, 3, i], linetype = :steppre, legend = false)
+    #plot!(grid_B_les[1].x, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_B_les[1].x, u_posteriori_test[:, 3, i], linetype = :steppre, legend = false)
     title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)

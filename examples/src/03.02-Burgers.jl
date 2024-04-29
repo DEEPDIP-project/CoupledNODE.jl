@@ -24,9 +24,7 @@ dux_les = 2π / nux_les
 grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 
 # Construct the right-hand side of the Burgers equation
-import CoupledNODE: Laplacian, first_derivatives
-using Zygote
-import ("./03.01-Burgers.jl")
+include("./../../src/Burgers.jl")
 ν = 0.001f0
 force_params = (ν,)
 grid_B_dns = (grid_u_dns,)
@@ -42,6 +40,22 @@ u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
 Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
+transpose(Φ)
+# ### Subgrid scale (SGS) 
+# The Subgrid scale (SGS) is defined as the difference between the DNS and the reconstructed LES.
+# Let's show an example of the SGS term for the Burgers equation:
+# To get the erconstruction operator I need the cell volume ω and the grid volume Ω
+ω = 1.0 / grid_B_dns[1].dx
+Ω = 2π
+R = 1 / ω * transpose(Φ) * Ω
+# NOT ok! fix R
+u0_rec = R * u0_les
+sgs = u0_dns - u0_rec
+plot(grid_B_dns[1].x, u0_dns, label = "DNS", title = "Subgrid scale (SGS)",
+    xlabel = "x", ylabel = "u", legend = :topleft)
+plot!(grid_B_les[1].x, u0_les, label = "LES")
+plot!(grid_B_dns[1].x, u0_rec, label = "Rec-LES")
+plot!(grid_B_dns[1].x, sgs, label = "SGS")
 
 # ## Energy
 
