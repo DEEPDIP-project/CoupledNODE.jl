@@ -10,5 +10,7 @@ include("NODE.jl")
 include("FNO.jl")
 include("derivatives.jl")
 include("utils.jl")
+# modules for the examples
+include("Burgers.jl")
 
 end # module CoupledNODE
