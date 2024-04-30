@@ -33,28 +33,36 @@ F_dns = create_burgers_rhs(grid_B_dns, force_params)
 F_les = create_burgers_rhs(grid_B_les, force_params)
 
 # and generate some initial conditions
-u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
+u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1);
 
 # Set the kernel size and get the gaussian filter
 ΔΦ = 5 * grid_B_les[1].dx
 Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
-transpose(Φ)
+
 # ### Subgrid scale (SGS) 
 # The Subgrid scale (SGS) is defined as the difference between the DNS and the reconstructed LES.
 # Let's show an example of the SGS term for the Burgers equation:
-# To get the erconstruction operator I need the cell volume ω and the grid volume Ω
-ω = 1.0 / grid_B_dns[1].dx
-Ω = 2π
+# To get the reconstruction operator I need the small cell volume ω and the large cell volume Ω (nha that is only for average)
+ω = grid_B_dns[1].dx
+Ω = grid_B_les[1].dx
 R = 1 / ω * transpose(Φ) * Ω
+# is this the identity?
+using LinearAlgebra
+isapprox(R * Φ, Matrix(I, size(R * Φ)), atol = 1e-5)
+isapprox(Φ * R, Matrix(I, size(Φ * R)), atol = 1e-5)
+heatmap(R)
+heatmap(Φ)
+heatmap(Φ * R)
 # NOT ok! fix R
 u0_rec = R * u0_les
 sgs = u0_dns - u0_rec
-plot(grid_B_dns[1].x, u0_dns, label = "DNS", title = "Subgrid scale (SGS)",
-    xlabel = "x", ylabel = "u", legend = :topleft)
-plot!(grid_B_les[1].x, u0_les, label = "LES")
-plot!(grid_B_dns[1].x, u0_rec, label = "Rec-LES")
+using LaTeXStrings
+plot(grid_B_dns[1].x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
+    xlabel = "x", ylabel = L"u", legend = :topleft)
+plot!(grid_B_les[1].x, u0_les, label = L"\bar{u}=\mathbf{\Phi} u")
+plot!(grid_B_dns[1].x, u0_rec, label = L"\mathbf{R} \bar{u}")
 plot!(grid_B_dns[1].x, sgs, label = "SGS")
 
 # ## Energy
@@ -72,4 +80,75 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # \end{equation}
 # $$
 # and $\bm{\omega} \in \mathbb{R}^{N\times N}$ is the grid volumes of the diagonal elements.
-# In a dissipative system as Burgers equation, the energy will decrease over time. We can compute the energy of the system at each time step and plot it to verify that the energy is decreasing.
+# In a dissipative system as Burgers equation, the energy will decrease over time, so the condition becomes actually
+# $$
+# \begin{equation}
+# \frac{dE}{dt} = \bm{u}^T \bm{\omega} f(\bm{u}) \le 0.
+# \end{equation}
+# $$
+
+# If we define our filtering operation to return the following sgs:
+# $$
+# \bm{u}' := \bm{u} - \bm{R} \bar{\bm{u}},
+# $$ 
+# then, the filtering transform the energy constraint as follows:
+# $$
+# \begin{equation}
+# \frac{dE}{dt} = \bar{\bm{u}}^T \bm{\Omega} \frac{d\bar{\bm{u}}}{dt} + \left( \bm{u}'\right)^T \bm{\omega} \frac{d\bm{u}'}{dt} \le 0,
+# \end{equation}
+# $$
+# where the energy is now decomposed as 
+# $$
+# \begin{align}
+# E &=  \frac{1}{2} \bar{\bm{u}}^T \bm{\omega} \bar{\bm{u}} +\frac{1}{2} \left(\bm{u}'\right)^T \bm{\omega} \bm{u}'\\
+# &:= \bar{E} + E',
+# \end{align}
+# $$
+# which are the resovled and the sgs energy terms, respectively.
+
+# However, we do not want to handle the sgs term explicitly, because it lives on the fine grid. So instead we compress it using a linear filter $\bm{T} \in \mathbb{R}^{M \times N}$ introducing 
+# $$
+# \bm{s} = \bm{T} \bm{u}',
+# $$
+# which now represents the sgs as $\bm{s} \in \mathbb{R}^{M}$.
+
+# Then the energy conservation becomes
+# $$
+# \begin{equation}
+# \frac{dE}{dt} = \bar{\bm{u}}^T \bm{\Omega} \frac{d\bar{\bm{u}}}{dt} +  \bm{s}^T \bm{\Omega} \frac{d\bm{s}}{dt} \le 0,
+# \end{equation}
+# $$
+# where 
+# $$
+# \begin{equation}
+# \frac{d\bm{s}}{dt} = \bm{T} \frac{d\bm{u}'}{dt}.
+# \end{equation}
+# $$
+
+# ### Plot the energy
+import DiffEqFlux: NeuralODE
+include("./../../src/NODE.jl")
+f_dns = create_f_CNODE(create_burgers_rhs, force_params, grid_B_dns; is_closed = false);
+using Random, LuxCUDA, Lux
+Random.seed!(123)
+rng = Random.default_rng()
+θ_dns, st_dns = Lux.setup(rng, f_dns);
+t_shock = 10.0f0
+dt_dns = 0.001f0
+trange_burn = (0.0f0, t_shock)
+saveat_shock = 0.01f0
+dns = NeuralODE(f_dns,
+    trange_burn,
+    solver_algo,
+    adaptive = false,
+    dt = dt_dns,
+    saveat = saveat_shock);
+u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
+# Drop sample dimension
+u_dns = u_dns[:, 1, :]
+u_filt = [Φ * u_dns[:, i] for i in 1:size(u_dns, 3)]
+u_dns .^ 2
+
+E_dns = sum(u_dns .^ 2, 1) * grid_B_dns[1].dx / 2
+E_filt = sum(u_filt .^ 2, 1) * grid_B_les[1].dx / 2
+plot()
