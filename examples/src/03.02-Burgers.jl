@@ -37,6 +37,7 @@ u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1);
 
 # Set the kernel size and get the gaussian filter
 ΔΦ = 5 * grid_B_les[1].dx
+Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "hat")
 Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
@@ -48,6 +49,8 @@ u0_les = Φ * u0_dns
 ω = grid_B_dns[1].dx
 Ω = grid_B_les[1].dx
 R = 1 / ω * transpose(Φ) * Ω
+# Actually this is the correct way to construct the R operator
+R = transpose(Φ) * inv(Matrix(Φ * transpose(Φ)))
 # is this the identity?
 using LinearAlgebra
 isapprox(R * Φ, Matrix(I, size(R * Φ)), atol = 1e-5)
@@ -146,9 +149,58 @@ dns = NeuralODE(f_dns,
 u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 # Drop sample dimension
 u_dns = u_dns[:, 1, :]
-u_filt = [Φ * u_dns[:, i] for i in 1:size(u_dns, 3)]
-u_dns .^ 2
+u_filt = Φ * u_dns
 
-E_dns = sum(u_dns .^ 2, 1) * grid_B_dns[1].dx / 2
-E_filt = sum(u_filt .^ 2, 1) * grid_B_les[1].dx / 2
-plot()
+E_dns = sum(u_dns .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+E_filt = sum(u_filt .^ 2, dims = 1) * grid_B_les[1].dx / 2
+
+plot(E_dns[1, :], label = L"E", title = "Energy",
+    xlabel = "Time", ylabel = "Energy")
+plot!(E_filt[1, :], label = L"\bar{E}")
+
+# Get the sgs
+u_prime = u_dns - R * u_filt
+# and do svd 
+F = svd(u_prime)
+# [...Toby does this...]
+# Is it worth it compared to PCA?
+
+# or PCA
+using MultivariateStats
+# as a test I get the PCA of a random half of the timesteps
+ndata = size(u_prime, 2)
+split_idx = Int(floor(0.9 * ndata))
+permuted_idxs = randperm(ndata)
+train_idxs = permuted_idxs[1:split_idx]
+test_idxs = permuted_idxs[(split_idx + 1):end]
+train_data = u_prime[:, train_idxs]
+test_data = u_prime[:, test_idxs]
+# Fit PCA
+M = fit(PCA, train_data; maxoutdim = 32)
+plot(M.prinvars, label = "PCA explained variance")
+hline!([0.05])
+# And test its ability to reconstruct an unseen datapoint
+test_reduced = predict(M, test_data)
+test_reconstructed = reconstruct(M, test_reduced)
+print("Reconstruction error: ", norm(test_data - test_reconstructed))
+plot(grid_B_dns[1].x, test_data[:, 1], label = "Original")
+plot!(grid_B_dns[1].x, test_reconstructed[:, 1], label = "Reconstructed")
+
+# Compare energy predicted with PCA
+E_prime = sum(u_prime .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+u_pca = predict(M, u_prime)
+E_pca = sum(u_pca .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+plot(E_prime, E_pca, title = "Energy SGS", legend = false,
+    xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
+
+finite_inds = isfinite.(E_prime) .& isfinite.(E_pca)
+E_prime_finite = E_prime[finite_inds]
+E_pca_finite = E_pca[finite_inds]
+
+scatter(E_prime_finite, E_pca_finite, title = "Energy SGS", legend = false,
+    xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
+
+# Other tests to look at the SGS ???
+
+# Do the LES + sgs
+# to train the sgs part i will do the pca of u' computed exactly
