@@ -249,7 +249,7 @@ target_sgs = reshape(target_sgs_flat, sgs_size, size(target_sgs_flat)[2:end]...)
 target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(target_F_sgs_flat)[2:end]...);
 # concatenate input and target
 all_in = vcat(all_u_les_flat, target_sgs)
-target = (target_F, target_F_sgs)
+target = vcat(target_F_flat, target_F_sgs)
 
 # Now create the the Neural Network
 #import CoupledNODE: create_fno_model
@@ -274,8 +274,80 @@ grids = (grid_u_les, grid_s)
 # Use it to create the cnode
 include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE(
-    (F_les, (u, v) -> v .* 0), grids, NNs; is_closed = false)
+    (F_les, (u, v) -> v .* 0), grids, NNs; is_closed = true)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
-f_CNODE(all_in, θ, st)
+f_CNODE(all_in, θ, st)[1]
+
+# test this F to integrate time
+import DiffEqFlux: NeuralODE
+dt = 0.001f0
+trange = (0.0f0, 10.0f0)
+saveat_shock = 0.01f0
+tr = NeuralODE(f_CNODE,
+    trange,
+    solver_algo,
+    adaptive = false,
+    dt = dt,
+    saveat = saveat_shock);
+u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1);
+u0_les = Φ * u0_dns
+s0 = predict(M, u0_dns - R * u0_les)
+u_tr = Array(tr(vcat(u0_les, s0), θ, st)[1]);
+u_tr
+using Plots
+anim = Animation()
+fig = plot(layout = (2, 1), size = (500, 300))
+@gif for i in 1:2:size(u_tr, 3)
+    u = u_tr[1:32, 1, i]
+    s = u_tr[33:end, 1, i]
+    p1 = plot(grid_B_les[1].x, u, xlabel = "x", ylabel = "u",
+        linetype = :steppre, label = "LES")
+    p2 = plot(grid_s.x, s, xlabel = "x", ylabel = "s",
+        linetype = :steppre, label = "SGS")
+    title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
+    fig = plot(p1, p2, layout = (2, 1), title = title)
+    frame(anim, fig)
+end
+
+include("./../../src/loss_priori.jl")
+myloss = create_randloss_derivative(all_in,
+    target,
+    f_CNODE,
+    st;
+    nuse = 1024,
+    λ = 0,
+    λ_c = 0);
+
+# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
+lhist = [];
+## Initialize and trigger the compilation of the model
+using ComponentArrays
+pinit = ComponentArrays.ComponentArray(θ);
+print(myloss(pinit));
+## [!] Check that the loss does not get type warnings, otherwise it will be slower
+
+# We transform the NeuralODE into an optimization problem
+## Select the autodifferentiation type
+import OptimizationOptimisers: Optimization
+adtype = Optimization.AutoZygote();
+optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
+optprob = Optimization.OptimizationProblem(optf, pinit);
+
+# Select the training algorithm:
+# In the previous example we have used a classic gradient method like Adam:
+import OptimizationOptimisers: OptimiserChain, Adam, ClipNorm
+algo = OptimiserChain(Adam(1.0e-3), ClipNorm(1));
+
+# ### Train the CNODE
+import CoupledNODE: callback
+# switch to train mode to enable dropout
+Lux.trainmode
+result_neuralode = Optimization.solve(optprob,
+    algo;
+    callback = callback,
+    maxiters = 300);
+pinit = result_neuralode.u;
+θ = pinit;
+optprob = Optimization.OptimizationProblem(optf, pinit);
