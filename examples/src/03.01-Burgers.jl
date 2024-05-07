@@ -121,8 +121,8 @@ plot!(xdns2[1:(end - 1)], diff(u0_dns2, dims = 1), linetype = :steppre, label = 
 # Create the right-hand side of the NODE
 # TODO: is this compatible with previous examples?
 include("./../../src/NODE.jl")
-f_dns = create_f_CNODE(create_burgers_rhs, force_params, grid_B_dns; is_closed = false);
-f_les = create_f_CNODE(create_burgers_rhs, force_params, grid_B_les; is_closed = false);
+f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
+f_les = create_f_CNODE((F_les,), grid_B_les; is_closed = false);
 using Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
@@ -255,8 +255,7 @@ NNs = (NN_u,);
 
 # Use it to create the cnode
 include("./../../src/NODE.jl")
-f_CNODE = create_f_CNODE(
-    create_burgers_rhs, force_params, grid_B_les, NNs; is_closed = true)
+f_CNODE = create_f_CNODE((F_les,), grid_B_les, NNs; is_closed = true)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
@@ -299,7 +298,7 @@ Lux.trainmode
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
-    maxiters = 1000);
+    maxiters = 300);
 pinit = result_neuralode.u;
 θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
@@ -386,7 +385,7 @@ include("./../../src/loss_posteriori.jl")
 NN_u_pos = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
 NNs_pos = (NN_u_pos,);
 f_CNODE_pos = create_f_CNODE(
-    create_burgers_rhs, force_params, grid_B_les, NNs_pos; is_closed = true)
+    (F_les,), grid_B_les, NNs_pos; is_closed = true)
 θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos);
 f_CNODE_pos(all_u_les, θ_pos, st_pos)
 
@@ -473,20 +472,3 @@ if isdir("./plots")
 else
     gif(anim, "examples/plots/03.01_Burgers.gif", fps = 15)
 end
-
-# ## Energy
-
-# PDEs like the Burgers equation conserve energy. If we discretize the Burgers equation the energy conservation takes the following form:
-# $$
-# \begin{equation}
-# \frac{dE}{dt} = \bm{u}^T \bm{\omega} f(\bm{u}) 
-# \end{equation}
-# $$
-# where $E$ is the energy of the system given by:
-# $$
-# \begin{equation}
-# E = \frac{1}{2} \bm{u}^T \bm{\omega} \bm{u},
-# \end{equation}
-# $$
-# and $\bm{\omega} \in \mathbb{R}^{N\times N}$ is the grid volumes of the diagonal elements.
-# In a dissipative system as Burgers equation, the energy will decrease over time. We can compute the energy of the system at each time step and plot it to verify that the energy is decreasing.

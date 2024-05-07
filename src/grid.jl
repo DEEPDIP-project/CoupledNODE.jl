@@ -31,3 +31,23 @@ Base.@kwdef struct Grid
     z::Union{Vector{Float32}, Vector{Float64}, Nothing} = dz == 0 ? nothing :
                                                           collect(0:dz:((nz - 1) * dz))
 end
+
+function linear_to_grid(g::Grid, u)
+    if g.dim == 1
+        return reshape(u, g.nx, size(u)[end])
+    elseif g.dim == 2
+        return reshape(u, g.nx, g.ny, size(u)[end])
+    elseif g.dim == 3
+        return reshape(u, g.nx, g.ny, g.nz, size(u)[end])
+    end
+end
+
+function grid_to_linear(g::Grid, u)
+    if g.dim == 1
+        return reshape(u, g.N, size(u)[end])
+    elseif g.dim == 2
+        return reshape(u, g.N, size(u)[end])
+    elseif g.dim == 3
+        return reshape(u, g.N, size(u)[end])
+    end
+end

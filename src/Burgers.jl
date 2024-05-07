@@ -99,7 +99,7 @@ function create_burgers_rhs(grids, force_params)
     ν = force_params[1]
     Δx = grids[1].dx
 
-    function Force(u)
+    function Force(u, args...)
         # circshift handles periodic boundary conditions
         u₊ = circshift(u, -1)
         μ₊ = @. ν + Δx * abs(u + u₊) / 4 - Δx * (u₊ - u) / 12

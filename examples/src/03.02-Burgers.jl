@@ -131,7 +131,7 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # ### Plot the energy
 import DiffEqFlux: NeuralODE
 include("./../../src/NODE.jl")
-f_dns = create_f_CNODE(create_burgers_rhs, force_params, grid_B_dns; is_closed = false);
+f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
 using Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
@@ -248,7 +248,7 @@ target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
 target_sgs = reshape(target_sgs_flat, sgs_size, size(target_sgs_flat)[2:end]...);
 target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(target_F_sgs_flat)[2:end]...);
 # concatenate input and target
-all_in = (all_u_les, target_sgs)
+all_in = vcat(all_u_les_flat, target_sgs)
 target = (target_F, target_F_sgs)
 
 # Now create the the Neural Network
@@ -264,27 +264,17 @@ NN_sgs = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
 # pack the NNs
 NNs = (NN_u, NN_sgs);
 
-# to get the rhs of Burgers+sgs I need to define this force
-function create_rhs(grids, force_params)
-    Fb = create_burgers_rhs(grids, force_params)
-    Fsgs = zeros(sgs_size)
-    function Force(u_sgs)
-        return (Fb(u_sgs[1]), Fsgs)
-    end
-
-    return Force
-end
-
 #packe the grids assuming that the sgs is the same as the LES
-# TODO make this more general
-grids = (grid_u_les, grid_u_les)
+dux_s = 2π / sgs_size
+grid_s = Grid(dim = 1, dx = dux_les, nx = sgs_size)
+grids = (grid_u_les, grid_s)
 
 # if it works, then the unclosed cnode and the les should have the same result
 
 # Use it to create the cnode
 include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE(
-    create_rhs, force_params, grids, NNs; is_closed = false)
+    (F_les, (u, v) -> v .* 0), grids, NNs; is_closed = false)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
