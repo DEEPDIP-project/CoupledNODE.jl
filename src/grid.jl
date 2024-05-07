@@ -19,27 +19,33 @@ Constructor:
 - `Grid(dux::Float64, duy::Float64, nux::Int, nuy::Int, dvx::Float64, dvy::Float64, nvx::Int, nvy::Int)`: Constructs a `Grid` object with the given grid parameters.
 """
 struct Grid
-    dux::Float64
-    duy::Float64
+    dux::Union{Float32, Float64}
+    duy::Union{Float32, Float64}
     nux::Int
     nuy::Int
-    dvx::Float64
-    dvy::Float64
+    dvx::Union{Float32, Float64}
+    dvy::Union{Float32, Float64}
     nvx::Int
     nvy::Int
     Nu::Int
     Nv::Int
 
-    function Grid(dux::Float64,
-            duy::Float64,
+    function Grid(dux::Union{Float32, Float64},
+            duy::Union{Float32, Float64},
             nux::Int,
             nuy::Int,
-            dvx::Float64,
-            dvy::Float64,
+            dvx::Union{Float32, Float64},
+            dvy::Union{Float32, Float64},
             nvx::Int,
-            nvy::Int)
+            nvy::Int;
+            convert_to_float32::Bool = false)
         Nu = nux * nuy
         Nv = nvx * nvy
-        new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv)
+        if convert_to_float32
+            new(Float32(dux), Float32(duy), nux, nuy,
+                Float32(dvx), Float32(dvy), nvx, nvy, Nu, Nv)
+        else
+            new(dux, duy, nux, nuy, dvx, dvy, nvx, nvy, Nu, Nv)
+        end
     end
 end
