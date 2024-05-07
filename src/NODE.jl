@@ -251,7 +251,7 @@ function Closure(F, NN_closure)
                 # make u and v linear and remove the channel dimension
                 #u = reshape(u, grids[1].nx, grids[1].ny, size(u)[end])
                 #v = reshape(v, grids[2].nx, grids[2].ny, size(v)[end])
-                (F[1](u, v) + f_NN[1], F[2](u, v) + f_NN[2])
+                (F[1](u, v) .+ f_NN[1], F[2](u, v) .+ f_NN[2])
             end)
     else
         error("ERROR: Unsupported number of dimensions: $dim")
