@@ -1,4 +1,4 @@
-# # Learning the Gray-Scott model: Effect of grid coarsening
+# # Gray-Scott model: Effect of grid coarsening
 # In this example we want to show the effect of grid coarsening on the solution of a PDE.
 # We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
@@ -86,7 +86,7 @@ v_exact = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
     :);
 
 # Let's look at the results, plotting the solution as an animation
-using Plots
+using Plots, Plots.PlotMeasures
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
 @gif for i in 1:2:size(u_exact, 4)
@@ -311,7 +311,8 @@ fig = plot(layout = (3, 2), size = (600, 900))
         color = :blues,
         title = "v LES")
     time = round(i * saveat, digits = 0)
-    fig = plot(p1, p2, p3, p4, p5, p6, layout = (3, 2), plot_title = "time = $(time)")
+    fig = plot(p1, p2, p3, p4, p5, p6, layout = (3, 2),
+        plot_title = "time = $(time)", margin = 0mm)
     frame(anim, fig)
 end
 if isdir("./plots")

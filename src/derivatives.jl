@@ -29,8 +29,7 @@ end
 #    return d2u_dx2, d2u_dy2
 #end
 function second_derivatives(u, Δx, Δy)
-    # I use concatenation to avoid in-place operations
-
+    # Use concatenation to avoid in-place operations
     # Compute second derivative with respect to x
     d2u_dx2_middle = (u[3:end, :, :] - 2 * u[2:(end - 1), :, :] + u[1:(end - 2), :, :]) /
                      (Δx^2)
@@ -59,7 +58,27 @@ function second_derivatives(u, Δx, Δy)
     return d2u_dx2, d2u_dy2
 end
 
-function Laplacian(u, Δx, Δy)
+function Laplacian_old(u, Δx, Δy)
     d2u_dx2, d2u_dy2 = second_derivatives(u, Δx, Δy)
     return d2u_dx2 + d2u_dy2
+end
+
+function circular_pad(u)
+    add_dim_1(x) = reshape(x, 1, size(x)...)
+    add_dim_2(x) = reshape(x, size(x, 1), 1, size(x, 2))
+    u_padded = vcat(add_dim_1(u[end, :, :]), u, add_dim_1(u[1, :, :]))
+    u_padded = hcat(add_dim_2(u_padded[:, end, :]), u_padded, add_dim_2(u_padded[:, 1, :]))
+    return u_padded
+end
+
+function Laplacian(u, Δx2, Δy2)
+    up = circular_pad(u)
+    d2u = similar(up)
+
+    d2u[2:(end - 1), :, :] = (up[3:end, :, :] - 2 * up[2:(end - 1), :, :] +
+                              up[1:(end - 2), :, :])
+    d2u[:, 2:(end - 1), :] += (up[:, 3:end, :] - 2 * up[:, 2:(end - 1), :] +
+                               up[:, 1:(end - 2), :])
+
+    return d2u[2:(end - 1), 2:(end - 1), :] / (Δx2 + Δy2)
 end

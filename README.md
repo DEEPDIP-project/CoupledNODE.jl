@@ -8,7 +8,7 @@
 ## Installation
 
 ```julia
-]
+] # open Package manager
 activate .
 instantiate
 ```
@@ -42,7 +42,7 @@ We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{d
 
 #### Example 01.00: Logistic equation
 
-* [Example 01.00](examples/01.00-Logistic.jl)
+* [Example 01.00](examples/src/01.00-Logistic.jl)
 
 ### (2) What are C-NODEs?
 
@@ -59,21 +59,20 @@ $$
 Let's check with an example of the Gray-Scott model how such C-NODEs could be used.
 In the following, we are going to:
 
-1. [Example 02.00](examples/02.00-GrayScott.jl): Introduce and solve the  model using a explicit solver.
-2. [Example 02.01](examples/02.01-GrayScott.jl): Introduce a Neural operator, train it using **a priori fitting** and solve the Gray-Scott model using it.
-3. [Examples 02.02](examples/02.02-GrayScott.jl): Train another Neural operator using **a posteriori fitting** and solve the Gray-Scott model using it.
+1. [Example 02.00](examples/src/02.00-GrayScott.jl): Introduce and solve the  model using a explicit solver.
+2. [Example 02.01](examples/src/02.01-GrayScott.jl): Introduce a Neural operator, train it using **a priori fitting** and solve the Gray-Scott model using it.
+3. [Examples 02.02](examples/src/02.02-GrayScott.jl): Train another Neural operator using **a posteriori fitting** and solve the Gray-Scott model using it.
 
 ### (3) Why coupled NODEs? 
 Two main explanations:
 * We are working with coupled systems (like Gray-Scott).
 * Multi-scale approach to PDEs.
 
-
 ### Multiscale approach to chaotic PDEs
 In a more realistic situation, the incognita is usually a vector field, so we will try to solve for $u(x,t): \Omega \times \mathbb{R} \rightarrow \mathbb{R}^m$, where the spacial coordinate is $x\in \Omega \subseteq \mathbb{R}^D$ and the field $u$ is $m$-dimensional.
 
 If the problem is simple, like the case of linear ODEs, $u$ will be perfectly representable using a few parameters, e.g phase and frequency of an harmonic oscillator, and an analytical solution will be probably available.
-If this is the case, one could rely on direct and efficient approaches,as we have show in [Example 01.00](examples/01.00-Logistic.jl), or a more general framework like the one described [here](https://docs.sciml.ai/DiffEqDocs/stable/examples/classical_physics/).
+If this is the case, one could rely on direct and efficient approaches,as we have show in [Example 01.00](examples/src/01.00-Logistic.jl), or a more general framework like the one described [here](https://docs.sciml.ai/DiffEqDocs/stable/examples/classical_physics/).
 
 However most of the times, the analytical solution is not available. A common solution is the *method of lines*, that consists in discretizing the spacial dimension and study a vectorial representation of the function $u(x,t) \rightarrow \bar{u}(t)\in \mathbb{R}^N$, where $N\ll D$. This discretization can also be interpreted as a **filter** $\Phi\in\mathbb{R}^{D\times N}$ that gets applied to the field:
 $$\bar{u}= \Phi u$$
@@ -88,7 +87,7 @@ $$
 \end{cases}
 $$
 
-Then the crucial question that we need to address is 
+Then the crucial question that we need to address is
 
 $$
 \tag{2.2.2}\bar{u}(t)\stackrel{?}{=} \Phi u(t),
@@ -96,7 +95,7 @@ $$
 
 or in words: **does the discretized solution evolve like the original?**
 
-3. [Examples 02.03](examples/02.03-GrayScott.jl): DNS, LES and *exact* solutions.
+3. [Example 02.03](examples/src/02.03-GrayScott.jl): DNS, LES and *exact* solutions.
 
 The answer is that it depends on the harshness of the discretization, i.e. the value of $N$ for the specific problem.
 We distinguish two cases:
@@ -108,17 +107,20 @@ However this DE depends on $u$, so the system is not closed and can not be effic
 
 One of the main goal of this repository will be to use CNODEs like eq.(2.1.0) in order to correct the LES simulation and get a solution as good as the DNS.
 
-4. [Examples 02.04](examples/02.04-GrayScott.jl): Trainable LES.
+4. [Example 02.04](examples/src/02.04-GrayScott.jl): Train a closure model that, together with LES, can approximate DNS.
 
 **... TO BE CONTINUED ...**
 
 
 
 ### Example 4 : Burgers
-Look [here](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials). It has to be adapted, generalized and moved to this repo.
+* 04.01 Solve Burgers as single equation and learn the closure. Use [this implementation](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials) as a baseline.
+* 04.02 Add a second equation of a projection of the solution, with no physical force and only NN to evolve it
 
 ### Example 5 : Navier-Stokes
-It is [here](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials). Make it compatible with this repo.
+* 05.01 Solve NS as single equation in spectral space, by adapting[this implementation](https://github.com/DEEPDIP-project/NeuralNS-SciML-Tutorials). The training of this has to be tested
+* 05.02 Compare performance with Syver's repo that can do the same thing as 05.01. Our SciML approach has to be in the same ballpark at least (but notice that Syver is not doing spectral)
+* 05.03 Generalize the approach such that you can import the F defined somewhere else
 
 ## References
 
