@@ -139,14 +139,14 @@ function circular_pad(u)
     return u_padded
 end
 
-function Laplacian(u, Δx2, Δy2)
-    up = circular_pad(u)
-    d2u = similar(up)
-
-    d2u[2:(end - 1), :, :] = (up[3:end, :, :] - 2 * up[2:(end - 1), :, :] +
-                              up[1:(end - 2), :, :])
-    d2u[:, 2:(end - 1), :] += (up[:, 3:end, :] - 2 * up[:, 2:(end - 1), :] +
-                               up[:, 1:(end - 2), :])
-
-    return d2u[2:(end - 1), 2:(end - 1), :] / (Δx2 + Δy2)
-end
+#function Laplacian(u, Δx2, Δy2)
+#    up = circular_pad(u)
+#    d2u = similar(up)
+#
+#    d2u[2:(end - 1), :, :] = (up[3:end, :, :] - 2 * up[2:(end - 1), :, :] +
+#                              up[1:(end - 2), :, :])
+#    d2u[:, 2:(end - 1), :] += (up[:, 3:end, :] - 2 * up[:, 2:(end - 1), :] +
+#                               up[:, 1:(end - 2), :])
+#
+#    return d2u[2:(end - 1), 2:(end - 1), :] / (Δx2 + Δy2)
+#end
