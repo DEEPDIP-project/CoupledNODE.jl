@@ -10,20 +10,21 @@
 import CoupledNODE: Grid
 dux = duy = dvx = dvy = 1.0
 nux = nuy = nvx = nvy = 100
-grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_GS_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
+grid_GS_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
 # We start defining a central concentration of $v$ and a constant concentration of $u$:
-function initialize_uv(grid, u_bkg, v_bkg, center_size)
-    u_initial = u_bkg * ones(grid.nux, grid.nuy)
-    v_initial = zeros(grid.nvx, grid.nvy)
-    v_initial[Int(grid.nvx / 2 - center_size):Int(grid.nvx / 2 + center_size), Int(grid.nvy / 2 - center_size):Int(grid.nvy / 2 + center_size)] .= v_bkg
+function initialize_uv(grid_u, grid_v, u_bkg, v_bkg, center_size)
+    u_initial = u_bkg * ones(grid_u.nx, grid_u.ny)
+    v_initial = zeros(grid_v.nx, grid_v.ny)
+    v_initial[Int(grid_v.nx / 2 - center_size):Int(grid_v.nx / 2 + center_size), Int(grid_v.ny / 2 - center_size):Int(grid_v.ny / 2 + center_size)] .= v_bkg
     return u_initial, v_initial
 end
-u_initial, v_initial = initialize_uv(grid_GS, 0.8, 0.9, 4);
+u_initial, v_initial = initialize_uv(grid_GS_u, grid_GS_v, 0.8, 0.9, 4);
 
 # We can now define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid_GS.nux * grid_GS.nuy, 1),
-    reshape(v_initial, grid_GS.nvx * grid_GS.nvy, 1));
+uv0 = vcat(reshape(u_initial, grid_GS_u.nx * grid_GS_u.ny, 1),
+    reshape(v_initial, grid_GS_v.nx * grid_GS_v.ny, 1));
 
 # From the literature, we select the following parameters in order to form nice patterns.
 D_u = 0.16
@@ -33,17 +34,17 @@ k = 0.062;
 
 # Define the **right hand sides** of the two equations:
 import CoupledNODE: Laplacian
-function F_u(u, v, grid_GS)
-    D_u * Laplacian(u, grid_GS.dux, grid_GS.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+function F_u(u, v)
+    D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 end
-function G_v(u, v, grid_GS)
-    D_v * Laplacian(v, grid_GS.dvx, grid_GS.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+function G_v(u, v)
+    D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
 end
 
 # Once the functions have been defined, we can create the CNODE
 # Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
 import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false);
+f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
 # and we ask Lux for the parameters to train and their structure
 import Lux, Random
 rng = Random.seed!(1234);
@@ -75,14 +76,14 @@ dt, saveat = (1 / (4 * max(D_u, D_v)), 25);
 full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
 # And we unpack the solution to get the two species. Remember that we have concatenated $u$ and $v$ in the same array.
-u = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
-    grid_GS.nux,
-    grid_GS.nuy,
+u = reshape(untrained_CNODE_solution[1:(grid_GS_u.N), :, :],
+    grid_GS_u.nx,
+    grid_GS_u.ny,
     size(untrained_CNODE_solution, 2),
     :);
-v = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
-    grid_GS.nvx,
-    grid_GS.nvy,
+v = reshape(untrained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
+    grid_GS_v.nx,
+    grid_GS_v.ny,
     size(untrained_CNODE_solution, 2),
     :);
 
