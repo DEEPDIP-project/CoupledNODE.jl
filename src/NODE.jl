@@ -83,6 +83,7 @@ function create_f_CNODE(create_forces, force_params, grids, NNs = nothing;
             if length(NNs) != 2
                 error("ERROR: NNs should be a tuple of two NNs for 2D problems")
             end
+            # TODO the two NN here take as input the whole thing, probably this is not what you want
             NN_closure = Parallel(nothing, NNs[1], NNs[2])
         elseif dim == 3
             if length(NNs) != 3
@@ -181,9 +182,10 @@ function Concatenate_in(grids)
             u
         end
     elseif dim == 2
-        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
+        #return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
+        return uv -> let u = uv[1], v = uv[2]
             # reshape u and v on their grid while adding a placeholder dimension for the channels
-            u = reshape(u, grids[1].nx, grids[2].ny, 1, size(u)[end])
+            u = reshape(u, grids[1].nx, grids[1].ny, 1, size(u)[end])
             v = reshape(v, grids[2].nx, grids[2].ny, 1, size(v)[end])
             (u, v)
         end

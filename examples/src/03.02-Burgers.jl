@@ -176,7 +176,8 @@ test_idxs = permuted_idxs[(split_idx + 1):end]
 train_data = u_prime[:, train_idxs]
 test_data = u_prime[:, test_idxs]
 # Fit PCA
-M = fit(PCA, train_data; maxoutdim = 32)
+sgs_size = 32
+M = fit(PCA, train_data; maxoutdim = sgs_size)
 plot(M.prinvars, label = "PCA explained variance")
 hline!([0.05])
 # And test its ability to reconstruct an unseen datapoint
@@ -204,3 +205,87 @@ scatter(E_prime_finite, E_pca_finite, title = "Energy SGS", legend = false,
 
 # Do the LES + sgs
 # to train the sgs part i will do the pca of u' computed exactly
+
+# ## A-priori fitting
+
+# Generate data
+nsamples = 500
+nsamples = 10
+# since there are some ill initial conditions, we generate the data in batches and concatenate them
+ntimes = size(u_dns)[2]
+all_u_dns = zeros(size(u_dns)[1], nsamples, ntimes)
+batch_size = 10
+n_batches = Int(nsamples / batch_size)
+for i in 1:n_batches
+    good = 0
+    all_u_dns_batch = zeros(size(u_dns)[1], batch_size, ntimes)
+    while good < ntimes
+        println("Generating batch $(i) (size: $(good) < $(ntimes)")
+        all_u0_dns = generate_initial_conditions(grid_B_dns[1].nx, batch_size)
+        all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
+        good = size(all_u_dns_batch)[3]
+    end
+    all_u_dns[:, ((i - 1) * batch_size + 1):(i * batch_size), :] = all_u_dns_batch
+end
+
+# ### Data filtering 
+all_F_dns = F_dns(reshape(
+    all_u_dns, size(all_u_dns, 1), size(all_u_dns, 2) * size(all_u_dns, 3)));
+all_F_dns = reshape(all_F_dns, size(all_u_dns));
+# Reshape in and target to have sample and t  in the same dimension (makes sense in a-priori fitting)
+all_u_dns_flat = reshape(all_u_dns, nux_dns, size(all_u_dns)[2] * size(all_u_dns)[3]);
+all_F_dns_flat = reshape(all_F_dns, nux_dns, size(all_F_dns)[2] * size(all_F_dns)[3]);
+# Filter
+all_u_les_flat = Φ * all_u_dns_flat
+target_F_flat = Φ * all_F_dns_flat
+# Get the sgs
+target_sgs_flat = predict(M, all_u_dns_flat - R * all_u_les_flat)
+# the target rhs for the sgs is $T * \frac{du'}{dt}$, where $\frac{du'}{dt} = f_{dns} - R f_{les}$
+target_F_sgs_flat = predict(M, all_F_dns_flat - R * target_F_flat)
+# and get them back to the original shape
+all_u_les = reshape(all_u_les_flat, nux_les, size(all_u_dns)[2:end]...)
+target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
+target_sgs = reshape(target_sgs_flat, sgs_size, size(target_sgs_flat)[2:end]...);
+target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(target_F_sgs_flat)[2:end]...);
+# concatenate input and target
+all_in = (all_u_les, target_sgs)
+target = (target_F, target_F_sgs)
+
+# Now create the the Neural Network
+#import CoupledNODE: create_fno_model
+using NNlib: gelu
+include("./../../src/FNO.jl")
+ch_fno = [5, 5, 5, 5];
+kmax_fno = [16, 16, 16, 8];
+σ_fno = [gelu, gelu, gelu, identity];
+NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
+NN_sgs = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_B_les[1]);
+
+# pack the NNs
+NNs = (NN_u, NN_sgs);
+
+# to get the rhs of Burgers+sgs I need to define this force
+function create_rhs(grids, force_params)
+    Fb = create_burgers_rhs(grids, force_params)
+    Fsgs = zeros(sgs_size)
+    function Force(u_sgs)
+        return (Fb(u_sgs[1]), Fsgs)
+    end
+
+    return Force
+end
+
+#packe the grids assuming that the sgs is the same as the LES
+# TODO make this more general
+grids = (grid_u_les, grid_u_les)
+
+# if it works, then the unclosed cnode and the les should have the same result
+
+# Use it to create the cnode
+include("./../../src/NODE.jl")
+f_CNODE = create_f_CNODE(
+    create_rhs, force_params, grids, NNs; is_closed = false)
+θ, st = Lux.setup(rng, f_CNODE);
+
+# Trigger compilation and test the force
+f_CNODE(all_in, θ, st)
