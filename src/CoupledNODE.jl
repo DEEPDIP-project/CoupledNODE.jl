@@ -1,7 +1,7 @@
 module CoupledNODE
 
 import CUDA
-ArrayType = CUDA.functional() ? CuArray : Array
+ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
 include("loss_priori.jl")
 include("loss_posteriori.jl")
