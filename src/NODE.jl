@@ -67,7 +67,7 @@ function Unpack(grids)
     if dim == 1
         return u -> let u = u
             # add a placeholder dimension for the channels
-            u = reshape(u, grids[1].nx, prod(size(u)[2:end]))
+            u = linear_to_grid(grids[1], u)
             u
         end
         # TODO: generalize the fact that u and v can have different dimensions
@@ -96,7 +96,7 @@ end
 function Concatenate(grids)
     dim = length(grids)
     if dim == 1
-        return u -> let u = u
+        return u -> let u = u[1]
             # make u linear
             u = grid_to_linear(grids[1], u)
             u
@@ -213,7 +213,7 @@ function Force_layer(F)
         return uv -> let u = uv
             # make u linear
             #u = reshape(u, grids[1].N, size(u, 3))
-            (F[1](u))
+            (F[1](u),)
         end
     elseif dim == 2
         return uv -> let u = uv[1], v = uv[2]
@@ -243,7 +243,7 @@ function Closure(F, NN_closure)
             (f_NN, u) -> let u = u
                 ## remove the channel dimension
                 #u = reshape(u, grids[1].nx, size(u)[end])
-                (F[1](u) + f_NN[1])
+                (F[1](u) .+ f_NN[1],)
             end)
     elseif dim == 2
         return SkipConnection(NN_closure,

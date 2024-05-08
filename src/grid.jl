@@ -44,10 +44,8 @@ end
 
 function grid_to_linear(g::Grid, u)
     if g.dim == 1
-        return reshape(u, g.N, size(u)[end])
-    elseif g.dim == 2
-        return reshape(u, g.N, size(u)[end])
-    elseif g.dim == 3
+        return reshape(u, g.N)
+    else
         return reshape(u, g.N, size(u)[end])
     end
 end
