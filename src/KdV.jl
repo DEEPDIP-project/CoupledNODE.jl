@@ -29,7 +29,7 @@
 function generate_initial_conditions(
         nx,
         nsample;
-        kmax = 16,
+        kmax = 8,
         decay = k -> (1 + abs(k))^(-6 / 5)
 )
     ## Fourier basis
@@ -58,11 +58,7 @@ function create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, kernel_type)
     Φ = sum(-1:1) do z
         z *= 2π
         d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
-        if kernel_type == "gaussian"
-            @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
-        else
-            @. kernel(ΔΦ, d)
-        end
+        @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
     end
     Φ = Φ ./ sum(Φ; dims = 2) ## Normalize weights
     Φ = sparse(Φ)
@@ -99,7 +95,7 @@ end
 # This prevents oscillations near shocks.
 #
 # We can implement this as follows:
-function create_burgers_rhs(grids, force_params)
+function create_kdv_rhs(grids, force_params)
     ν = force_params[1]
     Δx = grids[1].dx
 
