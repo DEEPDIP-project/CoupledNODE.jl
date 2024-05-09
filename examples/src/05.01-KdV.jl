@@ -24,23 +24,21 @@ dux_les = 2π / nux_les
 grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 
 # Construct the right-hand side of the Burgers equation
-include("./../../src/Burgers.jl")
+include("./../../src/KdV.jl")
 ν = 0.001f0
 force_params = (ν,)
 grid_B_dns = (grid_u_dns,)
 grid_B_les = (grid_u_les,)
-F_dns = create_burgers_rhs(grid_B_dns, force_params)
-F_les = create_burgers_rhs(grid_B_les, force_params)
+F_dns = create_kdv_rhs(grid_B_dns, force_params)
+F_les = create_kdv_rhs(grid_B_les, force_params)
 
 # and generate some initial conditions
-u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1, kmax = 4);
+u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1);
 
-# Use a gaussian filter to get the coarse grid
+# Set the kernel size and get the gaussian filter
 ΔΦ = 5 * grid_B_les[1].dx
-Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
-# or a top hat filter similar to the one used by Toby
-ΔΦ = 3 * grid_B_les[1].dx
 Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "hat")
+#Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
 
@@ -51,17 +49,22 @@ u0_les = Φ * u0_dns
 ω = grid_B_dns[1].dx
 Ω = grid_B_les[1].dx
 R = 1 / ω * transpose(Φ) * Ω
-# We construct R as a pseudo-inverse operator via the following
+# Actually this is the correct way to construct the R operator
 R = transpose(Φ) * inv(Matrix(Φ * transpose(Φ)))
-# And we use it to reconstruct the LES and create the SGS
+# is this the identity?
+using LinearAlgebra
+isapprox(R * Φ, Matrix(I, size(R * Φ)), atol = 1e-5)
+isapprox(Φ * R, Matrix(I, size(Φ * R)), atol = 1e-5)
+heatmap(R)
+heatmap(Φ)
+heatmap(Φ * R)
+# NOT ok! fix R
 u0_rec = R * u0_les
 sgs = u0_dns - u0_rec
-
-# Let's plot a comparison of the different terms
 using LaTeXStrings
 plot(grid_B_dns[1].x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
     xlabel = "x", ylabel = L"u", legend = :topleft)
-plot!(grid_B_les[1].x, u0_les, seriestype = :stepmid, label = L"\bar{u}=\mathbf{\Phi} u")
+plot!(grid_B_les[1].x, u0_les, label = L"\bar{u}=\mathbf{\Phi} u")
 plot!(grid_B_dns[1].x, u0_rec, label = L"\mathbf{R} \bar{u}")
 plot!(grid_B_dns[1].x, sgs, label = "SGS")
 
@@ -126,7 +129,6 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # $$
 
 # ### Plot the energy
-# First we have to solve the dynamics
 import DiffEqFlux: NeuralODE
 include("./../../src/NODE.jl")
 f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
@@ -134,16 +136,16 @@ using Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
 θ_dns, st_dns = Lux.setup(rng, f_dns);
-t_sim = 40.0f0
-dt_dns = 0.005f0
-trange = (0.0f0, t_sim)
-saveat = 0.01f0
+t_shock = 10.0f0
+dt_dns = 0.001f0
+trange_burn = (0.0f0, t_shock)
+saveat_shock = 0.01f0
 dns = NeuralODE(f_dns,
-    trange,
+    trange_burn,
     solver_algo,
     adaptive = false,
     dt = dt_dns,
-    saveat = saveat);
+    saveat = saveat_shock);
 u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 # Drop sample dimension
 u_dns = u_dns[:, 1, :]
@@ -156,16 +158,16 @@ plot(E_dns[1, :], label = L"E", title = "Energy",
     xlabel = "Time steps", ylabel = "Energy")
 plot!(E_filt[1, :], label = L"\bar{E}")
 
-# ### SGS projection
-# First we get the sgs
+# Get the sgs
 u_prime = u_dns - R * u_filt
-# this is a solution living in the same dimension as the DNS, but this is too expensive to compute.
-# For this reason we project it onto a lower dimensional space.
-# [!] Notice that this SGS space will be coarser than the DNS, but it does NOT have to have the same dimensionality as the associated LES that we plan to solve!
-# Toby would use a single value decomposition (SVD) to get the projection matrix $\bm{T}$.
-# We propose instead to use principal component analysis (PCA) to get the projection matrix
-using MultivariateStats, LinearAlgebra
-# and we compute it using only a part of the data
+# and do svd 
+F = svd(u_prime)
+# [...Toby does this...]
+# Is it worth it compared to PCA?
+
+# or PCA
+using MultivariateStats
+# as a test I get the PCA of a random half of the timesteps
 ndata = size(u_prime, 2)
 split_idx = Int(floor(0.9 * ndata))
 permuted_idxs = randperm(ndata)
@@ -173,40 +175,43 @@ train_idxs = permuted_idxs[1:split_idx]
 test_idxs = permuted_idxs[(split_idx + 1):end]
 train_data = u_prime[:, train_idxs]
 test_data = u_prime[:, test_idxs]
-# Train the PCA
+# Fit PCA
 sgs_size = J = 50
-T = fit(PCA, train_data; maxoutdim = sgs_size)
-# this plot shows the explained variance of the PCA
-plot(T.prinvars, label = "PCA explained variance")
+M = fit(PCA, train_data; maxoutdim = sgs_size)
+plot(M.prinvars, label = "PCA explained variance")
+hline!([0.05])
 # And test its ability to reconstruct an unseen datapoint
-test_reduced = predict(T, test_data)
-test_reconstructed = reconstruct(T, test_reduced)
+test_reduced = predict(M, test_data)
+test_reconstructed = reconstruct(M, test_reduced)
 print("Reconstruction error: ", norm(test_data - test_reconstructed))
 plot(grid_B_dns[1].x, test_data[:, 1], label = "Original")
-plot!(grid_B_dns[1].x, test_reconstructed[:, 1], label = "Reconstructed w PCA")
+plot!(grid_B_dns[1].x, test_reconstructed[:, 1], label = "Reconstructed")
 
 # Compare energy predicted with PCA
 E_prime = sum(u_prime .^ 2, dims = 1) * grid_B_dns[1].dx / 2
-u_pca = predict(T, u_prime)
+u_pca = predict(M, u_prime)
 E_pca = sum(u_pca .^ 2, dims = 1) * grid_B_dns[1].dx / 2
 plot(E_prime, E_pca, title = "Energy SGS", legend = false,
     xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
+
 finite_inds = isfinite.(E_prime) .& isfinite.(E_pca)
 E_prime_finite = E_prime[finite_inds]
 E_pca_finite = E_pca[finite_inds]
+
 scatter(E_prime_finite, E_pca_finite, title = "Energy SGS", legend = false,
     xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
-# plot the diagonal line as reference
-plot!([0, maximum(E_prime_finite)], [0, maximum(E_prime_finite)], label = "y=x")
 
-# At this point we have a matrix $\bm{T}$ that projects the SGS onto a lower dimensional space.
-# In order to use the sgs, we can implement a closure model for the LES that uses the information stored in the sgs.
+# Other tests to look at the SGS ???
+
+# Do the LES + sgs
+# to train the sgs part i will do the pca of u' computed exactly
 
 # ## A-priori fitting
 
-# Generate data for the a-priori fitting
+# Generate data
 nsamples = 500
 nsamples = 10
+# since there are some ill initial conditions, we generate the data in batches and concatenate them
 ntimes = size(u_dns)[2]
 all_u_dns = zeros(size(u_dns)[1], nsamples, ntimes)
 batch_size = 10
@@ -233,16 +238,10 @@ all_F_dns_flat = reshape(all_F_dns, nux_dns, size(all_F_dns)[2] * size(all_F_dns
 # Filter
 all_u_les_flat = Φ * all_u_dns_flat
 target_F_flat = Φ * all_F_dns_flat
-# Train the PCA for those data
-T = fit(PCA, all_u_dns_flat; maxoutdim = sgs_size)
-if size(T, 2) != sgs_size
-    println("Warning: PCA did use fewer components than expected, so I will reduce the dimensionality of the SGS space to $(size(T,2))")
-    sgs_size = size(T, 2)
-end
 # Get the sgs
-target_sgs_flat = predict(T, all_u_dns_flat - R * all_u_les_flat)
+target_sgs_flat = predict(M, all_u_dns_flat - R * all_u_les_flat)
 # the target rhs for the sgs is $T * \frac{du'}{dt}$, where $\frac{du'}{dt} = f_{dns} - R f_{les}$
-target_F_sgs_flat = predict(T, all_F_dns_flat - R * target_F_flat)
+target_F_sgs_flat = predict(M, all_F_dns_flat - R * target_F_flat)
 # and get them back to the original shape
 all_u_les = reshape(all_u_les_flat, nux_les, size(all_u_dns)[2:end]...)
 target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
@@ -253,6 +252,7 @@ all_in = vcat(all_u_les_flat, target_sgs)
 target = vcat(target_F_flat, target_F_sgs)
 
 # Now create the the Neural Network
+#import CoupledNODE: create_fno_model
 using NNlib: gelu
 include("./../../src/FNO.jl")
 ch_fno = [5, 5, 5, 5];
