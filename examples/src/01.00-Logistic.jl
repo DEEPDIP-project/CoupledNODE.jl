@@ -55,7 +55,7 @@ rng = Random.seed!(1234)
 # * We define the NODE
 import DiffEqFlux: NeuralODE
 trange = (0.0, 6.0)
-u0 = [0.01]
+u0 = hcat([0.01]) # need the inputs as Matrix instead of Vector
 full_NODE = NeuralODE(f_NODE, trange, Tsit5(), adaptive = false, dt = 0.001, saveat = 0.2);
 
 # * We solve the NODE using the zero-initialized parameters
@@ -66,7 +66,7 @@ untrained_NODE_solution = Array(full_NODE(u0, θ, st)[1]);
 # First, we define this auxiliary NODE that will be used for training
 dt = 0.01 # it has to be as fine as the data
 nunroll = 60
-t_train_range = (0.0, dt * (nunroll + 1)) # it has to be as long as unroll
+t_train_range = (0.0, dt * nunroll) # it has to be as long as unroll
 training_NODE = NeuralODE(f_NODE,
     t_train_range,
     Tsit5(),
@@ -74,12 +74,13 @@ training_NODE = NeuralODE(f_NODE,
     dt = dt,
     saveat = dt);
 
+# We reshape the data to be compatible with the loss function. We want a vector with shape (dim_u, n_samples, t_steps)
+u_experiment_mod = reshape(u_experiment, grid_u.nx, 1, length(u_experiment))
 # Second, we need to design the **loss function**. For this example, we use *multishooting a posteriori* fitting [(MulDtO)](https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/). Using `Zygote` we compare `nintervals` of length `nunroll` to get the gradient. Notice that this method is differentiating through the solution of the NODE!
-import CoupledNODE: create_randloss_MulDtO_1
-nintervals = 10
-
-myloss = create_randloss_MulDtO_1(
-    u_experiment, training_NODE, st, nunroll = nunroll, nintervals = nintervals);
+import CoupledNODE: create_randloss_MulDtO
+nintervals = 5
+myloss = create_randloss_MulDtO(
+    u_experiment_mod, training_NODE, st, nunroll = nunroll, nintervals = nintervals, nsamples = 1);
 
 # Initialize and trigger the compilation of the model
 import ComponentArrays
@@ -94,18 +95,22 @@ optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Select the training algorithm:
-# We choose Adam with learning rate 0.1, with gradient clipping
+# Adam with learning rate 0.01, with gradient clipping
 import OptimizationOptimisers: OptimiserChain, Adam, ClipGrad
-ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
+algo = OptimiserChain(Adam(1.0e-2), ClipGrad(1));
+
+# Or this other optimizer (uncomment tu use).
+#import OptimizationOptimJL: Optim
+#algo = Optim.LBFGS();
 
 # ## Train de NODE
 # We are ready to train the NODE.
 # Notice that the block can be repeated to continue training
 import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
-    ClipAdam;
+    algo;
     callback = callback,
-    maxiters = 100)
+    maxiters = 1000)
 pinit = result_neuralode.u;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
@@ -119,6 +124,6 @@ scatter!(range(start = 0, stop = 6, step = 0.2),
     label = "untrained NODE",
     marker = :circle)
 scatter!(range(start = 0, stop = 6, step = 0.2),
-    Array(full_NODE([u_experiment[1]], result_neuralode.u, st)[1])[:],
+    Array(full_NODE(hcat([u_experiment[1]]), result_neuralode.u, st)[1])[:],
     label = "Trained NODE",
     marker = :circle)

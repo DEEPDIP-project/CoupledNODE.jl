@@ -1,7 +1,7 @@
 """
     struct Grid
 
-This object contains the grid information. It can handle 1D, 2D, and 3D grids.
+Object containing the grid information. It can handle 1D, 2D, and 3D grids.
 
 Fields:
 - `dim::Int`: The dimensionality of the grid.
@@ -14,7 +14,7 @@ Fields:
 - `N::Int`: The total number of elements in the grid.
 
 Constructor:
-- `Grid(dim::Int, dx::Union{Float32, Float64}, dy::Union{Float32, Float64} = 0, dz::Union{Float32, Float64} = 0, nx::Int, ny::Int = 0, nz::Int = 0, convert_to_float32::Bool = false)`: Constructs a `Grid` object with the given grid parameters. The `dy`, `dz`, `ny`, and `nz` parameters can be omitted for 1D and 2D grids. If `convert_to_float32` is `true`, the grid spacings are converted to `Float32`.
+- `Grid(dim::Int, dx::Union{Float32, Float64}, dy::Union{Float32, Float64} = 0, dz::Union{Float32, Float64} = 0, nx::Int, ny::Int = 0, nz::Int = 0, convert_to_float32::Bool = false)`: Constructs a `Grid` object with the given grid parameters. The `dy`, `dz`, `ny`, and `nz` parameters can be omitted for 1D and 2D grids. 
 """
 Base.@kwdef struct Grid
     dim::Int
@@ -43,9 +43,5 @@ function linear_to_grid(g::Grid, u)
 end
 
 function grid_to_linear(g::Grid, u)
-    if g.dim == 1
-        return reshape(u, g.N)
-    else
-        return reshape(u, g.N, size(u)[end])
-    end
+    return reshape(u, g.N, size(u)[end])
 end
