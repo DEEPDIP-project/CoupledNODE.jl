@@ -21,6 +21,7 @@
 # contains information for construction the network.
 
 import Lux
+import Lux: Dense, gelu
 if CUDA.functional()
     import LuxCUDA
 end
@@ -93,6 +94,7 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     ## The real and imaginary parts of R are stored in two separate channels
     R = selectdim(R, state.last_dim, 1) .+ im .* selectdim(R, state.last_dim, 2)
 
+    println("x: ", size(x), "\n")
     ## Spatial part (applied point-wise)
     y = reshape(x, Nxyz..., 1, cin, :)
     # sum over the channel dimension
@@ -132,23 +134,21 @@ end
 function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,))
     # from the grids I can get the dimension
     dim = grid.dim
+    ch_dim = dim + 1
     if dim == 1
         dim_to_fft = (1,)
         Nxyz = (grid.nx,)
-        ch_dim = 2
         # permutations to toss around the channel dimesion
         ch_first = (2, 1, 3)
         ch_back = (2, 1, 3)
     elseif dim == 2
         dim_to_fft = (1, 2)
         Nxyz = (grid.nx, grid.ny)
-        ch_dim = 3
         ch_first = (3, 1, 2, 4)
         ch_back = (2, 3, 1, 4)
     elseif dim == 3
         dim_to_fft = (1, 2, 3)
         Nxyz = (grid.nx, grid.ny, grid.nz)
-        ch_dim = 4
         ch_first = (4, 1, 2, 3, 5)
         ch_back = (2, 3, 4, 1, 5)
     else
@@ -160,7 +160,10 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
     ch_fno = [length(input_channels); ch_fno]
 
     return Chain(
-        #u -> a = real.(ifft(u, dim_to_fft)),
+        input_channels[1],
+        x -> let y = x
+            println(" y:", size(y), "\n")
+        end,
         (FourierLayer(
              dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
         i in eachindex(σ_fno))...,
@@ -170,8 +173,7 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
         u -> permutedims(u, ch_back),
-        #u -> fft(u, dim_to_fft),
         # drop the channel dimension
-        u -> dropdims(u, dims = ch_dim)        # and make real        #u -> real(u)
+        u -> dropdims(u, dims = ch_dim)
     )
 end
