@@ -293,7 +293,7 @@ tr = NeuralODE(f_CNODE,
     saveat = saveat_shock);
 u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1);
 u0_les = Φ * u0_dns
-s0 = predict(M, u0_dns - R * u0_les)
+s0 = predict(T, u0_dns - R * u0_les)
 u_tr = Array(tr(vcat(u0_les, s0), θ, st)[1]);
 using Plots
 anim = Animation()
