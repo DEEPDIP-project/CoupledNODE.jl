@@ -44,7 +44,8 @@ function FourierLayer(
         kmax,
         ch::Pair{Int, Int};
         σ = identity,
-        init_weight = Lux.glorot_uniform)
+        #init_weight = Lux.glorot_uniform)
+        init_weight = Lux.zeros32)
     FourierLayer(dim_to_fft, Nxyz, kmax, first(ch), last(ch), σ, init_weight)
 end
 
@@ -165,22 +166,9 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
         i in eachindex(σ_fno))...,
         # Put the channel dimension in the first position to apply a dense layer
         u -> permutedims(u, ch_first),
-        u -> let x = u
-            println("x: ", size(x), "\n")
-            println(ch_fno[end])
-            u
-        end,
         Dense(ch_fno[end] => 2 * ch_fno[end], gelu),
-        u -> let x = u
-            println("1")
-            u
-        end,
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
-        u -> let x = u
-            println("2")
-            u
-        end,
         u -> permutedims(u, ch_back),
         # drop the channel dimension
         u -> dropdims(u, dims = ch_dim)

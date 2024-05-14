@@ -402,13 +402,14 @@ target = vcat(reshape(u_target, grid_GS_u.N, size(u_target)[end], :),
 #import CoupledNODE: create_fno_model
 include("../../src/FNO.jl")
 include("../../src/NODE.jl")
-ch_fno = [2, 5, 5, 5, 2];
+include("../../src/loss_posteriori.jl")
+ch_fno = [5, 5, 5, 2];
 kmax_fno = [8, 8, 8, 8];
 σ_fno = [Lux.gelu, Lux.gelu, Lux.gelu, identity];
 NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let u = x[1]
     u
 end,));
-NN_v = create_fno_model(kmax_fno, ch_fno, σ_fno, coarse_grid, (x -> let v = x[2]
+NN_v = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let v = x[2]
     v
 end,));
 f_closed_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, coarse_grid), (NN_u, NN_v),
@@ -423,7 +424,7 @@ nunroll = 5
 nintervals = 10
 nsamples = 2
 # We also define this auxiliary NODE `training_CNODE` that will be used for training so that we can use smaller time steps for the training.
-dt_train = 0.05
+dt_train = 0.1
 # but we have to sample at the same rate as the data
 saveat_train = saveat
 t_train_range = (0.0f0, saveat_train * nunroll) # it has to be as long as nunroll
@@ -460,7 +461,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # * Select the training algorithm
 # We choose Adam with learning rate 0.1, with gradient clipping
-ClipAdam = OptimiserChain(Adam(1.0f-2), ClipGrad(1));
+ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
 
 # ### Train the CNODE
 # (The block can be repeated to continue training)
@@ -468,7 +469,7 @@ import CoupledNODE: callback
 result_neuralode = Optimization.solve(optprob,
     ClipAdam;
     callback = callback,
-    maxiters = 3);
+    maxiters = 20);
 pinit = result_neuralode.u;
 θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
@@ -485,12 +486,13 @@ trained_CNODE = NeuralODE(f_closed_CNODE,
     dt = dt,
     saveat = saveat);
 trained_CNODE_solution = Array(trained_CNODE(uv0_coarse[:, 1:3], θ, st)[1]);
+trained_CNODE_solution
 u_trained = reshape(trained_CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
     size(trained_CNODE_solution)[end],
     :);
-v_trained = reshape(trained_CNODE_solution[(coarse_grid.N + 1):end, :, :],
+v_trained = reshape(trained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
     coarse_grid.nx,
     coarse_grid.ny,
     size(trained_CNODE_solution)[end],
@@ -498,53 +500,53 @@ v_trained = reshape(trained_CNODE_solution[(coarse_grid.N + 1):end, :, :],
 
 anim = Animation()
 fig = plot(layout = (2, 5), size = (750, 300))
-@gif for i in 1:40:size(u_trained, 4)
-    p1 = heatmap(u[:, :, 1, i],
+@gif for i in 1:40:size(u_trained, 3)
+    p1 = heatmap(u[:, :, i, 1],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds,
         title = "Exact")
-    p2 = heatmap(v[:, :, 1, i],
+    p2 = heatmap(v[:, :, i, 1],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    p3 = heatmap(u_trained[:, :, 1, i],
+    p3 = heatmap(u_trained[:, :, i, 1],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds,
         title = "Trained")
-    p4 = heatmap(v_trained[:, :, 1, i],
+    p4 = heatmap(v_trained[:, :, i, 1],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    et = abs.(u[:, :, 1, i] .- u_trained[:, :, 1, i])
+    et = abs.(u[:, :, i, 1] .- u_trained[:, :, i, 1])
     p5 = heatmap(et,
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :greens,
         title = "Diff-u")
-    p6 = heatmap(u[:, :, 2, i], axis = false, cbar = false, aspect_ratio = 1, color = :reds)
-    p7 = heatmap(v[:, :, 2, i],
+    p6 = heatmap(u[:, :, i, 2], axis = false, cbar = false, aspect_ratio = 1, color = :reds)
+    p7 = heatmap(v[:, :, i, 2],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    p8 = heatmap(u_trained[:, :, 2, i],
+    p8 = heatmap(u_trained[:, :, i, 2],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds)
-    p9 = heatmap(v_trained[:, :, 2, i],
+    p9 = heatmap(v_trained[:, :, i, 2],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    e = abs.(u[:, :, 2, i] .- u_trained[:, :, 2, i])
+    e = abs.(u[:, :, i, 2] .- u_trained[:, :, i, 2])
     p10 = heatmap(e, axis = false, cbar = false, aspect_ratio = 1, color = :greens)
 
     time = round(i * saveat, digits = 0)
