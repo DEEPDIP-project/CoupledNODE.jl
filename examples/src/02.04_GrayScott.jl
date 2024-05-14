@@ -192,7 +192,8 @@ function upscale_v(grid_u, grid_v)
         (v_up, uv) -> let u = uv[1]
             # get rid of batch dimension to match u dimensions
             v_up = reshape(v_up, grid_u.nx, grid_u.ny, size(v_up)[end])
-            (u, v_up)
+            #(u, v_up)
+            [u, v_up]
         end))
 end
 

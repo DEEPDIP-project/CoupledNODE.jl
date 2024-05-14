@@ -94,7 +94,6 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     ## The real and imaginary parts of R are stored in two separate channels
     R = selectdim(R, state.last_dim, 1) .+ im .* selectdim(R, state.last_dim, 2)
 
-    println("x: ", size(x), "\n")
     ## Spatial part (applied point-wise)
     y = reshape(x, Nxyz..., 1, cin, :)
     # sum over the channel dimension
@@ -160,18 +159,28 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
     ch_fno = [length(input_channels); ch_fno]
 
     return Chain(
-        input_channels[1],
-        x -> let y = x
-            println(" y:", size(y), "\n")
-        end,
+        input_channels...,
         (FourierLayer(
              dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
         i in eachindex(σ_fno))...,
         # Put the channel dimension in the first position to apply a dense layer
         u -> permutedims(u, ch_first),
+        u -> let x = u
+            println("x: ", size(x), "\n")
+            println(ch_fno[end])
+            u
+        end,
         Dense(ch_fno[end] => 2 * ch_fno[end], gelu),
+        u -> let x = u
+            println("1")
+            u
+        end,
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
+        u -> let x = u
+            println("2")
+            u
+        end,
         u -> permutedims(u, ch_back),
         # drop the channel dimension
         u -> dropdims(u, dims = ch_dim)

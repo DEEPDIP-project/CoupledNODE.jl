@@ -38,7 +38,7 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
             if length(NNs) != 2
                 error("ERROR: NNs should be a tuple of two NNs for 2D problems")
             end
-            # TODO the two NN here take as input the whole thing, is this what you want?
+            # [!] using Parallel with a tuple input means that it gets split to the two NNs!
             NN_closure = Parallel(nothing, NNs[1], NNs[2])
         elseif dim == 3
             if length(NNs) != 3
@@ -76,7 +76,7 @@ function Unpack(grids)
             # reshape u and v on their grid while adding a placeholder dimension for the channels
             u = linear_to_grid(grids[1], u)
             v = linear_to_grid(grids[2], v)
-            (u, v)
+            [u, v]
         end
     elseif dim == 3
         # TODO fix this
@@ -87,7 +87,7 @@ function Unpack(grids)
             u = reshape(u, grids[1].nx, grids[1].ny, size(u)[end])
             v = reshape(v, grids[2].nx, grids[2].ny, size(v)[end])
             w = reshape(w, grids[3].nx, grids[3].ny, size(w)[end])
-            (u, v, w)
+            [u, v, w]
         end
     end
 end
@@ -150,8 +150,7 @@ function Closure(F, NN_closure)
                 (F[1](u) .+ f_NN[1],)
             end)
     elseif dim == 2
-        return
-        SkipConnection(
+        return SkipConnection(
             NN_closure,
             (f_NN, uv) -> let u = uv[1], v = uv[2]
                 (F[1](u, v) .+ f_NN[1], F[2](u, v) .+ f_NN[2])
