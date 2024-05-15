@@ -391,7 +391,7 @@ noverlaps = 1
 nsamples = 3;
 dt_train = dt_les;
 saveat_train = saveat_shock
-t_train_range = (0.0, saveat_train * (nunroll - 1))
+t_train_range = (0.0, saveat_train * nunroll)
 training_CNODE = NeuralODE(f_CNODE_pos,
     t_train_range,
     Tsit5(),
@@ -427,7 +427,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Compute the error in estimating the force
 error_posteriori = sum(abs, f_CNODE_pos(all_u_les_flat, θ_pos, st_pos)[1] - target_F_flat) /
-                   sum(abs, target_F_flat)
+                   sum(abs, target_F_flat);
 bar(["LES", "A-priori fitting", "A-posteriori fitting"],
     [error_les, error_trained_les, error_posteriori],
     title = "Comparison of errors in estimating the force",
@@ -436,7 +436,7 @@ bar(["LES", "A-priori fitting", "A-posteriori fitting"],
     legend = false)
 
 # and test the trained model
-u_posteriori_test = Array(trained_les(u0_test_les, θ_pos, st_pos)[1])
+u_posteriori_test = Array(trained_les(u0_test_les, θ_pos, st_pos)[1]);
 
 # Plot
 anim = Animation()

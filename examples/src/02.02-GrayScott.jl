@@ -181,8 +181,6 @@ myloss = create_randloss_MulDtO(GS_sim,
     λ_c = 1e2,
     λ_l1 = 1e-1);
 
-# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = [];
 # Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ)
 myloss(pinit)  # trigger compilation
@@ -244,7 +242,7 @@ trange = (0.0, 600)
 dt, saveat = (1, 5)
 
 # Exact solution
-f_exact = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false)
+f_exact = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
 θ_e, st_e = Lux.setup(rng, f_exact);
 exact_CNODE = NeuralODE(f_exact,
     trange,
@@ -285,7 +283,7 @@ v_trained = reshape(trained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
 
 # Untrained solution
 f_u = create_f_CNODE(
-    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = false)
+    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
 θ_u, st_u = Lux.setup(rng, f_u);
 untrained_CNODE = NeuralODE(f_u,
     trange,
