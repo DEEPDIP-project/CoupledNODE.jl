@@ -24,7 +24,7 @@ end
     @test try
         include("../examples/src/02.01-GrayScott.jl")
         include("../examples/src/02.02-GrayScott.jl")
-        #include("../examples/src/02.02-GrayScott.jl") #long
+        #include("../examples/src/02.04-GrayScott.jl") #long
         true
     catch
         false
@@ -33,7 +33,7 @@ end
 
 @testset "Burgers" begin
     @test try
-        #include("../examples/src/03.01-Burgers.jl")
+        include("../examples/src/03.01-Burgers.jl")
         true
     catch
         false
