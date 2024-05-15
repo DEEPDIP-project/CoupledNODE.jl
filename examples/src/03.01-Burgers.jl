@@ -189,7 +189,6 @@ else
 end
 
 # ## A-priori fitting
-
 # Generate data
 nsamples = 500
 nsamples = 50
@@ -255,11 +254,11 @@ NNs = (NN_u,);
 
 # Use it to create the cnode
 include("./../../src/NODE.jl")
-f_CNODE = create_f_CNODE((F_les,), grid_B_les, NNs; is_closed = true)
+f_CNODE = create_f_CNODE((F_les,), grid_B_les, NNs; is_closed = true);
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
-f_CNODE(all_u_les, θ, st)
+f_CNODE(all_u_les_flat, θ, st);
 
 # a priori fitting
 include("./../../src/loss_priori.jl")
@@ -267,12 +266,10 @@ myloss = create_randloss_derivative(all_u_les_flat,
     target_F_flat,
     f_CNODE,
     st;
-    nuse = 1024,
+    n_use = 1024,
     λ = 0,
     λ_c = 0);
 
-# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = [];
 ## Initialize and trigger the compilation of the model
 using ComponentArrays
 pinit = ComponentArrays.ComponentArray(θ);
@@ -315,7 +312,7 @@ bar(["LES", "Trained LES"], [error_les, error_trained_les],
     ylabel = "Error %",
     legend = false)
 # From the plot it looks like the trained LES is better than the standard LES!
-# However, if we use the trained model to run a new simulation, things may not be soo good:
+# However, if we use the trained model to run a new simulation, things may not be so good:
 Lux.testmode
 trained_les = NeuralODE(f_CNODE,
     trange_burn,
@@ -324,12 +321,11 @@ trained_les = NeuralODE(f_CNODE,
     dt = dt_les,
     saveat = saveat_shock);
 # Repeat this until not instble
-u_dns_test = similar(u_dns) * 0;
-u_les_test = similar(u_les) * 0;
-u_trained_test = similar(u_les) * 0;
+u_dns_test = zeros(size(u_dns));
+u_les_test = zeros(size(u_les));
+u_trained_test = zeros(size(u_les));
 # generate M new samples
 M = 3
-println("Generating")
 u0_test = generate_initial_conditions(grid_B_dns[1].nx, 10);
 # test the dns 
 u_dns_test = Array(dns(u0_test, θ_dns, st_dns)[1]);
@@ -387,7 +383,7 @@ NNs_pos = (NN_u_pos,);
 f_CNODE_pos = create_f_CNODE(
     (F_les,), grid_B_les, NNs_pos; is_closed = true)
 θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos);
-f_CNODE_pos(all_u_les, θ_pos, st_pos)
+f_CNODE_pos(all_u_les_flat, θ_pos, st_pos);
 
 nunroll = 20
 nintervals = 5
@@ -412,7 +408,6 @@ myloss = create_randloss_MulDtO(all_u_les,
     λ_c = 0, ## TODO: TEST THIS!
     λ_l1 = 0);
 
-lhist = [];
 pinit = ComponentArrays.ComponentArray(θ_pos);
 print(myloss(pinit));
 adtype = Optimization.AutoZygote();

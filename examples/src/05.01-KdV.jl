@@ -315,7 +315,7 @@ myloss = create_randloss_derivative(all_in,
     target,
     f_CNODE,
     st;
-    nuse = 1024,
+    n_use = 1024,
     λ = 0,
     λ_c = 0);
 

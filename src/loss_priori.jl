@@ -45,7 +45,7 @@ function mean_squared_error(f, st, x, y, θ, λ, λ_c)
 end
 
 """
-    create_randloss_derivative(input_data, F_target, f, st; nuse = size(input_data, 2), λ=0, λ_c = 0)
+    create_randloss_derivative(input_data, F_target, f, st; n_use = size(input_data, 2), λ=0, λ_c = 0)
 
 Create a randomized loss function that compares the derivatives.
 This is done because using the entire dataset at each iteration would be too expensive.

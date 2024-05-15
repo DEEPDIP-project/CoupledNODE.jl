@@ -178,7 +178,7 @@ myloss = create_randloss_derivative(uv_data,
     FG_target,
     f_closed_CNODE,
     st;
-    nuse = 64,
+    n_use = 64,
     λ = 0);
 
 ## Initialize and trigger the compilation of the model
