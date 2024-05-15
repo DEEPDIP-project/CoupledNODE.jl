@@ -25,7 +25,7 @@ import Lux: Dense, gelu
 if CUDA.functional()
     import LuxCUDA
 end
-import FFTW: fft, ifft, irfft
+import FFTW: fft
 import Random: AbstractRNG
 
 struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
@@ -82,7 +82,6 @@ Lux.statelength(::FourierLayer) = 7 #TODO: make it a function
 
 # We now define how to pass inputs through Fourier layer, assuming the
 # following:
-#
 # - Input size: `(Nxyz , nchannels, nsample)`, where we allow multichannel input to for example allow the user to pass (u, u^2) or even to pass (u,v)
 # - Output size: `(Nxyz , nsample)` where we assumed monochannel output, so we dropped the channel dimension
 
@@ -130,7 +129,6 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-# Function to create the model
 function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,))
     # from the grids I can get the dimension
     dim = grid.dim

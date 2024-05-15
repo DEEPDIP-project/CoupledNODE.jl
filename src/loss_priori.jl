@@ -20,12 +20,11 @@ Random a priori loss function. Use this function to train the closure term to re
 - `x`: Input data.
 - `y`: Target data.
 - `θ`: Parameters of the model.
-- `λ`: Regularization parameter.
+- `λ` and `λ_c`: Regularization parameters.
 
 # Returns:
 - `total_loss`: Mean squared error loss.
 """
-# TODO: update docstring
 function mean_squared_error(f, st, x, y, θ, λ, λ_c)
     prediction = Array(f(x, θ, st)[1])
     total_loss = sum(abs2, prediction - y) / sum(abs2, y)
@@ -46,34 +45,33 @@ function mean_squared_error(f, st, x, y, θ, λ, λ_c)
 end
 
 """
-    create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
+    create_randloss_derivative(input_data, F_target, f, st; nuse = size(input_data, 2), λ=0, λ_c = 0)
 
 Create a randomized loss function that compares the derivatives.
-This function creates a randomized loss function derivative by selecting a subset of the data. This is done because using the entire dataset at each iteration would be too expensive.
+This is done because using the entire dataset at each iteration would be too expensive.
 
 # Arguments
-- `GS_data`: The input data.
-- `FG_target`: The target data.
+- `input_data`: The input data.
+- `F_target`: The target data.
 - `f`: The model function.
 - `st`: The model state.
-- `nuse`: The number of samples to use for the loss function. Defaults to the size of `GS_data`.
-- `λ`: The regularization parameter. Defaults to 0.
+- `n_use`: The number of samples to use for the loss function. Defaults to the number of samples in the input data.
+- `λ` and `λ_c`: The regularization parameter. Defaults to 0.
 
 # Returns
-A function `randloss` that computes the mean squared error loss using the selected subset of data.
+A function that computes the mean squared error loss and takes as input the model parameters.
 """
-# TODO: update docstring
 function create_randloss_derivative(input_data,
         F_target,
         f,
         st;
-        nuse = size(input_data, 2),
+        n_use = size(input_data, 2),
         λ = 0,
         λ_c = 0)
     d = ndims(input_data)
-    nsample = size(input_data, d)
+    n_samples = size(input_data, d)
     function randloss(θ)
-        i = Zygote.@ignore sort(shuffle(1:nsample)[1:nuse])
+        i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
         x_use = Zygote.@ignore ArrayType(selectdim(input_data, d, i))
         y_use = Zygote.@ignore ArrayType(selectdim(F_target, d, i))
         mean_squared_error(f, st, x_use, y_use, θ, λ, λ_c)

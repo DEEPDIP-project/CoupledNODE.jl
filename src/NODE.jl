@@ -1,24 +1,27 @@
 import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool, identity
 import CoupledNODE: linear_to_grid, grid_to_linear
 
+"""
+    create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
+        post_force = identity, is_closed = false)
+
+Create a CoupledNODE (CNODE) function that represents a system of coupled differential equations.
+
+# Arguments
+- `forces`: A vector or tuple of functions representing the forces in the system.
+- `grids`: A vector or tuple of grids representing the variables in the system.
+- `NNs`: (optional) A vector or tuple of neural networks representing the closure terms in the system. Default is `nothing`.
+- `pre_force`: (optional) A function to be applied before the force layer. Default is `identity`.
+- `post_force`: (optional) A function to be applied after the force layer. Default is `identity`.
+- `is_closed`: (optional) A boolean indicating whether the CNODE is closed. Default is `false`.
+
+# Returns
+A Chain object representing the consecutive set of operations taking place in the CNODE.
+"""
 function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
         post_force = identity, is_closed = false)
     # Get the number of equations from the number of grids passed
     dim = length(forces)
-
-    ## Check which grids need to be resized
-    #max_dx = maximum([g.dx for g in grids])
-    #max_dy = maximum([g.dy for g in grids])
-    #if dim > 1
-    #    grids_to_rescale = [g.dx != max_dx || g.dy != max_dy ? true : false for g in grids]
-    #    for (i, needs_rescaling) in enumerate(grids_to_rescale)
-    #        if needs_rescaling
-    #            println("Grid $i needs to be rescaled.")
-    #        end
-    #    end
-    #else
-    #    grids_to_rescale = [false]
-    #end
 
     unpack = Unpack(grids)
     concatenate = Concatenate(grids)
@@ -27,6 +30,9 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     if !is_closed
         # If the CNODE is not closed, the force layer is the last layer
         apply_force = Force_layer(forces)
+        if !isnothing(NNs)
+            @warn("WARNING: NNs were provided while indicating that the CNODE is not closed")
+        end
     else
         # Define the NN term that concatenates the output of the NNs
         if dim == 1
@@ -60,7 +66,15 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
 end
 
 """
-Takes as in the linear array containing the variables `u` and `v` and returns a tuple `(u, v)`.
+    Unpack(grids)
+
+Creates a function to unpack the input data from a concatenated list to a tuple.
+
+# Arguments
+- `grids`: A vector or tuple containing the grid(s).
+
+# Returns
+- A list of the unpacked data (coupled variables)
 """
 function Unpack(grids)
     dim = length(grids)
@@ -70,7 +84,6 @@ function Unpack(grids)
             u = linear_to_grid(grids[1], u)
             u
         end
-        # TODO: generalize the fact that u and v can have different dimensions
     elseif dim == 2
         return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
             # reshape u and v on their grid while adding a placeholder dimension for the channels
@@ -79,20 +92,29 @@ function Unpack(grids)
             [u, v]
         end
     elseif dim == 3
-        # TODO fix this
         return uvw -> let u = uvw[1:(grids[1].N), :],
             v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
             w = uvw[(grids[1].N + grids[2].N + 1):end, :]
             # reshape u, v and w on their grid while adding a placeholder dimension for the channels
-            u = reshape(u, grids[1].nx, grids[1].ny, size(u)[end])
-            v = reshape(v, grids[2].nx, grids[2].ny, size(v)[end])
-            w = reshape(w, grids[3].nx, grids[3].ny, size(w)[end])
+            u = linear_to_grid(grids[1], u)
+            v = linear_to_grid(grids[1], v)
+            w = linear_to_grid(grids[1], w)
             [u, v, w]
         end
     end
 end
 
-# Returns the function to linearize the input 
+"""
+    Concatenate(grids)
+
+Creates a function to concatenate the coupled variables to a single vector.
+
+# Arguments
+- `grids`: A vector or tuple containing the grid(s).
+
+# Returns
+- A list of concatenated coupled variables.
+"""
 function Concatenate(grids)
     dim = length(grids)
     if dim == 1
@@ -103,24 +125,21 @@ function Concatenate(grids)
         end
     elseif dim == 2
         return uv -> let u = uv[1], v = uv[2]
-            # make u and v linear
             u = grid_to_linear(grids[1], u)
             v = grid_to_linear(grids[2], v)
             vcat(u, v)
         end
     elseif dim == 3
-        # TODO fix this
         return uvw -> let u = uv[1], v = uv[2], w = uv[3]
-            # make u, v and w linear
-            u = reshape(u, grids[1].N, size(u)[end])
-            v = reshape(v, grids[2].N, size(v)[end])
-            w = reshape(w, grids[3].N, size(w)[end])
+            u = grid_to_linear(grids[1], u)
+            v = grid_to_linear(grids[2], v)
+            w = grid_to_linear(grids[3], w)
             vcat(u, v, w)
         end
     end
 end
 
-# Works only without the NN due to input shape
+# Applies the right hand side of the CNODE, force F. This is for the not closed problem.
 # TODO: make the shape more consistent, such that we can use the same layer for with and without NN
 function Force_layer(F)
     dim = length(F)
@@ -141,7 +160,7 @@ function Force_layer(F)
     end
 end
 
-# This function applies the right hand side of the CNODE, by summing force and closure NN
+# Applies the right hand side of the CNODE, by summing force F and closure NN
 function Closure(F, NN_closure)
     dim = length(F)
     if dim == 1

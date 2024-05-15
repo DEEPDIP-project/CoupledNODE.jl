@@ -181,8 +181,6 @@ myloss = create_randloss_derivative(uv_data,
     nuse = 64,
     λ = 0);
 
-# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = [];
 ## Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ);
 myloss(pinit);

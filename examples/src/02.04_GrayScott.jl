@@ -20,6 +20,7 @@ nux = nuy = nvx = nvy = 40
 import CoupledNODE: Grid, Laplacian
 grid_GS_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
 grid_GS_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
+
 # Let's define the initial condition as a random perturbation over a constant background to add variety.
 function initial_condition(grid_u, grid_v, U₀, V₀, ε_u, ε_v; nsimulations = 1)
     u_init = U₀ .+ ε_u .* randn(grid_u.nx, grid_u.ny, nsimulations)
@@ -63,9 +64,6 @@ rng = Random.seed!(1234)
 # Short *burnout run* to get rid of the initial artifacts
 trange_burn = (0.0f0, 50.0f0)
 dt, saveat = (1e-2, 1)
-# [!] According to [DiffEqGPU docs](https://docs.sciml.ai/DiffEqGPU/stable/getting_started/) 
-#     the best thing to do in case of bottleneck consisting in expensive right hand side is to 
-#     use `CuArray` as initial condition and do not rely on `EnsemblesGPU`.
 using DiffEqFlux: NeuralODE
 full_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -85,20 +83,20 @@ full_CNODE = NeuralODE(f_CNODE,
     dt = dt,
     saveat = saveat);
 burnout_data = Array(full_CNODE(burnout_data[:, :, end], θ, st)[1]);
-u = reshape(
-    burnout_data[1:(grid_GS_u.N), :, :], grid_GS_u.nx, grid_GS_u.ny, size(burnout_data)[end], :);
-v = reshape(burnout_data[(grid_GS_v.N + 1):end, :, :],
-    grid_GS_v.nx,
-    grid_GS_v.ny,
-    size(burnout_data)[end],
-    :);
+# u = reshape(
+#     burnout_data[1:(grid_GS_u.N), :, :], grid_GS_u.nx, grid_GS_u.ny, size(burnout_data)[end], :);
+# v = reshape(burnout_data[(grid_GS_v.N + 1):end, :, :],
+#     grid_GS_v.nx,
+#     grid_GS_v.ny,
+#     size(burnout_data)[end],
+#     :);
 
 # ### Data collection run - exact solution in *fine* grid
 # We use the output of the burnout to start a longer simulation.
 uv0 = burnout_data[:, :, end];
-trange = (0.0f0, 2500.0f0)
+trange = (0.0f0, 2500.0f0);
 # for this data production run, we set `dt=1` and we sample every step.
-dt, saveat = (0.1, 0.1)
+dt, saveat = (0.1, 0.1);
 full_CNODE = NeuralODE(
     f_CNODE, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 reference_data = Array(full_CNODE(uv0, θ, st)[1]);
@@ -106,19 +104,19 @@ reference_data = Array(full_CNODE(uv0, θ, st)[1]);
 u = reshape(reference_data[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
-    size(reference_data)[end],
-    :);
+    :,
+    size(reference_data)[end]);
 v = reshape(reference_data[(grid_GS_v.N + 1):end, :, :],
     grid_GS_v.nx,
     grid_GS_v.ny,
-    size(reference_data)[end],
-    :);
+    :,
+    size(reference_data)[end]);
 
 # ### Plot the data of the exact solution in the *fine* grid (DNS)
 using Plots, Plots.PlotMeasures
 anim = Animation()
 fig = plot(layout = (3, 2), size = (600, 900))
-@gif for i in 1:1000:size(u, 4)
+@gif for i in 1:1000:size(u)[end]
     p1 = heatmap(u[:, :, 1, i],
         axis = false,
         cbar = false,
@@ -165,12 +163,11 @@ coarse_grid = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
 # Since the grid of $u$ is finer than the grid of $v$ we need to define two operations to transform 
 #$v$ to the grid of $u$ prior to the force calculation and to transform the results of $v$ back to the coarser grid. This is specific to out problem, but `create_f_CNODE` allows us to define operaitons that have to take place prior and after the force calculation.
-
 import Lux: Chain, Upsample, MeanPool, SkipConnection
 """
     upscale_v(grid_u, grid_v)
 
-Generates a layer that upscales `v` to the grid of `u`.
+Generates a function that upscales `v` to the grid of `u`.
 
 # Arguments
 - `grid_u`: The spatial grid of component `u`.
@@ -181,7 +178,6 @@ A `Chain` object that upscales v, expects as input a tuple `(u, v)` and returns 
 """
 function upscale_v(grid_u, grid_v)
     up_v = Chain(
-        # extract only the v component 
         uv -> let u = uv[1], v = uv[2]
             # reshape v on the grid 
             v = reshape(v, grid_v.nx, grid_v.ny, 1, size(v)[end])
@@ -192,7 +188,6 @@ function upscale_v(grid_u, grid_v)
         (v_up, uv) -> let u = uv[1]
             # get rid of batch dimension to match u dimensions
             v_up = reshape(v_up, grid_u.nx, grid_u.ny, size(v_up)[end])
-            #(u, v_up)
             [u, v_up]
         end))
 end
@@ -200,7 +195,7 @@ end
 """
     downscale_v(grid_u, grid_v)
 
-Downscales the `v` component of a coupled grid `grid_u` and `grid_v`.
+Generates a fucntion that downscales the `v` component from `grid_u` to `grid_v`.
 
 # Arguments
 - `grid_u`: The spatial grid of component `u`.
@@ -208,7 +203,6 @@ Downscales the `v` component of a coupled grid `grid_u` and `grid_v`.
 
 # Returns
 A `Chain` object representing the downscaling operation, expects as input a tuple `(u, v)` and returns  the linearized concatenation of u and v.
-
 """
 function downscale_v(grid_u, grid_v)
     dw_v = Chain(
@@ -223,11 +217,10 @@ function downscale_v(grid_u, grid_v)
         MeanPool((2, 2)))
     return Chain(SkipConnection(dw_v,
         (v_dw, uv) -> let u = uv[1]
-            # make u and v linear
+            # make u and v linear removing the dumb dimension
             nbatch = size(u)[end]
             u = reshape(u, grid_u.nx, grid_u.ny, nbatch)
             v = reshape(v_dw, grid_v.nx, grid_v.ny, nbatch)
-            # concatenate
             (u, v)
         end))
 end
@@ -259,17 +252,18 @@ les_solution = Array(les_CNODE(uv0_coarse, θ, st)[1]);
 u_les = reshape(les_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
-    size(les_solution)[end],
-    :);
+    :,
+    size(les_solution)[end]);
 v_les = reshape(les_solution[(grid_GS_u.N + 1):end, :, :],
     coarse_grid.nx,
     coarse_grid.ny,
-    size(les_solution)[end],
-    :);
+    :,
+    size(les_solution)[end]);
+
 # ### Plot the results of LES (no closure)
 anim = Animation()
 fig = plot(layout = (3, 5), size = (500, 300))
-@gif for i in 1:1000:size(u_les, 4)
+@gif for i in 1:1000:size(u_les)[end]
     p1 = heatmap(u_les[:, :, 1, i],
         axis = false,
         cbar = false,
@@ -344,8 +338,8 @@ fig = plot(layout = (3, 5), size = (500, 300))
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    e = u_les[:, :, 3, i] .- u[:, :, 3, i]
-    p15 = heatmap(e,
+    error = u_les[:, :, 3, i] .- u[:, :, 3, i]
+    p15 = heatmap(error,
         axis = false,
         cbar = false,
         aspect_ratio = 1,
@@ -385,24 +379,21 @@ end
 u_target = reshape(reference_data[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
-    size(reference_data)[end],
-    :)
-v = reshape(reference_data[(grid_GS_v.N + 1):end, :, :],
+    :,
+    size(reference_data)[end]);
+v_target = reshape(reference_data[(grid_GS_u.N + 1):end, :, :],
     grid_GS_v.nx,
     grid_GS_v.ny,
-    size(reference_data)[end],
-    :);
-v_target = imresize(v, (coarse_grid.nx, coarse_grid.ny));
-# Pack $u$ and $v$ together in a `target` array where $u$ and $v$ are linearized in the first dimension.
-target = vcat(reshape(u_target, grid_GS_u.N, size(u_target)[end], :),
-    reshape(v_target, coarse_grid.N, size(v_target)[end], :))
+    :,
+    size(reference_data)[end]);
+v_target = imresize(v_target, (coarse_grid.nx, coarse_grid.ny));
+# Pack $u$ and $v$ together in a `target` array where $u$ and $v$ are linearized in the first dimension. This is because `ODEProblem` expects as single dimension array as input.
+target = vcat(reshape(u_target, grid_GS_u.N, :, size(u_target)[end]),
+    reshape(v_target, coarse_grid.N, :, size(v_target)[end]));
 
 # ### Closure Model
 # Let's create the CNODE with the Neural Network closure. In this case we are going to use two different neural networks for the two components $u$ and $v$.
-#import CoupledNODE: create_fno_model
-include("../../src/FNO.jl")
-include("../../src/NODE.jl")
-include("../../src/loss_posteriori.jl")
+import CoupledNODE: create_fno_model
 ch_fno = [5, 5, 5, 2];
 kmax_fno = [8, 8, 8, 8];
 σ_fno = [Lux.gelu, Lux.gelu, Lux.gelu, identity];
@@ -477,7 +468,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 # *Note:* the training is rather slow, so realistically here we can not expect good results in a few iterations.
 
 # ## Analyse the results
-# Let's use the trained CNODE to compare the solution with the target.
+# Let's use `trained_CNODE` to compare the solution with the target.
 trange = (0.0f0, 300.0f0)
 trained_CNODE = NeuralODE(f_closed_CNODE,
     trange,
@@ -486,67 +477,67 @@ trained_CNODE = NeuralODE(f_closed_CNODE,
     dt = dt,
     saveat = saveat);
 trained_CNODE_solution = Array(trained_CNODE(uv0_coarse[:, 1:3], θ, st)[1]);
-trained_CNODE_solution
+
 u_trained = reshape(trained_CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
-    size(trained_CNODE_solution)[end],
-    :);
+    :,
+    size(trained_CNODE_solution)[end]);
 v_trained = reshape(trained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
     coarse_grid.nx,
     coarse_grid.ny,
-    size(trained_CNODE_solution)[end],
-    :);
+    :,
+    size(trained_CNODE_solution)[end]);
 
 anim = Animation()
 fig = plot(layout = (2, 5), size = (750, 300))
-@gif for i in 1:40:size(u_trained, 3)
-    p1 = heatmap(u[:, :, i, 1],
+@gif for i in 1:40:size(u_trained)[end]
+    p1 = heatmap(u[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds,
         title = "Exact")
-    p2 = heatmap(v[:, :, i, 1],
+    p2 = heatmap(v[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    p3 = heatmap(u_trained[:, :, i, 1],
+    p3 = heatmap(u_trained[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds,
         title = "Trained")
-    p4 = heatmap(v_trained[:, :, i, 1],
+    p4 = heatmap(v_trained[:, :, 1, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    et = abs.(u[:, :, i, 1] .- u_trained[:, :, i, 1])
+    et = abs.(u[:, :, 1, i] .- u_trained[:, :, 1, i])
     p5 = heatmap(et,
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :greens,
         title = "Diff-u")
-    p6 = heatmap(u[:, :, i, 2], axis = false, cbar = false, aspect_ratio = 1, color = :reds)
-    p7 = heatmap(v[:, :, i, 2],
+    p6 = heatmap(u[:, :, 2, i], axis = false, cbar = false, aspect_ratio = 1, color = :reds)
+    p7 = heatmap(v[:, :, 2, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    p8 = heatmap(u_trained[:, :, i, 2],
+    p8 = heatmap(u_trained[:, :, 2, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :reds)
-    p9 = heatmap(v_trained[:, :, i, 2],
+    p9 = heatmap(v_trained[:, :, 2, i],
         axis = false,
         cbar = false,
         aspect_ratio = 1,
         color = :blues)
-    e = abs.(u[:, :, i, 2] .- u_trained[:, :, i, 2])
+    e = abs.(u[:, :, 2, i] .- u_trained[:, :, 2, i])
     p10 = heatmap(e, axis = false, cbar = false, aspect_ratio = 1, color = :greens)
 
     time = round(i * saveat, digits = 0)

@@ -2,7 +2,23 @@ import Zygote
 import Random: shuffle
 import LinearAlgebra: norm
 
-# Auxiliary function to solve the NeuralODE, given parameters p
+"""
+    predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
+
+Auxiliary function to solve the NeuralODE. Returns the prediction and the target sliced to nunroll time steps for convenience when calculating the loss.
+
+# Arguments
+- `uv0`: Initial condition(s) for the NeuralODE.
+- `θ`: Parameters of the NeuralODE.
+- `st`: Time steps for the NeuralODE.
+- `nunroll`: Number of time steps in the window.
+- `training_CNODE`: CNODE model that solves the NeuralODE.
+- `tg`: Target values.
+
+# Returns
+- `sol`: Prediction of the NeuralODE sliced to nunroll time steps.
+- `tg[:, :, 1:nunroll]`: Target values sliced to nunroll time steps.
+"""
 function predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
     return sol[:, :, 1:nunroll], tg[:, :, 1:nunroll]
@@ -16,6 +32,7 @@ Creates a random loss function for the multishooting method with multiple shooti
 # Arguments
 - `target`: The target data for the loss function.
 - `training_CNODE`: Model CNODE.
+- `st`: state of the neural part.
 - `nunroll`: The number of time steps to unroll.
 - `noverlaps`: The number of time steps that overlaps between consecutive intervals.
 - `nintervals`: The number of shooting intervals.
@@ -77,7 +94,6 @@ Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more 
 
 # Returns
 - `loss`: The computed loss value.
-- `nothing`: Placeholder return value.
 """
 function loss_MulDtO_oneset(trajectory,
         θ, st,
