@@ -86,7 +86,7 @@ GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
 
 # ## II. Training a CNODE to learn the GS model via a posteriori training
 # To learn the GS model, we will use the following CNODE
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \Delta v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}
+# $\begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u + \theta_{u,1} uv^2 +\theta_{u,2} v^2u + \theta_{u,3} u +\theta_{u,4} v +\theta_{u,5}  \\ \frac{dv}{dt} = D_v \Delta v + \theta_{v,1} uv^2 + \theta_{v,2} v^2u +\theta_{v,3} u +\theta_{v,4} v +\theta_{v,5} \end{cases} \end{equation}$
 # In this example the deterministic function contains the diffusion and the coupling terms, while the model has to learn the source and death terms.
 # Then the deterministic functions of the two coupled equations are
 import Zygote

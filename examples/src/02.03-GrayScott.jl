@@ -3,7 +3,7 @@
 # We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
 # We use again the GS model, which is defined from
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
+# $\begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}$
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
@@ -19,7 +19,7 @@ nux = nuy = nvx = nvy = 200
 grid_GS_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
 grid_GS_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
-# We start with a central concentration of $v$
+# We define our initial conditions with a central concentration of $v$
 function initialize_uv(grid_u, grid_v, u_bkg, v_bkg, center_size)
     u_initial = u_bkg * ones(grid_u.nx, grid_u.ny)
     v_initial = zeros(grid_v.nx, grid_v.ny)
@@ -28,7 +28,7 @@ function initialize_uv(grid_u, grid_v, u_bkg, v_bkg, center_size)
 end
 u_initial, v_initial = initialize_uv(grid_GS_u, grid_GS_v, 0.8, 0.9, 4);
 
-# We can now define the initial condition as a flattened concatenated array
+# Create a flattened concatenated array of the initial condition.
 uv0 = vcat(reshape(u_initial, grid_GS_u.nx * grid_GS_u.ny, 1),
     reshape(v_initial, grid_GS_v.nx * grid_GS_v.ny, 1))
 

@@ -44,7 +44,7 @@ D_v = 0.08f0
 f = 0.055f0
 k = 0.062f0;
 
-# Definiton of the right-hand-sides (RHS) of GS model
+# Definition of the right-hand-sides (RHS) or forces of GS model
 import Zygote
 function F_u(u, v)
     Zygote.@ignore MY_TYPE.(D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+
@@ -83,13 +83,6 @@ full_CNODE = NeuralODE(f_CNODE,
     dt = dt,
     saveat = saveat);
 burnout_data = Array(full_CNODE(burnout_data[:, :, end], θ, st)[1]);
-# u = reshape(
-#     burnout_data[1:(grid_GS_u.N), :, :], grid_GS_u.nx, grid_GS_u.ny, size(burnout_data)[end], :);
-# v = reshape(burnout_data[(grid_GS_v.N + 1):end, :, :],
-#     grid_GS_v.nx,
-#     grid_GS_v.ny,
-#     size(burnout_data)[end],
-#     :);
 
 # ### Data collection run - exact solution in *fine* grid
 # We use the output of the burnout to start a longer simulation.
@@ -162,31 +155,31 @@ dvy = nuy * duy / nvy
 coarse_grid = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
 # Since the grid of $u$ is finer than the grid of $v$ we need to define two operations to transform 
-#$v$ to the grid of $u$ prior to the force calculation and to transform the results of $v$ back to the coarser grid. This is specific to out problem, but `create_f_CNODE` allows us to define operaitons that have to take place prior and after the force calculation.
+# $v$ to the grid of $u$ prior to the force calculation and to transform the results of $v$ back to the coarser grid. This is specific to out problem, but `create_f_CNODE` allows us to define operaitons that have to take place prior and after the force calculation.
 import Lux: Chain, Upsample, MeanPool, SkipConnection
 """
     upscale_v(grid_u, grid_v)
 
 Generates a function that upscales `v` to the grid of `u`.
 
-# Arguments
+Arguments
 - `grid_u`: The spatial grid of component `u`.
 - `grid_v`: The spatial grid of component`v`.
 
-# Returns
+Returns
 A `Chain` object that upscales v, expects as input a tuple `(u, v)` and returns a tuple `(u, v)` with  `v` upscaled to the grid of `u`.
 """
 function upscale_v(grid_u, grid_v)
     up_v = Chain(
         uv -> let u = uv[1], v = uv[2]
-            # reshape v on the grid 
+            #reshape v on the grid 
             v = reshape(v, grid_v.nx, grid_v.ny, 1, size(v)[end])
             v
         end,
         Upsample(:trilinear, size = (grid_u.nx, grid_u.ny)))
     return Chain(SkipConnection(up_v,
         (v_up, uv) -> let u = uv[1]
-            # get rid of batch dimension to match u dimensions
+            #get rid of batch dimension to match u dimensions
             v_up = reshape(v_up, grid_u.nx, grid_u.ny, size(v_up)[end])
             [u, v_up]
         end))
@@ -195,29 +188,29 @@ end
 """
     downscale_v(grid_u, grid_v)
 
-Generates a fucntion that downscales the `v` component from `grid_u` to `grid_v`.
+Generates a function that downscales the `v` component from `grid_u` to `grid_v`.
 
-# Arguments
+Arguments
 - `grid_u`: The spatial grid of component `u`.
 - `grid_v`: The spatial grid of component`v`.
 
-# Returns
-A `Chain` object representing the downscaling operation, expects as input a tuple `(u, v)` and returns  the linearized concatenation of u and v.
+Returns
+A `Chain` object representing the downscaling operation, expects as input a tuple `(u, v)` and returns the linearized concatenation of u and v.
 """
 function downscale_v(grid_u, grid_v)
     dw_v = Chain(
-        # extract only the v component
+        #extract only the v component
         uv -> let v = uv[2]
-            # to apply upsample you need a 4th dumb dimension to represent the channels/batch
+            #to apply upsample you need a 4th dumb dimension to represent the channels/batch
             v = reshape(v, size(v, 1), size(v, 2), size(v, 3), 1)
             v
         end,
-        # to downscale we first have to upscale to twice the target size
+        #to downscale we first have to upscale to twice the target size
         Upsample(:trilinear, size = (2 * grid_v.nx, 2 * grid_v.ny)),
         MeanPool((2, 2)))
     return Chain(SkipConnection(dw_v,
         (v_dw, uv) -> let u = uv[1]
-            # make u and v linear removing the dumb dimension
+            #make u and v linear removing the dumb dimension
             nbatch = size(u)[end]
             u = reshape(u, grid_u.nx, grid_u.ny, nbatch)
             v = reshape(v_dw, grid_v.nx, grid_v.ny, nbatch)

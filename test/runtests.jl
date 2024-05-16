@@ -31,7 +31,7 @@ end
     end
 end
 
-@testset "Burgers" begin
+@testset "Burgers" begin # ~ 9 min
     @test try
         include("../examples/src/03.01-Burgers.jl")
         true
