@@ -19,7 +19,5 @@ while true
             flavor = Literate.CommonMarkFlavor(),
             codefence = "```julia" => "```")
     end
-
-    #watch_file("Example1.jl")
     watch_folder("src")
 end
