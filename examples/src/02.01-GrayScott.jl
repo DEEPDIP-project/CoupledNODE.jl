@@ -279,8 +279,10 @@ v_trained = reshape(trained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
     grid_GS_v.ny,
     size(trained_CNODE_solution, 2),
     :);
+
 f_u = create_f_CNODE(
-    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = false)
+    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
+# Setting these new parameters ensure us that we do not use the trained network.
 θ_u, st_u = Lux.setup(rng, f_u);
 
 ## Untrained solution
