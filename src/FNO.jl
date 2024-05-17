@@ -21,10 +21,11 @@
 # contains information for construction the network.
 
 import Lux
+import Lux: Dense, gelu
 if CUDA.functional()
     import LuxCUDA
 end
-import FFTW: fft, ifft, irfft
+import FFTW: fft
 import Random: AbstractRNG
 
 struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
@@ -43,7 +44,8 @@ function FourierLayer(
         kmax,
         ch::Pair{Int, Int};
         σ = identity,
-        init_weight = Lux.glorot_uniform)
+        #init_weight = Lux.glorot_uniform)
+        init_weight = Lux.zeros32)
     FourierLayer(dim_to_fft, Nxyz, kmax, first(ch), last(ch), σ, init_weight)
 end
 
@@ -80,7 +82,6 @@ Lux.statelength(::FourierLayer) = 7 #TODO: make it a function
 
 # We now define how to pass inputs through Fourier layer, assuming the
 # following:
-#
 # - Input size: `(Nxyz , nchannels, nsample)`, where we allow multichannel input to for example allow the user to pass (u, u^2) or even to pass (u,v)
 # - Output size: `(Nxyz , nsample)` where we assumed monochannel output, so we dropped the channel dimension
 
@@ -128,27 +129,24 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-# Function to create the model
 function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,))
     # from the grids I can get the dimension
     dim = grid.dim
+    ch_dim = dim + 1
     if dim == 1
         dim_to_fft = (1,)
         Nxyz = (grid.nx,)
-        ch_dim = 2
         # permutations to toss around the channel dimesion
         ch_first = (2, 1, 3)
         ch_back = (2, 1, 3)
     elseif dim == 2
         dim_to_fft = (1, 2)
         Nxyz = (grid.nx, grid.ny)
-        ch_dim = 3
         ch_first = (3, 1, 2, 4)
         ch_back = (2, 3, 1, 4)
     elseif dim == 3
         dim_to_fft = (1, 2, 3)
         Nxyz = (grid.nx, grid.ny, grid.nz)
-        ch_dim = 4
         ch_first = (4, 1, 2, 3, 5)
         ch_back = (2, 3, 4, 1, 5)
     else
@@ -160,7 +158,7 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
     ch_fno = [length(input_channels); ch_fno]
 
     return Chain(
-        #u -> a = real.(ifft(u, dim_to_fft)),
+        input_channels...,
         (FourierLayer(
              dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
         i in eachindex(σ_fno))...,
@@ -170,8 +168,7 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
         u -> permutedims(u, ch_back),
-        #u -> fft(u, dim_to_fft),
         # drop the channel dimension
-        u -> dropdims(u, dims = ch_dim)        # and make real        #u -> real(u)
+        u -> dropdims(u, dims = ch_dim)
     )
 end
