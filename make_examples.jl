@@ -10,7 +10,7 @@ if length(ARGS) > 0
     files = [f for f in files if occursin("examples/", f)]
     files = [replace(f, r"examples/" => "") for f in files]
 else
-    files = glob("*-*.jl")
+    files = glob("src/*-*.jl")
 end
 
 overwrite_nb = true

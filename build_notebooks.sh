@@ -3,7 +3,7 @@
 echo "Building notebooks..."
 
 # pre-commit passes staged files as arguments
-FILENAMES=$(echo "$@" | grep 'examples/.*\.jl$')
+FILENAMES=$(echo "$@" | grep 'examples/src/\.jl$')
 echo "Files changed: $FILENAMES"
 
 if [ -n "$FILENAMES" ]; then

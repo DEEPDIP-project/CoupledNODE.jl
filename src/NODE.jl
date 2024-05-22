@@ -1,176 +1,180 @@
-import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool
+import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool, identity
+import CoupledNODE: linear_to_grid, grid_to_linear
 
 """
-    create_f_NODE(NN, f_u; is_closed=false)
+    create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
+        post_force = identity, is_closed = false)
 
-Create a Neural ODE (NODE) using ResNet skip blocks to add the closure.
+Create a CoupledNODE (CNODE) function that represents a system of coupled differential equations.
 
 # Arguments
-- `NN`: The neural network model.
-- `f_u`: The closure function.
-- `is_closed`: A boolean indicating whether to add the closure or not. Default is `false`.
+- `forces`: A vector or tuple of functions representing the forces in the system.
+- `grids`: A vector or tuple of grids representing the variables in the system.
+- `NNs`: (optional) A vector or tuple of neural networks representing the closure terms in the system. Default is `nothing`.
+- `pre_force`: (optional) A function to be applied before the force layer. Default is `identity`.
+- `post_force`: (optional) A function to be applied after the force layer. Default is `identity`.
+- `is_closed`: (optional) A boolean indicating whether the CNODE is closed. Default is `false`.
 
 # Returns
-- The created Neural ODE (NODE) model.
+A Chain object representing the consecutive set of operations taking place in the CNODE.
 """
-function create_f_NODE(NN, f_u; is_closed = false)
-    return Chain(SkipConnection(NN, (f_NN, u) -> is_closed ? f_NN + f_u(u) : f_u(u)))
-end
+function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
+        post_force = identity, is_closed = false)
+    # Get the number of equations from the number of grids passed
+    dim = length(forces)
 
-"""
-    create_f_CNODE(F_u, G_v, grid, NN_u=nothing, NN_v=nothing; is_closed=false)
+    unpack = Unpack(grids)
+    concatenate = Concatenate(grids)
 
-Create a neural network model for the Coupled Neural ODE (CNODE) approach.
-
-# Arguments
-- `F_u`: Function that defines the right-hand side of the CNODE for the variable `u`.
-- `G_v`: Function that defines the right-hand side of the CNODE for the variable `v`.
-- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
-- `NN_u` (optional): Neural network model for the variable `u`. Default is `nothing`.
-- `NN_v` (optional): Neural network model for the variable `v`. Default is `nothing`.
-- `is_closed` (optional): Boolean indicating whether the CNODE is closed or not. Default is `false`.
-
-# Returns
-- The created CNODE model.
-"""
-function create_f_CNODE(F_u, G_v, grid, NN_u = nothing, NN_v = nothing; is_closed = false)
-    # Since I will be upscaling v, I need to define a new grid to pass to the force
-    grid_for_force = Grid(grid.dux,
-        grid.duy,
-        grid.nux,
-        grid.nuy,
-        grid.dux,
-        grid.duy,
-        grid.nux,
-        grid.nuy)
-    # check if v has to be rescaled or not
-    if grid.dux != grid.dvx || grid.duy != grid.dvy
-        println("Resizing v to the same grid as u")
-        resize_v = true
-    else
-        println("No need to resize v")
-        resize_v = false
-    end
-    # Get the functions that will downscale and upscale the uv field
-    Upscaler = upscale_v(grid, resize_v)
-    Downscaler = downscale_v(grid, resize_v)
-
-    # Check if you want to close the CNODE or not
+    # Define the force layer
     if !is_closed
-        return Chain(
-            # layer that casts to f32
-            Upscaler,
-            uv -> let u = uv[1], v = uv[2]
-                # Return a tuple of the right hand side of the CNODE
-                # remove the placeholder dimension for the channels
-                u = reshape(u, grid_for_force.nux, grid_for_force.nuy, size(u, 4))
-                v = reshape(v, grid_for_force.nvx, grid_for_force.nvy, size(v, 4))
-                (F_u(u, v, grid_for_force), G_v(u, v, grid_for_force))
-            end,
-            Downscaler)
+        # If the CNODE is not closed, the force layer is the last layer
+        apply_force = Force_layer(forces)
+        if !isnothing(NNs)
+            @warn("WARNING: NNs were provided while indicating that the CNODE is not closed")
+        end
     else
-        # Define the NN term that concatenates the output of the NN_u and NN_v
-        NN_closure = Parallel(nothing, NN_u, NN_v)
-        # And use it to close the CNODE
-        return Chain(Upscaler,
-            # For the NN I want u and v concatenated in the channel dimension
-            uv -> let u = uv[1], v = uv[2]
-                cat(u, v, dims = 3)
-            end,
-            # Apply the right hand side of the CNODE 
-            SkipConnection(NN_closure,
-                (f_NN, uv) -> let u = uv[:, :, 1, :], v = uv[:, :, 2, :]
-                    (F_u(u, v, grid_for_force) + f_NN[1],
-                        G_v(u, v, grid_for_force) + f_NN[2])
-                end),
-            Downscaler)
+        # Define the NN term that concatenates the output of the NNs
+        if dim == 1
+            if length(NNs) != 1
+                error("ERROR: NNs should be a single NN for 1D problems")
+            end
+            NN_closure = Parallel(nothing, NNs[1])
+        elseif dim == 2
+            if length(NNs) != 2
+                error("ERROR: NNs should be a tuple of two NNs for 2D problems")
+            end
+            # [!] using Parallel with a tuple input means that it gets split to the two NNs!
+            NN_closure = Parallel(nothing, NNs[1], NNs[2])
+        elseif dim == 3
+            if length(NNs) != 3
+                error("ERROR: NNs should be a tuple of three NNs for 3D problems")
+            end
+            NN_closure = Parallel(nothing, NNs[1], NNs[2], NNs[3])
+        else
+            error("ERROR: Unsupported number of dimensions: $dim")
+        end
+        apply_force = Closure(forces, NN_closure)
+    end
+
+    return Chain(
+        unpack,
+        pre_force,
+        apply_force,
+        post_force,
+        concatenate)
+end
+
+"""
+    Unpack(grids)
+
+Creates a function to unpack the input data from a concatenated list to a tuple.
+
+# Arguments
+- `grids`: A vector or tuple containing the grid(s).
+
+# Returns
+- A list of the unpacked data (coupled variables)
+"""
+function Unpack(grids)
+    dim = length(grids)
+    if dim == 1
+        return u -> let u = u
+            # add a placeholder dimension for the channels
+            u = linear_to_grid(grids[1], u)
+            u
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
+            # reshape u and v on their grid while adding a placeholder dimension for the channels
+            u = linear_to_grid(grids[1], u)
+            v = linear_to_grid(grids[2], v)
+            [u, v]
+        end
+    elseif dim == 3
+        return uvw -> let u = uvw[1:(grids[1].N), :],
+            v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
+            w = uvw[(grids[1].N + grids[2].N + 1):end, :]
+            # reshape u, v and w on their grid while adding a placeholder dimension for the channels
+            u = linear_to_grid(grids[1], u)
+            v = linear_to_grid(grids[1], v)
+            w = linear_to_grid(grids[1], w)
+            [u, v, w]
+        end
     end
 end
 
 """
-    downscale_v(grid, resize_v=false)
-    
-Generate the layer that downscales `v` and expects as input a tuple `(u, v)`. 
-If `resize_v` is `true`, the layer upscales `v` to twice the target size and applies mean pooling.
+    Concatenate(grids)
 
-Arguments:
-- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
-- `resize_v`: A boolean indicating whether to resize v.
+Creates a function to concatenate the coupled variables to a single vector.
 
-Returns:
-- Function that takes a tuple (u, v) returns the linearized concatenation of `u` and `v`.
+# Arguments
+- `grids`: A vector or tuple containing the grid(s).
+
+# Returns
+- A list of concatenated coupled variables.
 """
-function downscale_v(grid, resize_v = false)
-    if !resize_v
-        return Chain(uv -> let u = uv[1], v = uv[2]
-            # make u and v linear
-            u = reshape(u, grid.Nu, size(u)[end])
-            v = reshape(v, grid.Nv, size(v)[end])
-            # and concatenate
+function Concatenate(grids)
+    dim = length(grids)
+    if dim == 1
+        return u -> let u = u[1]
+            # make u linear
+            u = grid_to_linear(grids[1], u)
+            u
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1], v = uv[2]
+            u = grid_to_linear(grids[1], u)
+            v = grid_to_linear(grids[2], v)
             vcat(u, v)
-        end)
-    else
-        dw_v = Chain(
-            # extract only the v component
-            uv -> let v = uv[2]
-                # to apply upsample you need a 4th dumb dimension to represent the channels/batch
-                v = reshape(v, size(v, 1), size(v, 2), size(v, 3), 1)
-                v
-            end,
-            # to downscale we first have to upscale to twice the target size
-            Upsample(:trilinear, size = (2 * grid.nvx, 2 * grid.nvy)),
-            MeanPool((2, 2)))
-        return Chain(SkipConnection(dw_v,
-            (v_dw, uv) -> let u = uv[1]
-                # make u and v linear
-                nbatch = size(u)[end]
-                u = reshape(u, grid.Nu, nbatch)
-                v = reshape(v_dw, grid.Nv, nbatch)
-                # and concatenate
-                vcat(u, v)
-            end))
+        end
+    elseif dim == 3
+        return uvw -> let u = uv[1], v = uv[2], w = uv[3]
+            u = grid_to_linear(grids[1], u)
+            v = grid_to_linear(grids[2], v)
+            w = grid_to_linear(grids[3], w)
+            vcat(u, v, w)
+        end
     end
 end
 
-"""
-    upscale_v(grid, resize_v=false)
-
-Generate the layer that upscales `v`.
-This function expects as input the linearized concatenation of u and v and returns a tuple (u, v).
-
-Arguments:
-- `grid`: Grid object that represents the spatial discretization of the variables `u` and `v`.
-- `resize_v`: A boolean indicating whether to resize the v component.
-
-Returns:
-- Function that reshapes `u` and `v` on the grid and returns a tuple (u, v)
-"""
-function upscale_v(grid, resize_v = false)
-    # Generate the layer that upscales v
-    # expects as input the linearized concatenation of u and v
-    # returns a tuple (u,v)
-
-    if !resize_v
-        return Chain(uv -> let u = uv[1:(grid.Nu), :], v = uv[(grid.Nu + 1):end, :]
-            # reshape u and v on the grid
-            u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
-            v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
-            (u, v)
-        end)
+# Applies the right hand side of the CNODE, force F. This is for the not closed problem.
+# TODO: make the shape more consistent, such that we can use the same layer for with and without NN
+function Force_layer(F)
+    dim = length(F)
+    if dim == 1
+        return uv -> let u = uv
+            (F[1](u),)
+        end
+    elseif dim == 2
+        return uv -> let u = uv[1], v = uv[2]
+            (F[1](u, v), F[2](u, v))
+        end
+    elseif dim == 3
+        return uv -> let u = uv[1], v = uv[2], w = uv[3]
+            (F[1](u, v, w), F[2](u, v, w), F[3](u, v, w))
+        end
     else
-        up_v = Chain(
-            # extract only the v component 
-            uv -> let v = uv[(grid.Nu + 1):end, :]
-                # reshape v on the grid 
-                v = reshape(v, grid.nvx, grid.nvy, 1, size(v, 2))
-                v
-            end,
-            Upsample(:trilinear, size = (grid.nux, grid.nuy)))
-        return Chain(SkipConnection(up_v,
-            (v_up, uv) -> let u = uv[1:(grid.Nu), :]
-                # make u on the grid
-                u = reshape(u, grid.nux, grid.nuy, 1, size(u, 2))
-                (u, v_up)
-            end))
+        error("ERROR: Unsupported number of dimensions: $dim")
+    end
+end
+
+# Applies the right hand side of the CNODE, by summing force F and closure NN
+function Closure(F, NN_closure)
+    dim = length(F)
+    if dim == 1
+        return SkipConnection(NN_closure,
+            (f_NN, u) -> let u = u
+                (F[1](u) .+ f_NN[1],)
+            end)
+    elseif dim == 2
+        return SkipConnection(
+            NN_closure,
+            (f_NN, uv) -> let u = uv[1], v = uv[2]
+                (F[1](u, v) .+ f_NN[1], F[2](u, v) .+ f_NN[2])
+            end)
+    else
+        error("ERROR: Unsupported number of dimensions: $dim")
     end
 end
