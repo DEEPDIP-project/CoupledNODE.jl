@@ -10,5 +10,5 @@ repos:
     name: "Build Notebooks"
     language: "script"
     entry: "./build_notebooks.sh"
-    files: 'examples/.*\.jl$'
+    files: 'examples/src/\.jl$'
 

@@ -3,101 +3,38 @@ import Random: shuffle
 import LinearAlgebra: norm
 
 """
-    mean_squared_error(f, st, x, y, θ, λ)
+    predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
 
-Random a priori loss function. Use this function to train the closure term to reproduce the right hand side.
-
-# Arguments:
-- `f`: Function that represents the model.
-- `st`: State of the model.
-- `x`: Input data.
-- `y`: Target data.
-- `θ`: Parameters of the model.
-- `λ`: Regularization parameter.
-
-# Returns:
-- `total_loss`: Mean squared error loss.
-"""
-function mean_squared_error(f, st, x, y, θ, λ)
-    prediction = Array(f(x, θ, st)[1])
-    total_loss = sum(abs2, prediction - y) / sum(abs2, y)
-    return total_loss + λ * norm(θ, 1), nothing
-end
-
-"""
-    create_randloss_derivative(GS_data, FG_target, f, st; nuse = size(GS_data, 2), λ=0)
-
-Create a randomized loss function that compares the derivatives.
-This function creates a randomized loss function derivative by selecting a subset of the data. This is done because using the entire dataset at each iteration would be too expensive.
+Auxiliary function to solve the NeuralODE. Returns the prediction and the target sliced to nunroll time steps for convenience when calculating the loss.
 
 # Arguments
-- `GS_data`: The input data.
-- `FG_target`: The target data.
-- `f`: The model function.
-- `st`: The model state.
-- `nuse`: The number of samples to use for the loss function. Defaults to the size of `GS_data`.
-- `λ`: The regularization parameter. Defaults to 0.
+- `uv0`: Initial condition(s) for the NeuralODE.
+- `θ`: Parameters of the NeuralODE.
+- `st`: Time steps for the NeuralODE.
+- `nunroll`: Number of time steps in the window.
+- `training_CNODE`: CNODE model that solves the NeuralODE.
+- `tg`: Target values.
 
 # Returns
-A function `randloss` that computes the mean squared error loss using the selected subset of data.
+- `sol`: Prediction of the NeuralODE sliced to nunroll time steps.
+- `tg[:, :, 1:nunroll]`: Target values sliced to nunroll time steps.
 """
-function create_randloss_derivative(GS_data,
-        FG_target,
-        f,
-        st;
-        nuse = size(GS_data, 2),
-        λ = 0)
-    d = ndims(GS_data)
-    nsample = size(GS_data, d)
-    function randloss(θ)
-        i = Zygote.@ignore sort(shuffle(1:nsample)[1:nuse])
-        x_use = Zygote.@ignore ArrayType(selectdim(GS_data, d, i))
-        y_use = Zygote.@ignore ArrayType(selectdim(FG_target, d, i))
-        mean_squared_error(f, st, x_use, y_use, θ, λ)
-    end
-end
-
-# auxiliary function to solve the NeuralODE, given parameters p
-function predict_u_CNODE(uv0, θ, tg)
+function predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
-    #tg_size = size(tg)
-    #println("sol size ", size(sol))
-    #println("tg size ", size(tg))
-    #println(sol[:,:,1] == tg[:,:,1])
-
-    ## handle unstable solver
-    #if any(isnan, sol)
-    #    # if some steps succesfully run, then use them for the loss
-    #    nok = 1
-    #    while any(isnan, sol[:, :, 1:nok])
-    #        nok += 1
-    #    end
-    #    if nok > 1
-    #        println("Unstability after ", nok, " steps")
-    #        tg = tg[:,:,1:nok]
-    #        sol = sol[:,:,1:nok]
-    #    else
-    #        # otherwise run the auxiliary solver
-    #        println("Using auxiliary solver ")
-    #        sol = Array(training_CNODE_2(uv0, θ, st)[1])
-    #        if any(isnan, sol)
-    #            println("ERROR: NaN detected in the prediction")
-    #            return fill(1e6 * sum(θ), tg_size)
-    #        end
-    #    end
-    #end
-    return sol, tg[:, :, 1:size(sol, 3)]
+    return sol[:, :, 1:nunroll], tg[:, :, 1:nunroll]
 end
 
 """
     create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
 
-This function creates a random loss function for the multishooting method with multiple shooting intervals.
+Creates a random loss function for the multishooting method with multiple shooting intervals.
 
 # Arguments
 - `target`: The target data for the loss function.
+- `training_CNODE`: Model CNODE.
+- `st`: state of the neural part.
 - `nunroll`: The number of time steps to unroll.
-- `noverlaps`: The number of time steps that overlaps between each consecutive intervals.
+- `noverlaps`: The number of time steps that overlaps between consecutive intervals.
 - `nintervals`: The number of shooting intervals.
 - `nsamples`: The number of samples to select.
 - `λ_c`: The weight for the continuity term. It sets how strongly we make the pieces match (continuity term).
@@ -107,13 +44,14 @@ This function creates a random loss function for the multishooting method with m
 - `randloss_MulDtO`: A random loss function for the multishooting method.
 """
 function create_randloss_MulDtO(
-        target; nunroll, nintervals = 1, noverlaps = 1, nsamples, λ_c, λ_l1)
+        target, training_CNODE, st; nunroll, nintervals = 1,
+        noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
     # TODO: there should be some check about the consistency of the input arguments
     # Get the number of time steps 
     d = ndims(target)
-    nt = size(target, d)
+    nt = size(target, d) # number of time steps (length of last dimension)
     function randloss_MulDtO(θ)
-        # We compute the requested length of consecutive timesteps
+        # Compute the requested length of consecutive timesteps
         # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0 
         length_required = nintervals * (nunroll + 1) - noverlaps * (nintervals - 1)
         # Zygote will select a random initial condition that can accomodate all the multishooting intervals
@@ -126,6 +64,8 @@ function create_randloss_MulDtO(
         # then return the loss for each multishooting set
         loss_MulDtO_oneset(trajectory,
             θ,
+            st,
+            training_CNODE,
             nunroll = nunroll,
             nintervals = nintervals,
             noverlaps = noverlaps,
@@ -144,28 +84,27 @@ Check https://docs.sciml.ai/DiffEqFlux/dev/examples/multiple_shooting/ for more 
 # Arguments
 - `trajectory`: The trajectory of the system.
 - `θ`: The parameters of the CNODE model.
+- `training_CNODE`: Model CNODE.
 - `λ_c`: The weight for the continuity term. It sets how strongly we make the pieces match (continuity term). Default is `1e1`.
 - `λ_l1`: The weight for the L1 regularization term. Default is `1e1`.
 - `nunroll`: The number of time steps to unroll the trajectory.
 - `noverlaps`: The number of time steps that overlaps between each consecutive intervals.
 - `nintervals`: The number of intervals to divide the trajectory into.
-- `nsamples`: The number of samples. Default is `nsamples`.
+- `nsamples`: The number of samples.
 
 # Returns
 - `loss`: The computed loss value.
-- `nothing`: Placeholder return value.
 """
 function loss_MulDtO_oneset(trajectory,
-        θ;
+        θ, st,
+        training_CNODE;
         λ_c = 1e1,
         λ_l1 = 1e1,
         nunroll,
         nintervals,
         noverlaps,
-        nsamples = nsamples)
+        nsamples)
     # Get the timesteps where the intervals start 
-    #starting_points = [i*(nunroll+1-noverlaps) for i in 1:(nintervals-1)]
-    #pushfirst!(starting_points,1)
     starting_points = [i == 0 ? 1 : i * (nunroll + 1 - noverlaps)
                        for i in 0:(nintervals - 1)]
     # Take all the time intervals and concatenate them in the batch dimension
@@ -176,9 +115,10 @@ function loss_MulDtO_oneset(trajectory,
     list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
         dims = 2)
     # Use the differentiable solver to get the predictions
-    pred, list_tr = predict_u_CNODE(list_starts, θ, list_tr)
+    pred, target = predict_u_CNODE(list_starts, θ, st, nunroll, training_CNODE, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
-    loss = sum(abs2, list_tr .- pred) ./ sum(abs2, list_tr)
+    loss = sum(abs2, target[:, :, 2:nunroll] .- pred[:, :, 2:nunroll]) ./
+           sum(abs2, target[:, :, 2:nunroll])
 
     if λ_c > 0 && size(list_tr, 3) == nunroll + 1
         # //TODO check if the continuity term is correct

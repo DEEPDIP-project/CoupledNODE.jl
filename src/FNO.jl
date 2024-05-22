@@ -21,10 +21,16 @@
 # contains information for construction the network.
 
 import Lux
-import FFTW: fft, ifft
+import Lux: Dense, gelu
+if CUDA.functional()
+    import LuxCUDA
+end
+import FFTW: fft
 import Random: AbstractRNG
 
 struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
+    dim_to_fft::Tuple{Vararg{Int}}
+    Nxyz::Tuple{Vararg{Int}}
     kmax::Int
     cin::Int
     cout::Int
@@ -33,66 +39,82 @@ struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
 end
 
 function FourierLayer(
-        kmax, ch::Pair{Int, Int}; σ = identity, init_weight = Lux.glorot_uniform)
-    FourierLayer(kmax, first(ch), last(ch), σ, init_weight)
+        dim_to_fft::Tuple{Vararg{Int}},
+        Nxyz::Tuple{Vararg{Int}},
+        kmax,
+        ch::Pair{Int, Int};
+        σ = identity,
+        init_weight = Lux.glorot_uniform)
+    #init_weight = Lux.zeros32)
+    FourierLayer(dim_to_fft, Nxyz, kmax, first(ch), last(ch), σ, init_weight)
 end
 
-# We also need to specify how to initialize the parameters and states. The
-# Fourier layer does not have any hidden states (RNGs) that are modified.
+# We also need to specify how to initialize the parameters and states. 
 
 function Lux.initialparameters(rng::AbstractRNG,
-        (; kmax, cin, cout, init_weight)::FourierLayer)
+        (; Nxyz, kmax, cin, cout, init_weight)::FourierLayer)
+    mydims = length(Nxyz)
+    kgrid = ntuple(d -> kmax + 1, mydims)
     (;
         spatial_weight = init_weight(rng, cout, cin),
-        spectral_weights = init_weight(rng, kmax + 1, kmax + 1, cout, cin, 2))
+        # the last dimension of size 2 is for real and imaginary part
+        spectral_weights = init_weight(rng, kgrid..., cout, cin, 2)
+    )
 end
-Lux.initialstates(::AbstractRNG, ::FourierLayer) = (;)
-function Lux.parameterlength((; kmax, cin, cout)::FourierLayer)
-    cout * cin + (kmax + 1)^2 * 2 * cout * cin
+function Lux.initialstates(rng::AbstractRNG, (; Nxyz, kmax, cin)::FourierLayer)
+    mydims = length(Nxyz)
+    kgrid = ntuple(d -> kmax + 1, mydims)
+    (;
+        mydims = mydims,
+        kgrid = kgrid,
+        placeholder = ntuple(d -> 1, mydims),
+        ikeep = ntuple(d -> 1:(kmax + 1), mydims),
+        nkeep = ntuple(d -> kmax + 1, mydims),
+        last_dim = mydims + 3,
+        # pad with a 0 on the left and a N-k-1 on the right for each dimension
+        pad = ntuple(d -> d % 2 == 0 ? Nxyz[1] - kmax - 1 : 0, mydims * 2)
+    )
 end
-Lux.statelength(::FourierLayer) = 0
+function Lux.parameterlength((; Nxyz, kmax, cin, cout)::FourierLayer)
+    cout * cin + (kmax + 1)^length(Nxyz) * 2 * cout * cin
+end
+Lux.statelength(::FourierLayer) = 7 #TODO: make it a function
 
 # We now define how to pass inputs through Fourier layer, assuming the
 # following:
-#
-# - Input size: `(N, N, 2, nsample)`, where the two channel are u and v
-# - Output size: `(N, N, nsample)` where we assumed monochannel output, so we dropped the channel dimension
+# - Input size: `(Nxyz , nchannels, nsample)`, where we allow multichannel input to for example allow the user to pass (u, u^2) or even to pass (u,v)
+# - Output size: `(Nxyz , nsample)` where we assumed monochannel output, so we dropped the channel dimension
 
 # This is what each Fourier layer does:
-function ((; kmax, cout, cin, σ)::FourierLayer)(x, params, state)
-    N = size(x, 1)
-
+function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, state)
     ## Destructure params
-    ## The real and imaginary parts of R are stored in two separate channels
     W = params.spatial_weight
-    W = reshape(W, 1, 1, cout, cin)
+    W = reshape(W, state.placeholder..., cout, cin)
     R = params.spectral_weights
-    R = selectdim(R, 5, 1) .+ im .* selectdim(R, 5, 2)
+    ## The real and imaginary parts of R are stored in two separate channels
+    R = selectdim(R, state.last_dim, 1) .+ im .* selectdim(R, state.last_dim, 2)
 
     ## Spatial part (applied point-wise)
-    y = reshape(x, N, N, 1, cin, :)
-    y = sum(W .* y; dims = 4)
-    y = reshape(y, N, N, cout, :)
+    y = reshape(x, Nxyz..., 1, cin, :)
+    # sum over the channel dimension
+    y = sum(W .* y; dims = state.last_dim - 1)
+    y = reshape(y, Nxyz..., cout, :)
 
     # Spectral part (applied mode-wise)
     #
     # Steps:
-    #
     # - go to complex-valued spectral space
+    z = fft(x, dim_to_fft)
     # - chop off high wavenumbers
+    z = z[state.ikeep..., :, :]
     # - multiply with weights mode-wise
+    z = reshape(z, state.nkeep..., 1, cin, :)
+    z = sum(R .* z; dims = state.last_dim - 1)
+    z = reshape(z, state.nkeep..., cout, :)
     # - pad with zeros to restore original shape
+    z = Lux.pad_zeros(z, state.pad; dims = dim_to_fft)
     # - go back to real valued spatial representation
-    ikeep = (1:(kmax + 1), 1:(kmax + 1))
-    nkeep = (kmax + 1, kmax + 1)
-    dims = (1, 2)
-    z = fft(x, dims)
-    z = z[ikeep..., :, :]
-    z = reshape(z, nkeep..., 1, cin, :)
-    z = sum(R .* z; dims = 4)
-    z = reshape(z, nkeep..., cout, :)
-    z = Lux.pad_zeros(z, (0, N - kmax - 1, 0, N - kmax - 1); dims)
-    z = real.(ifft(z, dims))
+    z = real.(fft(z, dim_to_fft))
 
     # Outer layer: Activation over combined spatial and spectral parts
     # Note: Even though high wavenumbers are chopped off in `z` and may
@@ -107,20 +129,46 @@ function ((; kmax, cout, cin, σ)::FourierLayer)(x, params, state)
     v, state
 end
 
-# Function to create the model
-function create_fno_model(kmax_fno, ch_fno, σ_fno)
-    return Lux.Chain(u -> real.(ifft(u, (1, 2))),
-        (FourierLayer(kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
+function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,))
+    # from the grids I can get the dimension
+    dim = grid.dim
+    ch_dim = dim + 1
+    if dim == 1
+        dim_to_fft = (1,)
+        Nxyz = (grid.nx,)
+        # permutations to toss around the channel dimesion
+        ch_first = (2, 1, 3)
+        ch_back = (2, 1, 3)
+    elseif dim == 2
+        dim_to_fft = (1, 2)
+        Nxyz = (grid.nx, grid.ny)
+        ch_first = (3, 1, 2, 4)
+        ch_back = (2, 3, 1, 4)
+    elseif dim == 3
+        dim_to_fft = (1, 2, 3)
+        Nxyz = (grid.nx, grid.ny, grid.nz)
+        ch_first = (4, 1, 2, 3, 5)
+        ch_back = (2, 3, 4, 1, 5)
+    else
+        error("Only 1D, 2D, and 3D grids are supported.")
+    end
+
+    # Add number of input channels
+    # [!] you can use this first layer to pass (u, u^2), (u,v) or any custom Chain
+    #ch_fno = [length(input_channels); ch_fno]
+
+    return Chain(
+        input_channels...,
+        (FourierLayer(
+             dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i]) for
         i in eachindex(σ_fno))...,
         # Put the channel dimension in the first position to apply a dense layer
-        u -> permutedims(u, (3, 1, 2, 4)),
-        Lux.Dense(ch_fno[end] => 2 * ch_fno[end], Lux.gelu),
+        u -> permutedims(u, ch_first),
+        Dense(ch_fno[end] => 2 * ch_fno[end], gelu),
         # in the end I will have a single channel
-        Lux.Dense(2 * ch_fno[end] => 1; use_bias = false),
-        u -> permutedims(u, (2, 3, 1, 4)),
-        u -> fft(u, (1, 2)),
+        Dense(2 * ch_fno[end] => 1; use_bias = false),
+        u -> permutedims(u, ch_back),
         # drop the channel dimension
-        u -> dropdims(u, dims = 3),
-        # and make real
-        u -> real(u))
+        u -> dropdims(u, dims = ch_dim)
+    )
 end

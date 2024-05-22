@@ -1,7 +1,41 @@
 using CoupledNODE
 using Test
 
-@testset "CoupledNODE.jl" begin
-    # Write your tests here. Example:
-    # @tests helloworld() == "Hello World!"
+@testset "Logistic" begin # ~ 2 min
+    @test try
+        include("../examples/src/01.00-Logistic.jl")
+        true
+    catch
+        false
+    end
+end
+
+@testset "Gray-Scott" begin # ~ 10 min
+    @test try
+        include("../examples/src/02.00-GrayScott.jl")
+        include("../examples/src/02.03-GrayScott.jl") #long
+        true
+    catch
+        false
+    end
+end
+
+@testset "Gray-Scott+NN" begin # ~ 13 min
+    @test try
+        include("../examples/src/02.01-GrayScott.jl")
+        include("../examples/src/02.02-GrayScott.jl")
+        #include("../examples/src/02.04-GrayScott.jl") #long
+        true
+    catch
+        false
+    end
+end
+
+@testset "Burgers" begin # ~ 9 min
+    @test try
+        include("../examples/src/03.01-Burgers.jl")
+        true
+    catch
+        false
+    end
 end

@@ -3,7 +3,7 @@
 # We will introduce one of the most important problems in the numerical solution of PDEs, that we will try to solve in the following examples using CNODEs.
 
 # We use again the GS model, which is defined from
-# \begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}
+# $\begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}$
 # where $u(x,y,t):\mathbb{R}^2\times \mathbb{R}\rightarrow \mathbb{R}$ is the concentration of species 1, while $v(x,y,t)$ is the concentration of species two. This model reproduce the effect of the two species diffusing in their environment, and reacting together.
 # This effect is captured by the ratios between $D_u$ and $D_v$ (the diffusion coefficients) and $f$ and $k$ (the reaction rates).
 
@@ -16,20 +16,21 @@
 import CoupledNODE: Grid
 dux = duy = dvx = dvy = 0.5
 nux = nuy = nvx = nvy = 200
-grid_GS = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_GS_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
+grid_GS_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
-# We start with a central concentration of $v$
-function initialize_uv(grid, u_bkg, v_bkg, center_size)
-    u_initial = u_bkg * ones(grid.nux, grid.nuy)
-    v_initial = zeros(grid.nvx, grid.nvy)
-    v_initial[Int(grid.nvx / 2 - center_size):Int(grid.nvx / 2 + center_size), Int(grid.nvy / 2 - center_size):Int(grid.nvy / 2 + center_size)] .= v_bkg
+# We define our initial conditions with a central concentration of $v$
+function initialize_uv(grid_u, grid_v, u_bkg, v_bkg, center_size)
+    u_initial = u_bkg * ones(grid_u.nx, grid_u.ny)
+    v_initial = zeros(grid_v.nx, grid_v.ny)
+    v_initial[Int(grid_v.nx / 2 - center_size):Int(grid_v.nx / 2 + center_size), Int(grid_v.ny / 2 - center_size):Int(grid_v.ny / 2 + center_size)] .= v_bkg
     return u_initial, v_initial
 end
-u_initial, v_initial = initialize_uv(grid_GS, 0.8, 0.9, 4);
+u_initial, v_initial = initialize_uv(grid_GS_u, grid_GS_v, 0.8, 0.9, 4);
 
-# We can now define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid_GS.nux * grid_GS.nuy, 1),
-    reshape(v_initial, grid_GS.nvx * grid_GS.nvy, 1))
+# Create a flattened concatenated array of the initial condition.
+uv0 = vcat(reshape(u_initial, grid_GS_u.nx * grid_GS_u.ny, 1),
+    reshape(v_initial, grid_GS_v.nx * grid_GS_v.ny, 1))
 
 # From the literature, we have selected the following parameters in order to form nice patterns
 D_u = 0.16
@@ -39,12 +40,12 @@ k = 0.062;
 
 # Here we (the user) define the **right hand sides** of the equations
 import CoupledNODE: Laplacian
-F_u(u, v, grid) = D_u * Laplacian(u, grid.dux, grid.duy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
-G_v(u, v, grid) = D_v * Laplacian(v, grid.dvx, grid.dvy) .+ u .* v .^ 2 .- (f + k) .* v
+F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Once the forces have been defined, we can create the CNODE
 import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE(F_u, G_v, grid_GS; is_closed = false)
+f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false)
 # and we ask Lux for the parameters to train and their structure (none in this example).
 import Random, Lux
 rng = Random.seed!(1234)
@@ -74,14 +75,14 @@ dt, saveat = (0.5, 20)
 full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
 # And we unpack the solution to get the two species from
-u_exact = reshape(untrained_CNODE_solution[1:(grid_GS.Nu), :, :],
-    grid_GS.nux,
-    grid_GS.nuy,
+u_exact = reshape(untrained_CNODE_solution[1:(grid_GS_u.N), :, :],
+    grid_GS_u.nx,
+    grid_GS_u.ny,
     size(untrained_CNODE_solution, 2),
     :)
-v_exact = reshape(untrained_CNODE_solution[(grid_GS.Nu + 1):end, :, :],
-    grid_GS.nvx,
-    grid_GS.nvy,
+v_exact = reshape(untrained_CNODE_solution[(grid_GS_v.N + 1):end, :, :],
+    grid_GS_v.nx,
+    grid_GS_v.ny,
     size(untrained_CNODE_solution, 2),
     :);
 
@@ -115,17 +116,18 @@ end
 # The DNS grid will consists of 150 steps of 100 in each direction, covering the 100[L] x 100[L] domain.
 dux = duy = dvx = dvy = 100 / 150
 nux = nuy = nvx = nvy = 150
-dns_grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_dns_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
+grid_dns_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
 
 # Use the same initial condition as the exact solution 
 import Images: imresize
-u0_dns = imresize(u_initial, (dns_grid.nux, dns_grid.nuy));
-v0_dns = imresize(v_initial, (dns_grid.nvx, dns_grid.nvy));
-uv0_dns = vcat(reshape(u0_dns, dns_grid.nux * dns_grid.nuy, 1),
-    reshape(v0_dns, dns_grid.nvx * dns_grid.nvy, 1))
+u0_dns = imresize(u_initial, (grid_dns_u.nx, grid_dns_u.ny));
+v0_dns = imresize(v_initial, (grid_dns_v.nx, grid_dns_v.ny));
+uv0_dns = vcat(reshape(u0_dns, grid_dns_u.nx * grid_dns_u.ny, 1),
+    reshape(v0_dns, grid_dns_v.nx * grid_dns_v.ny, 1))
 
 # define the forces and create the CNODE
-f_dns = create_f_CNODE(F_u, G_v, dns_grid; is_closed = false)
+f_dns = create_f_CNODE((F_u, G_v), (grid_dns_u, grid_dns_v); is_closed = false)
 θ, st = Lux.setup(rng, f_dns);
 
 # burnout run
@@ -141,14 +143,14 @@ burnout_dns = Array(dns_CNODE(uv0_dns, θ, st)[1])
 uv0 = burnout_dns[:, :, end];
 dns_CNODE = NeuralODE(f_dns, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
 dns_solution = Array(dns_CNODE(uv0, θ, st)[1])
-u_dns = reshape(dns_solution[1:(dns_grid.Nu), :, :],
-    dns_grid.nux,
-    dns_grid.nuy,
+u_dns = reshape(dns_solution[1:(grid_dns_u.N), :, :],
+    grid_dns_u.nx,
+    grid_dns_u.ny,
     size(dns_solution, 2),
     :)
-v_dns = reshape(dns_solution[(dns_grid.Nu + 1):end, :, :],
-    dns_grid.nvx,
-    dns_grid.nvy,
+v_dns = reshape(dns_solution[(grid_dns_v.N + 1):end, :, :],
+    grid_dns_v.nx,
+    grid_dns_v.ny,
     size(dns_solution, 2),
     :);
 
@@ -194,13 +196,14 @@ end
 # This is the grid we will use for the LES, with 75 steps of 100/75[L] in each direction, covering the 100[L] x 100[L] domain.
 dux = duy = dvx = dvy = 100 / 75
 nux = nuy = nvx = nvy = 75
-les_grid = Grid(dux, duy, nux, nuy, dvx, dvy, nvx, nvy);
+grid_les_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy);
+grid_les_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy);
 
 # Use the same initial condition as the exact solution
-u0_les = imresize(u_initial, (les_grid.nux, les_grid.nuy));
-v0_les = imresize(v_initial, (les_grid.nvx, les_grid.nvy));
-uv0_les = vcat(reshape(u0_les, les_grid.nux * les_grid.nuy, 1),
-    reshape(v0_les, les_grid.nvx * les_grid.nvy, 1))
+u0_les = imresize(u_initial, (grid_les_u.nx, grid_les_u.ny));
+v0_les = imresize(v_initial, (grid_les_v.nx, grid_les_v.ny));
+uv0_les = vcat(reshape(u0_les, grid_les_u.nx * grid_les_u.ny, 1),
+    reshape(v0_les, grid_les_v.nx * grid_les_v.ny, 1))
 
 # Compare the initial conditions of the three cases: exact solution, DNS and LES
 p1 = heatmap(u_initial,
@@ -242,7 +245,7 @@ p6 = heatmap(v0_les,
 plot(p1, p2, p3, p4, p5, p6, layout = (3, 2), plot_title = "Initial conditions")
 
 # define the forces and create the CNODE
-f_les = create_f_CNODE(F_u, G_v, les_grid; is_closed = false)
+f_les = create_f_CNODE((F_u, G_v), (grid_les_u, grid_les_v); is_closed = false)
 θ, st = Lux.setup(rng, f_les);
 
 # burnout run
@@ -259,14 +262,14 @@ uv0 = burnout_les[:, :, end];
 les_CNODE = NeuralODE(f_les, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
 les_solution = Array(les_CNODE(uv0, θ, st)[1])
 # And we unpack the solution to get the two species from
-u_les = reshape(les_solution[1:(les_grid.Nu), :, :],
-    les_grid.nux,
-    les_grid.nuy,
+u_les = reshape(les_solution[1:(grid_les_u.N), :, :],
+    grid_les_u.nx,
+    grid_les_u.ny,
     size(les_solution, 2),
     :)
-v_les = reshape(les_solution[(les_grid.Nu + 1):end, :, :],
-    les_grid.nvx,
-    les_grid.nvy,
+v_les = reshape(les_solution[(grid_les_v.N + 1):end, :, :],
+    grid_les_v.nx,
+    grid_les_v.ny,
     size(les_solution, 2),
     :);
 
