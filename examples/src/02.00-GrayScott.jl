@@ -1,5 +1,5 @@
 # # Gray-Scott model - explicit solution
-# In following examples we will use the GS model to showcase how it can be represented as Coupled Neural ODEs (CNODEs). But let us first explore the GS model starting with an explicit solution of it. We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [NeuralODE](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
+# In following examples we will use the Gray-Scott (GS) model to showcase how it can be represented as Coupled Neural ODEs (CNODEs). But let us first explore the GS model starting with an explicit solution of it. We will be using [SciML](https://sciml.ai/) package [DiffEqFlux.jl](https://github.com/SciML/DiffEqFlux.jl) and scpecifically [NeuralODE](https://docs.sciml.ai/DiffEqFlux/stable/examples/neural_ode/) for defining and solving the problem.
 
 # The system that we want to solve, called the the Gray-Scott model, is defined by the following equations:
 # $\begin{equation}\begin{cases} \frac{du}{dt} = D_u \Delta u - uv^2 + f(1-u)  \equiv F_u(u,v) \\ \frac{dv}{dt} = D_v \Delta v + uv^2 - (f+k)v  \equiv G_v(u,v)\end{cases} \end{equation}$
@@ -42,49 +42,43 @@ function G_v(u, v)
 end
 
 # Once the functions have been defined, we can create the CNODE
-# Notice that in the future, this same constructor will be able to use the user provided neural network to close the equations
+# We are going to first create an auxiliary version of our CNODE to burnout some time steps.
 import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
+using DifferentialEquations: Tsit5
+trange_burn = (0.0, 10.0);
+dt, saveat = (1e-2, 1);
+f_CNODE_burnout = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange_burn, Tsit5();
+    adaptive = false, dt = dt, saveat = saveat, is_closed = false);
 # and we ask Lux for the parameters to train and their structure
 import Lux, Random
 rng = Random.seed!(1234);
-θ, st = Lux.setup(rng, f_CNODE);
+θ, st = Lux.setup(rng, f_CNODE_burnout.model);
 # in this example we are not training any parameters, so we can confirm that the vector θ is empty
 length(θ) == 0;
-
 # We now do a short *burnout run* to get rid of the initial artifacts. This allows us to discard the transient dynamics and to have a good initial condition for the data collection run.
-
-using DifferentialEquations: Tsit5
-using DiffEqFlux: NeuralODE
-trange_burn = (0.0, 10.0);
-dt, saveat = (1e-2, 1);
-full_CNODE = NeuralODE(f_CNODE,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt,
-    saveat = saveat);
-burnout_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
+burnout_CNODE_solution = Array(f_CNODE_burnout(uv0, θ, st)[1]);
 
 # **CNODE run**
-
 # We use the output of the *burnout run* to start a longer simulation
 uv0 = burnout_CNODE_solution[:, :, end];
 trange = (0.0, 8000.0);
 # the maximum suggested time step for GS is defined as `1/(4 * Dmax)`
 dt, saveat = (1 / (4 * max(D_u, D_v)), 25);
-full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
-untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
+# and we define now the full CNODE for the simulation
+full_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange, Tsit5();
+    adaptive = false, dt = dt, saveat = saveat, is_closed = false);
+CNODE_solution = Array(full_CNODE(uv0, θ, st)[1]);
+
 # And we unpack the solution to get the two species. Remember that we have concatenated $u$ and $v$ in the same array.
-u = reshape(untrained_CNODE_solution[1:(grid_GS_u.N), :, :],
+u = reshape(CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
-    size(untrained_CNODE_solution, 2),
+    size(CNODE_solution, 2),
     :);
-v = reshape(untrained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
+v = reshape(CNODE_solution[(grid_GS_u.N + 1):end, :, :],
     grid_GS_v.nx,
     grid_GS_v.ny,
-    size(untrained_CNODE_solution, 2),
+    size(CNODE_solution, 2),
     :);
 
 # Finally, plot the solution as an animation

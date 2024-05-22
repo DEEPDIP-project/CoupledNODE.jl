@@ -1,6 +1,6 @@
 import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool, identity
+import DiffEqFlux: NeuralODE
 import CoupledNODE: linear_to_grid, grid_to_linear
-
 """
     create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
         post_force = identity, is_closed = false)
@@ -11,15 +11,19 @@ Create a CoupledNODE (CNODE) function that represents a system of coupled differ
 - `forces`: A vector or tuple of functions representing the forces in the system.
 - `grids`: A vector or tuple of grids representing the variables in the system.
 - `NNs`: (optional) A vector or tuple of neural networks representing the closure terms in the system. Default is `nothing`.
+- `tspan`: The timespan to be solved on.
+- `alg`: (optional) The algorithm used to solve the ODE. Defaults to nothing, i.e. the default algorithm from DifferentialEquations.jl.
 - `pre_force`: (optional) A function to be applied before the force layer. Default is `identity`.
 - `post_force`: (optional) A function to be applied after the force layer. Default is `identity`.
 - `is_closed`: (optional) A boolean indicating whether the CNODE is closed. Default is `false`.
+- kwargs: Additional arguments splatted to the ODE solver.
 
 # Returns
 A Chain object representing the consecutive set of operations taking place in the CNODE.
 """
-function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
-        post_force = identity, is_closed = false)
+function create_f_CNODE(forces, grids, tspan, alg = nothing, NNs = nothing;
+        pre_force = identity, post_force = identity, is_closed = false, kwargs...)
+    #TODO edge case: no algo is passed and NN are passed
     # Get the number of equations from the number of grids passed
     dim = length(forces)
 
@@ -57,12 +61,13 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
         apply_force = Closure(forces, NN_closure)
     end
 
-    return Chain(
+    f_NODE = Chain(
         unpack,
         pre_force,
         apply_force,
         post_force,
         concatenate)
+    return NeuralODE(f_NODE, tspan, alg; kwargs...)
 end
 
 """
