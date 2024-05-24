@@ -387,15 +387,17 @@ target = vcat(reshape(u_target, grid_GS_u.N, :, size(u_target)[end]),
 # ### Closure Model
 # Let's create the CNODE with the Neural Network closure. In this case we are going to use two different neural networks for the two components $u$ and $v$.
 import CoupledNODE: create_fno_model
-ch_fno = [5, 5, 5, 2];
+ch_fno = [1, 5, 5, 5, 2];
 kmax_fno = [8, 8, 8, 8];
 σ_fno = [Lux.gelu, Lux.gelu, Lux.gelu, identity];
-NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let u = x[1]
-    u
-end,));
-NN_v = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let v = x[2]
-    v
-end,));
+NN_u = create_fno_model(
+    kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let u = x[1]
+        u
+    end,), init_weight = Lux.zeros32);
+NN_v = create_fno_model(
+    kmax_fno, ch_fno, σ_fno, grid_GS_u, (x -> let v = x[2]
+        v
+    end,), init_weight = Lux.zeros32);
 f_closed_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, coarse_grid), (NN_u, NN_v),
     pre_force = upscaler_v, post_force = downscaler_v; is_closed = true);
 
