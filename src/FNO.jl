@@ -154,10 +154,6 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
         error("Only 1D, 2D, and 3D grids are supported.")
     end
 
-    # Add number of input channels
-    # [!] you can use this first layer to pass (u, u^2), (u,v) or any custom Chain
-    #ch_fno = [length(input_channels); ch_fno]
-
     return Chain(
         input_channels...,
         (FourierLayer(
