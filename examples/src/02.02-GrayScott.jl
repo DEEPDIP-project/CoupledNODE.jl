@@ -46,43 +46,35 @@ G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f 
 # CNODE definition
 import Lux
 import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
-rng = Random.seed!(1234);
-θ_0, st_0 = Lux.setup(rng, f_CNODE);
-
-# **Burnout run**
 import DifferentialEquations: Tsit5
-import DiffEqFlux: NeuralODE
 trange_burn = (0.0, 1.0)
 dt, saveat = (1e-2, 1)
-burnout_CNODE = NeuralODE(f_CNODE,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt,
-    saveat = saveat);
-burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
+burnout_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange_burn, Tsit5();
+    adaptive = false, dt = dt, saveat = saveat, is_closed = false);
+rng = Random.seed!(1234);
+θ_0, st_0 = Lux.setup(rng, burnout_CNODE.model);
+
+# **Burnout run**
+@time burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 # Second burnout with a larger timestep
 trange_burn = (0.0, 800.0)
 dt, saveat = (1 / (4 * max(D_u, D_v)), 100)
-burnout_CNODE = NeuralODE(f_CNODE,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt,
-    saveat = saveat);
-burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:, :, end], θ_0, st_0)[1]);
+burnout_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange_burn,
+    Tsit5(); adaptive = false, dt = dt, saveat = saveat);
+@time burnout_CNODE_solution = Array(burnout_CNODE(
+    burnout_CNODE_solution[:, :, end], θ_0, st_0)[1]);
 
 # Data collection run
-uv0 = burnout_CNODE_solution[:, :, end]
+uv0 = burnout_CNODE_solution[:, :, end];
 # For the a-posteriori fitting, we use a fine sampling for two reasons:
 # 1. use a handlable amount of data points
 # 2. prevent instabilities while training
 # However, this means that the simulation cannot be long.
-dt, saveat = (1 / (4 * max(D_u, D_v)), 0.001)
-trange = (0.0, 50.0)
-GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
-GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1])
+dt, saveat = (1 / (4 * max(D_u, D_v)), 0.001);
+trange = (0.0, 50.0);
+GS_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange, Tsit5();
+    adaptive = false, dt = dt, saveat = saveat);
+@time GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
 
 # ## II. Training a CNODE to learn the GS model via a posteriori training
 # To learn the GS model, we will use the following CNODE
@@ -143,9 +135,13 @@ NN_u = GSLayer_u()
 NN_v = GSLayer_v()
 
 # Close the CNODE with the Neural Network
+trange = (0.0, 600)
+dt, saveat = (1, 5)
 f_closed_CNODE = create_f_CNODE(
-    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
+    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), trange, Tsit5(),
+    (NN_u, NN_v); adaptive = false, dt = dt, saveat = saveat, is_closed = true);
 θ, st = Lux.setup(rng, f_closed_CNODE);
+θ_u, st_u = θ, st # copy the initial parameters of the untrained model for comparison later
 import ComponentArrays
 θ = ComponentArrays.ComponentArray(θ)
 
@@ -160,15 +156,18 @@ nsamples = 1;
 # Also, it is important to solve for only the time interval thas is needed at each training step (corresponding to `nunroll` steps)
 # *Note:* The GS model is stiff, so we need to use a small time step to solve it. In previous versions we had two different CNODEs, the second one would be used in case the solver would be unstable. In this version, we stick to a smaller time step that those used in the previous examples to avoid instabilities.
 dt_train = 0.001;
-saveat_train = saveat
-t_train_range = (0.0, saveat_train * nunroll)
-training_CNODE = NeuralODE(f_closed_CNODE,
-    t_train_range,
-    Tsit5(),
-    adaptive = false,
-    dt = dt_train,
-    saveat = saveat_train);
-
+saveat_train = saveat;
+t_train_range = (0.0, saveat_train * nunroll);
+#import DiffEqFlux: NeuralODE
+# training_CNODE = NeuralODE(f_closed_CNODE.model,
+#     t_train_range,
+#     Tsit5(),
+#     adaptive = false,
+#     dt = dt_train,
+#     saveat = saveat_train);
+training_CNODE = create_f_CNODE(
+    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), t_train_range, Tsit5(), (NN_u, NN_v);
+    adaptive = false, dt = dt_train, saveat = saveat_train, is_closed = true);
 # Create the loss
 import CoupledNODE: create_randloss_MulDtO
 myloss = create_randloss_MulDtO(GS_sim,
@@ -183,7 +182,7 @@ myloss = create_randloss_MulDtO(GS_sim,
 
 # Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ)
-myloss(pinit)  # trigger compilation
+@time myloss(pinit)  # trigger compilation
 # ⚠️ Check that the loss does not get type warnings, otherwise it will be slower
 
 # ### Autodifferentiation type
@@ -204,12 +203,12 @@ algo = OptimiserChain(Adam(1.0e-1));
 
 # ### Train the CNODEs
 import CoupledNODE: callback
-result_neuralode = Optimization.solve(optprob,
+result_opt = Optimization.solve(optprob,
     algo;
     callback = callback,
     maxiters = 100);
 # We may get `**Warning:** Instability detected. Aborting` for the first time steps of the training. This is due to the stiff nature of the GS model as explained earlier. The training will continue after the first few steps.
-pinit = result_neuralode.u;
+pinit = result_opt.u;
 θ = pinit
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
@@ -238,19 +237,15 @@ display(p)
 # The learned weights look perfect, let's check what happens if we use them to solve the GS model.
 
 # ### Comparison: CNODE vs exact solutions
-trange = (0.0, 600)
-dt, saveat = (1, 5)
 
 # Exact solution
-f_exact = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
-θ_e, st_e = Lux.setup(rng, f_exact);
-exact_CNODE = NeuralODE(f_exact,
+exact_CNODE = NeuralODE(GS_CNODE.model,
     trange,
     Tsit5(),
     adaptive = false,
     dt = dt,
     saveat = saveat);
-exact_CNODE_solution = Array(exact_CNODE(GS_sim[:, 1:2, 1], θ_e, st_e)[1]);
+exact_CNODE_solution = Array(exact_CNODE(GS_sim[:, 1:2, 1], θ_0, st_0)[1]);
 u = reshape(exact_CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
@@ -263,13 +258,7 @@ v = reshape(exact_CNODE_solution[(grid_GS_v.N + 1):end, :, :],
     :);
 
 # Trained solution
-trained_CNODE = NeuralODE(f_closed_CNODE,
-    trange,
-    Tsit5(),
-    adaptive = false,
-    dt = dt,
-    saveat = saveat);
-trained_CNODE_solution = Array(trained_CNODE(GS_sim[:, 1:2, 1], θ, st)[1]);
+trained_CNODE_solution = Array(f_closed_CNODE(GS_sim[:, 1:2, 1], θ, st)[1]);
 u_trained = reshape(trained_CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
@@ -282,16 +271,7 @@ v_trained = reshape(trained_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
     :);
 
 # Untrained solution
-f_u = create_f_CNODE(
-    (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
-θ_u, st_u = Lux.setup(rng, f_u);
-untrained_CNODE = NeuralODE(f_u,
-    trange,
-    Tsit5(),
-    adaptive = false,
-    dt = dt,
-    saveat = saveat);
-untrained_CNODE_solution = Array(untrained_CNODE(GS_sim[:, 1:2, 1], θ_u, st_u)[1]);
+untrained_CNODE_solution = Array(f_closed_CNODE(GS_sim[:, 1:2, 1], θ_u, st_u)[1]);
 u_untrained = reshape(untrained_CNODE_solution[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,

@@ -45,34 +45,29 @@ G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f 
 
 # Once the forces have been defined, we can create the CNODE
 import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false)
+import DifferentialEquations: Tsit5
+trange_burn = (0.0, 10.0)
+dt_burn, saveat_burn = (1e-2, 1)
+burnout_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange_burn, Tsit5();
+    adaptive = false, dt = dt_burn, saveat = saveat_burn);
 # and we ask Lux for the parameters to train and their structure (none in this example).
 import Random, Lux
 rng = Random.seed!(1234)
-θ, st = Lux.setup(rng, f_CNODE);
+θ, st = Lux.setup(rng, burnout_CNODE.model);
 
 # Actually, we are not training any parameters, but using `NeuralODE` for consistency with the rest of examples. Therefore, we see that $\theta$ is empty.
 length(θ)
 
 # We now do a short *burnout run* to get rid of the initial artifacts.
-import DifferentialEquations: Tsit5
-import DiffEqFlux: NeuralODE
-trange_burn = (0.0, 10.0)
-dt_burn, saveat_burn = (1e-2, 1)
-full_CNODE = NeuralODE(f_CNODE,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt_burn,
-    saveat = saveat_burn)
-burnout_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
+burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ, st)[1])
 
 # **CNODE run** 
 # We use the output of the burnout to start a longer simulation
 uv0 = burnout_CNODE_solution[:, :, end];
 trange = (0.0, 7000.0)
 dt, saveat = (0.5, 20)
-full_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
+full_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v), trange, Tsit5();
+    adaptive = false, dt = dt, saveat = saveat);
 untrained_CNODE_solution = Array(full_CNODE(uv0, θ, st)[1])
 # And we unpack the solution to get the two species from
 u_exact = reshape(untrained_CNODE_solution[1:(grid_GS_u.N), :, :],
@@ -126,22 +121,19 @@ v0_dns = imresize(v_initial, (grid_dns_v.nx, grid_dns_v.ny));
 uv0_dns = vcat(reshape(u0_dns, grid_dns_u.nx * grid_dns_u.ny, 1),
     reshape(v0_dns, grid_dns_v.nx * grid_dns_v.ny, 1))
 
-# define the forces and create the CNODE
-f_dns = create_f_CNODE((F_u, G_v), (grid_dns_u, grid_dns_v); is_closed = false)
-θ, st = Lux.setup(rng, f_dns);
+# create the CNODE
+dns_CNODE_burnout = create_f_CNODE(
+    (F_u, G_v), (grid_dns_u, grid_dns_v), trange_burn, Tsit5();
+    adaptive = false, dt = dt_burn, saveat = saveat_burn);
+θ, st = Lux.setup(rng, dns_CNODE_burnout.model);
 
 # burnout run
-dns_CNODE = NeuralODE(f_dns,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt_burn,
-    saveat = saveat_burn)
-burnout_dns = Array(dns_CNODE(uv0_dns, θ, st)[1])
+burnout_dns = Array(dns_CNODE_burnout(uv0_dns, θ, st)[1])
 
 # DNS simulation
 uv0 = burnout_dns[:, :, end];
-dns_CNODE = NeuralODE(f_dns, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
+dns_CNODE = create_f_CNODE((F_u, G_v), (grid_dns_u, grid_dns_v), trange,
+    Tsit5(); adaptive = false, dt = dt, saveat = saveat);
 dns_solution = Array(dns_CNODE(uv0, θ, st)[1])
 u_dns = reshape(dns_solution[1:(grid_dns_u.N), :, :],
     grid_dns_u.nx,
@@ -244,22 +236,17 @@ p6 = heatmap(v0_les,
     color = :blues)
 plot(p1, p2, p3, p4, p5, p6, layout = (3, 2), plot_title = "Initial conditions")
 
-# define the forces and create the CNODE
-f_les = create_f_CNODE((F_u, G_v), (grid_les_u, grid_les_v); is_closed = false)
-θ, st = Lux.setup(rng, f_les);
-
-# burnout run
-les_CNODE = NeuralODE(f_les,
-    trange_burn,
-    Tsit5(),
-    adaptive = false,
-    dt = dt_burn,
-    saveat = saveat_burn)
-burnout_les = Array(les_CNODE(uv0_les, θ, st)[1])
+# create the CNODE for les and burnout run
+les_CNODE_burnout = create_f_CNODE(
+    (F_u, G_v), (grid_les_u, grid_les_v), trange_burn, Tsit5();
+    adaptive = false, dt = dt_burn, saveat = saveat_burn);
+θ, st = Lux.setup(rng, les_CNODE_burnout.model);
+burnout_les = Array(les_CNODE_burnout(uv0_les, θ, st)[1])
 
 # LES simulation
 uv0 = burnout_les[:, :, end];
-les_CNODE = NeuralODE(f_les, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
+les_CNODE = create_f_CNODE((F_u, G_v), (grid_les_u, grid_les_v), trange,
+    Tsit5(); adaptive = false, dt = dt, saveat = saveat);
 les_solution = Array(les_CNODE(uv0, θ, st)[1])
 # And we unpack the solution to get the two species from
 u_les = reshape(les_solution[1:(grid_les_u.N), :, :],
