@@ -234,7 +234,7 @@ plot!(grid_u_les.x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
 # Now create the the Neural Network
 using NNlib: gelu
 import CoupledNODE: create_fno_model
-ch_fno = [5, 5, 5, 5];
+ch_fno = [1, 5, 5, 5, 5];
 kmax_fno = [16, 16, 16, 8];
 σ_fno = [gelu, gelu, gelu, identity];
 NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);

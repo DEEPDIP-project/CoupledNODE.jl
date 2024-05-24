@@ -129,7 +129,8 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,); init_weight = Lux.glorot_uniform)
+function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,);
+        init_weight = Lux.glorot_uniform)
     # from the grids I can get the dimension
     dim = grid.dim
     ch_dim = dim + 1
@@ -160,7 +161,8 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
     return Chain(
         input_channels...,
         (FourierLayer(
-             dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1]; σ = σ_fno[i], init_weight = init_weight) for
+             dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1];
+             σ = σ_fno[i], init_weight = init_weight) for
         i in eachindex(σ_fno))...,
         # Put the channel dimension in the first position to apply a dense layer
         u -> permutedims(u, ch_first),
