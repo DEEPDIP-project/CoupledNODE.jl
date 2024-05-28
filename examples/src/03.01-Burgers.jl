@@ -110,19 +110,27 @@ plot(xles2[1:(end - 1)], diff(u0_les2, dims = 1), layout = (3, 1), size = (800, 
     label = "LES", xlabel = "x", ylabel = "diff", linetype = :steppre)
 plot!(xdns2[1:(end - 1)], diff(u0_dns2, dims = 1), linetype = :steppre, label = "DNS")
 
-# Create the right-hand side of the NODE
+# Create the CNODE
 import CoupledNODE: create_f_CNODE
-f_dns = create_f_CNODE((F_dns,), (grid_u_dns,); is_closed = false);
-f_les = create_f_CNODE((F_les,), (grid_u_les,); is_closed = false);
+t_shock = 10.0f0
+dt_dns = 0.001f0
+dt_les = dt_dns
+trange_burn = (0.0f0, t_shock)
+saveat_shock = 0.01f0
+dns = create_f_CNODE((F_dns,), (grid_u_dns,), trange_burn, solver_algo; adaptive = false,
+    dt = dt_dns, saveat = saveat_shock, is_closed = false);
+les = create_f_CNODE((F_les,), (grid_u_les,), trange_burn, solver_algo; adaptive = false,
+    dt = dt_les, saveat = saveat_shock, is_closed = false);
+
 import Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
-θ_dns, st_dns = Lux.setup(rng, f_dns);
-θ_les, st_les = Lux.setup(rng, f_les);
+θ_dns, st_dns = Lux.setup(rng, dns.model);
+θ_les, st_les = Lux.setup(rng, les.model);
 
 # Plot the forces
-outf_dns = Array(f_dns(u0_dns, θ_dns, st_dns)[1])
-outf_les = Array(f_les(u0_les, θ_les, st_les)[1])
+outf_dns = Array(dns.model(u0_dns, θ_dns, st_dns)[1])
+outf_les = Array(les.model(u0_les, θ_les, st_les)[1])
 plot(grid_u_les.x, outf_les, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "F", linetype = :steppre)
 plot!(grid_u_dns.x, outf_dns, linetype = :steppre, label = "DNS")
@@ -133,25 +141,7 @@ plot(xles2, outf_les2, layout = (3, 1), size = (800, 300),
     label = "LES", xlabel = "x", ylabel = "F", linetype = :steppre)
 plot!(xdns2, outf_dns2, linetype = :steppre, label = "DNS")
 
-# Now solve the LES and the DNS
-import DiffEqFlux: NeuralODE
-t_shock = 10.0f0
-dt_dns = 0.001f0
-dt_les = dt_dns
-trange_burn = (0.0f0, t_shock)
-saveat_shock = 0.01f0
-dns = NeuralODE(f_dns,
-    trange_burn,
-    solver_algo,
-    adaptive = false,
-    dt = dt_dns,
-    saveat = saveat_shock);
-les = NeuralODE(f_les,
-    trange_burn,
-    solver_algo,
-    adaptive = false,
-    dt = dt_les,
-    saveat = saveat_shock);
+# Solve the LES and the DNS
 u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 u_les = Array(les(u0_les, θ_les, st_les)[1]);
 
@@ -234,14 +224,15 @@ plot!(grid_u_les.x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
 # Now create the the Neural Network
 using NNlib: gelu
 import CoupledNODE: create_fno_model
-ch_fno = [5, 5, 5, 5];
+ch_fno = [1, 5, 5, 5, 5];
 kmax_fno = [16, 16, 16, 8];
 σ_fno = [gelu, gelu, gelu, identity];
 NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);
 
 # Use it to create the CNODE
-f_CNODE = create_f_CNODE((F_les,), (grid_u_les,), (NN_u,); is_closed = true);
-θ, st = Lux.setup(rng, f_CNODE);
+f_CNODE = create_f_CNODE((F_les,), (grid_u_les,), trange_burn, solver_algo, (NN_u,);
+    adaptive = false, dt = dt_les, saveat = saveat_shock, is_closed = true);
+θ, st = Lux.setup(rng, f_CNODE.model);
 
 # Trigger compilation and test the force
 f_CNODE(all_u_les_flat, θ, st);
@@ -250,7 +241,7 @@ f_CNODE(all_u_les_flat, θ, st);
 import CoupledNODE: create_randloss_derivative
 myloss = create_randloss_derivative(all_u_les_flat,
     target_F_flat,
-    f_CNODE,
+    f_CNODE.model,
     st;
     n_use = 1024,
     λ = 0,
@@ -278,11 +269,11 @@ algo = OptimiserChain(Adam(1.0e-3), ClipNorm(1));
 import CoupledNODE: callback
 # switch to train mode to enable dropout
 Lux.trainmode
-result_neuralode = Optimization.solve(optprob,
+result_opt = Optimization.solve(optprob,
     algo;
     callback = callback,
     maxiters = 300);
-pinit = result_neuralode.u;
+pinit = result_opt.u;
 θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training)
@@ -290,7 +281,7 @@ optprob = Optimization.OptimizationProblem(optf, pinit);
 # Compute the error in estimating the force
 error_les = sum(abs, f_les(all_u_les_flat, θ_les, st_les)[1] - target_F_flat) /
             sum(abs, target_F_flat)
-error_trained_les = sum(abs, f_CNODE(all_u_les_flat, θ, st)[1] - target_F_flat) /
+error_trained_les = sum(abs, f_CNODE.model(all_u_les_flat, θ, st)[1] - target_F_flat) /
                     sum(abs, target_F_flat)
 bar(["LES", "Trained LES"], [error_les, error_trained_les],
     title = "Comparison of errors in estimating the force",
@@ -300,12 +291,6 @@ bar(["LES", "Trained LES"], [error_les, error_trained_les],
 # From the plot it looks like the trained LES is better than the standard LES!
 # However, if we use the trained model to run a new simulation, things may not be so good:
 Lux.testmode
-trained_les = NeuralODE(f_CNODE,
-    trange_burn,
-    solver_algo,
-    adaptive = false,
-    dt = dt_les,
-    saveat = saveat_shock);
 # Repeat this until not instable
 u_dns_test = zeros(size(u_dns));
 u_les_test = zeros(size(u_les));
@@ -319,7 +304,7 @@ u_dns_test = Array(dns(u0_test, θ_dns, st_dns)[1]);
 u0_test_les = Φ * u0_test
 u_les_test = Array(les(u0_test_les, θ_les, st_les)[1]);
 #and test the trained model
-u_trained_test = Array(trained_les(u0_test_les, θ, st)[1])
+u_trained_test = Array(f_CNODE(u0_test_les, θ, st)[1])
 
 # Filter the DNS data
 u_dns_test_filtered = Φ * reshape(
@@ -365,11 +350,8 @@ end
 # ### A-posteriori fitting
 # First reset the NN
 NN_u_pos = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);
-f_CNODE_pos = create_f_CNODE(
-    (F_les,), (grid_u_les,), (NN_u_pos,); is_closed = true)
-θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos);
-f_CNODE_pos(all_u_les_flat, θ_pos, st_pos);
 
+# create the CNODE
 nunroll = 20
 nintervals = 5
 noverlaps = 1
@@ -377,17 +359,16 @@ nsamples = 3;
 dt_train = dt_les;
 saveat_train = saveat_shock
 t_train_range = (0.0, saveat_train * nunroll)
-training_CNODE = NeuralODE(f_CNODE_pos,
-    t_train_range,
-    Tsit5(),
-    adaptive = false,
-    dt = dt_train,
-    saveat = saveat_train);
+f_CNODE_pos = create_f_CNODE(
+    (F_les,), (grid_u_les,), t_train_range, solver_algo, (NN_u_pos,);
+    adaptive = false, dt = dt_train, saveat = saveat_train, is_closed = true);
+θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos.model);
+f_CNODE_pos(all_u_les_flat, θ_pos, st_pos);
 
 # Define the loss
 import CoupledNODE: create_randloss_MulDtO
 myloss = create_randloss_MulDtO(all_u_les,
-    training_CNODE,
+    f_CNODE_pos,
     st_pos,
     nunroll = nunroll,
     noverlaps = noverlaps,
@@ -405,16 +386,17 @@ import OptimizationOptimisers: OptimiserChain, Adam, ClipNorm
 algo = OptimiserChain(Adam(1.0e-3), ClipNorm(1));
 Lux.trainmode
 # TODO: callback should be resettable
-result_neuralode = Optimization.solve(optprob,
+result_opt = Optimization.solve(optprob,
     algo;
     callback = callback,
     maxiters = 50);
-pinit = result_neuralode.u;
+pinit = result_opt.u;
 θ_pos = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Compute the error in estimating the force
-error_posteriori = sum(abs, f_CNODE_pos(all_u_les_flat, θ_pos, st_pos)[1] - target_F_flat) /
+error_posteriori = sum(
+    abs, f_CNODE_pos.model(all_u_les_flat, θ_pos, st_pos)[1] - target_F_flat) /
                    sum(abs, target_F_flat);
 bar(["LES", "A-priori fitting", "A-posteriori fitting"],
     [error_les, error_trained_les, error_posteriori],
@@ -424,7 +406,7 @@ bar(["LES", "A-priori fitting", "A-posteriori fitting"],
     legend = false)
 
 # and test the trained model
-u_posteriori_test = Array(trained_les(u0_test_les, θ_pos, st_pos)[1]);
+u_posteriori_test = Array(f_CNODE_pos(u0_test_les, θ_pos, st_pos)[1]);
 
 # Plot
 anim = Animation()

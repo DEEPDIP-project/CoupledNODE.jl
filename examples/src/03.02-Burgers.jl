@@ -24,7 +24,7 @@ dux_les = 2π / nux_les
 grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 
 # Construct the right-hand side of the Burgers equation
-include("./../../src/Burgers.jl")
+import CoupledNODE: create_burgers_rhs
 ν = 0.001f0
 force_params = (ν,)
 grid_B_dns = (grid_u_dns,)
@@ -104,7 +104,7 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # &:= \bar{E} + E',
 # \end{align}
 # $$
-# which are the resovled and the sgs energy terms, respectively.
+# which are the resolved and the sgs energy terms, respectively.
 
 # However, we do not want to handle the sgs term explicitly, because it lives on the fine grid. So instead we compress it using a linear filter $\bm{T} \in \mathbb{R}^{M \times N}$ introducing 
 # $$
@@ -127,8 +127,8 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 
 # ### Plot the energy
 # First we have to solve the dynamics
+import CoupledNODE: create_f_CNODE
 import DiffEqFlux: NeuralODE
-include("./../../src/NODE.jl")
 f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
 f_les = create_f_CNODE((F_les,), grid_B_les; is_closed = false);
 using Random, LuxCUDA, Lux
@@ -269,7 +269,7 @@ grids = (grid_u_les, grid_s)
 
 # Now create the the Neural Network
 using NNlib: gelu
-include("./../../src/FNO.jl")
+import CoupledNODE: create_fno_model
 ch_fno = [2, 5, 5, 5, 1];
 kmax_fno = [16, 16, 16, 8];
 σ_fno = [gelu, gelu, gelu, identity];
@@ -303,7 +303,6 @@ NNs = (NN_u, NN_sgs);
 # if it works, then the unclosed cnode and the les should have the same result
 
 # Use it to create the cnode
-include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE(
     (F_les, (u, v) -> v .* 0), grids, NNs; is_closed = true)
 θ, st = Lux.setup(rng, f_CNODE);
@@ -311,7 +310,7 @@ f_CNODE = create_f_CNODE(
 # Trigger compilation and test the force
 f_CNODE(all_in, θ, st)[1]
 
-include("./../../src/loss_priori.jl")
+import CoupledNODE: create_randloss_derivative
 myloss = create_randloss_derivative(all_in,
     target,
     f_CNODE,
@@ -320,8 +319,6 @@ myloss = create_randloss_derivative(all_in,
     λ = 0,
     λ_c = 0);
 
-# To initialize the training, we need some objects to monitor the procedure, and we trigger the first compilation.
-lhist = [];
 ## Initialize and trigger the compilation of the model
 using ComponentArrays
 pinit = ComponentArrays.ComponentArray(θ);
