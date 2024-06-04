@@ -9,8 +9,8 @@ We will benchmark some of the key parts and compare the obtained results.
 
 ```julia
 function reshape_ODESolution(ODE_sol, grid)
-    u = reshape(ODE_sol[1:(grid.N), :, :], grid.nx, grid.ny, size(ODE_sol, 2),:)
-    v = reshape(ODE_sol[(grid_GS.N + 1):end, :, :], grid.nx, grid.ny, size(ODE_sol, 2),:)
+    u = reshape(ODE_sol[1:(grid.N), :, :], grid.nx, grid.ny, size(ODE_sol, 2), :)
+    v = reshape(ODE_sol[(grid_GS.N + 1):end, :, :], grid.nx, grid.ny, size(ODE_sol, 2), :)
     return u, v
 end
 ```
@@ -60,7 +60,8 @@ U₀ = 0.5    # initial concentration of u
 V₀ = 0.25   # initial concentration of v
 ε_u = 0.05  # magnitude of the perturbation on u
 ε_v = 0.1   # magnitude of the perturbation on v
-u_initial, v_initial = initial_condition(grid_GS, grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 20);
+u_initial, v_initial = initial_condition(
+    grid_GS, grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 20);
 ```
 
 We define the initial condition as a flattened concatenated array
@@ -69,7 +70,7 @@ We define the initial condition as a flattened concatenated array
 uv0 = vcat(reshape(u_initial, grid_GS.N, :), reshape(v_initial, grid_GS.N, :));
 ```
 
-These are the GS parameters (also used in example 02.01) that we will try to learn
+These are the GS parameters (also used in example 02.01)
 
 ```julia
 D_u = 0.16
@@ -128,8 +129,9 @@ dt, saveat = (1 / (4 * max(D_u, D_v)), 10);
 We are going to use `f_burnout` that is a right hand side that is not closed with a neural network.
 
 ```julia
-neural_ODE_problem = NeuralODE(f_burnout, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
-@time neural_ODE_exact_sol = Array(neural_ODE_problem(uv0, θ_0, st_0)[1])
+neural_ODE_problem = NeuralODE(
+    f_burnout, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+@time neural_ODE_exact_sol = Array(neural_ODE_problem(uv0, θ_0, st_0)[1]);
 ```
 
 `41.340940 seconds (2.18 M allocations: 298.835 GiB, 31.85% gc time)`
@@ -145,7 +147,7 @@ Options are:
 - `f(u,p,t)`: returning `du`, out of place
 
 ```julia
-function rhs_ode_problem(u,p,t)
+function rhs_ode_problem(u, p, t)
     f_burnout(u, θ_0, st_0)[1]
 end
 ```
@@ -155,7 +157,8 @@ then define the problem and solve it:
 ```julia
 using DifferentialEquations: ODEProblem, solve
 ODE_problem = ODEProblem(rhs_ode_problem, uv0, trange);
-@time ODE_exact_sol = solve(ODE_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+@time ODE_exact_sol = solve(
+    ODE_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 ```
 
 `39.702393 seconds (3.03 M allocations: 298.401 GiB, 14.79% gc time, 0.84% compilation time)`
@@ -165,26 +168,26 @@ u_ODE, v_ODE = reshape_ODESolution(Array(ODE_exact_sol), grid_GS);
 ```
 
 We can also define our forces in place (i.e. they modify `du` and `dv`) therefore the `!` in the function signature
-This is NOT WORKING. The results are random fields.
 
 ```julia
-function rhs_ode_problem_in!(du,u,p,t)
+function rhs_ode_problem_in!(du, u, p, t)
     #u has dimensions (cat(flattened(u,v)), nsamples)
-    u_gs = reshape(u[1:grid_GS.N,:], grid_GS.nx, grid_GS.ny, size(u)[end])
-    v_gs = reshape(u[grid_GS.N + 1:end,:], grid_GS.nx, grid_GS.ny, size(u)[end])
+    u_gs = reshape(u[1:(grid_GS.N), :], grid_GS.nx, grid_GS.ny, size(u)[end])
+    v_gs = reshape(u[(grid_GS.N + 1):end, :], grid_GS.nx, grid_GS.ny, size(u)[end])
     du_gs = F_u(u_gs, v_gs)
     dv_gs = G_v(u_gs, v_gs)
-    du = vcat(grid_to_linear(grid_GS, du_gs), grid_to_linear(grid_GS, dv_gs))
+    #We need to use .= to mutate du otherwise it will create a copy.
+    du .= vcat(grid_to_linear(grid_GS, du_gs), grid_to_linear(grid_GS, dv_gs))
 end
 ```
 
-out of place: return du, also see that there is no `!` in the function signature
+out of place: return `du`, also see that there is no `!` in the function signature
 
 ```julia
-function rhs_ode_problem_out(u,p,t)
+function rhs_ode_problem_out(u, p, t)
     #u has dimensions (cat(flattened(u,v)), nsamples)
-    u_gs = reshape(u[1:grid_GS.N,:], grid_GS.nx, grid_GS.ny, size(u)[end])
-    v_gs = reshape(u[grid_GS.N + 1:end,:], grid_GS.nx, grid_GS.ny, size(u)[end])
+    u_gs = reshape(u[1:(grid_GS.N), :], grid_GS.nx, grid_GS.ny, size(u)[end])
+    v_gs = reshape(u[(grid_GS.N + 1):end, :], grid_GS.nx, grid_GS.ny, size(u)[end])
     du_gs = F_u(u_gs, v_gs)
     dv_gs = G_v(u_gs, v_gs)
     return vcat(grid_to_linear(grid_GS, du_gs), grid_to_linear(grid_GS, dv_gs))
@@ -194,11 +197,16 @@ end
 and let's see if there is any difference in performance
 
 ```julia
-#ODE_problem_in = ODEProblem(rhs_ode_problem_in!, uv0, trange);
-#@time ODE_exact_sol_in = solve(ODE_problem_in, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+ODE_problem_in = ODEProblem(rhs_ode_problem_in!, uv0, trange);
+@time ODE_exact_sol_in = solve(ODE_problem_in, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+```
 
+`33.438104 seconds (3.94 M allocations: 222.298 GiB, 11.76% gc time, 2.21% compilation time)`
+
+```julia
 ODE_problem_out = ODEProblem(rhs_ode_problem_out, uv0, trange);
-@time ODE_exact_sol_out = solve(ODE_problem_out, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+@time ODE_exact_sol_out = solve(
+    ODE_problem_out, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 ```
 
 `38.377476 seconds (3.05 M allocations: 298.403 GiB, 11.64% gc time, 0.87% compilation time)`
@@ -206,7 +214,7 @@ ODE_problem_out = ODEProblem(rhs_ode_problem_out, uv0, trange);
 ### c. ODEProblem for PDEs following https://docs.sciml.ai/Overview/stable/showcase/gpu_spde/
 In this approach `u` is a matrix in which the first dimension correspont to the variable ($u$ or $v$).
 
-In place definition (not working) same as above the solution is noise.
+In place definition. Pay attenton to `!` and `.=`.
 
 ```julia
 function rhs_pde!(du, u, p, t)
@@ -214,8 +222,8 @@ function rhs_pde!(du, u, p, t)
     v_gs = @view u[2, :, :, :]
     du_gs = @view du[1, :, :, :]
     dv_gs = @view du[2, :, :, :]
-    du_gs = F_u(u_gs, v_gs)
-    dv_gs = G_v(u_gs, v_gs)
+    du_gs .= F_u(u_gs, v_gs)
+    dv_gs .= G_v(u_gs, v_gs)
 end
 ```
 
@@ -227,16 +235,21 @@ function rhs_pde(u, p, t)
     v_gs = @view u[2, :, :, :]
     du_gs = F_u(u_gs, v_gs)
     dv_gs = G_v(u_gs, v_gs)
-    return permutedims(cat(du_gs, dv_gs, dims=4), [4, 1, 2, 3])
+    return permutedims(cat(du_gs, dv_gs, dims = 4), [4, 1, 2, 3])
 end
 
-u0 = permutedims(cat(u_initial, v_initial, dims=4), [4, 1, 2, 3]); # 2x64x64x20 n_vars x nx x ny x n_samples
-PDE_problem = ODEProblem(rhs_pde, u0, trange)
-@time PDE_exact_sol = solve(PDE_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+u0 = permutedims(cat(u_initial, v_initial, dims = 4), [4, 1, 2, 3]); # 2x64x64x20 n_vars x nx x ny x n_samples
+PDE_problem = ODEProblem(rhs_pde!, u0, trange)
+@time PDE_exact_sol = solve(
+    PDE_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 ```
 
-1st time: `61.979926 seconds (3.93 M allocations: 298.467 GiB, 36.20% gc time, 1.46% compilation time)`
-2nd time: `59.904910 seconds (2.30 M allocations: 298.362 GiB, 35.24% gc time)`
+With out-of-place definition:
+- 1st time: `61.979926 seconds (3.93 M allocations: 298.467 GiB, 36.20% gc time, 1.46% compilation time)`
+- 2nd time: `59.904910 seconds (2.30 M allocations: 298.362 GiB, 35.24% gc time)`
+With in-place definition:
+- 1st time: `29.790686 seconds (9.65 M allocations: 203.936 GiB, 9.15% gc time, 6.55% compilation time)`
+- 2nd time: `26.900031 seconds (1.90 M allocations: 203.431 GiB, 12.54% gc time)`
 
 ```julia
 u_PDE = Array(PDE_exact_sol)[1, :, :, :, :];
@@ -258,23 +271,32 @@ We see that:
 - _ODEProblem vs NeuralODE_: all values are zero, the solutions are identical!
 - _PDEProblem vs NeuralODE_: there are differences between the solutions. (_PDEProblem_ is ODEProblem formulated as a PDE)
 
+Also let's see if there is any difference between the in-place and out-of-place definitions
+
+```julia
+any(ODE_exact_sol_in .!= ODE_exact_sol)
+any(ODE_exact_sol_out .!= ODE_exact_sol)
+any(ODE_exact_sol_in .!= ODE_exact_sol_out)
+```
+
+We see that the spolutions of out-of-place and defining the right hand side as the CNODE are identical. However, defining the right hand side as an in-place function gives different results.
+
 #### Plots
 
 ```julia
 using Plots, Plots.PlotMeasures
 anim = Animation()
-#fig = plot(layout = (4, 3), size = (1200, 400))
 fig = plot(layout = (4, 3))
 @gif for i in 1:1:size(u_ODE, 4)
     # First row: set of parameters 1
     p1 = GS_heatmap(u_neural_ODE[:, :, 1, i], title = "u")
-    p2 = GS_heatmap(v_neural_ODE[:, :, 1, i], title="v", color = :blues)
+    p2 = GS_heatmap(v_neural_ODE[:, :, 1, i], title = "v", color = :blues)
     p3 = GS_heatmap(u_ODE[:, :, 1, i])
     p4 = GS_heatmap(v_ODE[:, :, 1, i], color = :blues)
     p5 = GS_heatmap(u_PDE[:, :, 1, i])
     p6 = GS_heatmap(v_PDE[:, :, 1, i], color = :blues)
-    p7 = GS_heatmap(u_PDE[:, :, 1, i]-u_neural_ODE[:, :, 1, i], color = :greens)
-    p8 = GS_heatmap(v_PDE[:, :, 1, i]-v_ODE[:, :, 1, i], color = :greens)
+    p7 = GS_heatmap(u_PDE[:, :, 1, i] - u_neural_ODE[:, :, 1, i], color = :greens)
+    p8 = GS_heatmap(v_PDE[:, :, 1, i] - v_ODE[:, :, 1, i], color = :greens)
 
     #Create titles as separate plots
     t1 = plot(title = "NeuralODE", framestyle = :none)
@@ -282,16 +304,20 @@ fig = plot(layout = (4, 3))
     t3 = plot(title = "PDEProblem", framestyle = :none)
     t4 = plot(title = "Diff(PDE-ODE)", framestyle = :none)
 
-    fig = plot(t1,p1,p2,t2,p3,p4,t3,p5,p6,t4,p7,p8,
+    fig = plot(t1, p1, p2, t2, p3, p4, t3, p5, p6, t4, p7, p8,
         layout = (4, 3),
         margin = 0mm)
     frame(anim, fig)
 end
 ```
 
-#### Time
+#### Time and memory usage
 We can see that the `NeuralODE` and `ODEProblem` have similar performance, while the `PDEProblem` is slower.
 All of the implementations presented here have a similar (high) number of allocations and memory usage.
+
+##### In-place and out-of-place right hand side definitions
+We see aspeed up in time but also more allocations.
+
 **Next steps:** Try out with a different (better written) implementation of the forces.
 
 ---

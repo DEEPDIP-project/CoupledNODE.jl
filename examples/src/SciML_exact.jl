@@ -121,17 +121,17 @@ ODE_problem = ODEProblem(rhs_ode_problem, uv0, trange);
 u_ODE, v_ODE = reshape_ODESolution(Array(ODE_exact_sol), grid_GS);
 
 # We can also define our forces in place (i.e. they modify `du` and `dv`) therefore the `!` in the function signature
-# This is NOT WORKING. The results are random fields.
 function rhs_ode_problem_in!(du, u, p, t)
     #u has dimensions (cat(flattened(u,v)), nsamples)
     u_gs = reshape(u[1:(grid_GS.N), :], grid_GS.nx, grid_GS.ny, size(u)[end])
     v_gs = reshape(u[(grid_GS.N + 1):end, :], grid_GS.nx, grid_GS.ny, size(u)[end])
     du_gs = F_u(u_gs, v_gs)
     dv_gs = G_v(u_gs, v_gs)
-    du = vcat(grid_to_linear(grid_GS, du_gs), grid_to_linear(grid_GS, dv_gs))
+    #We need to use .= to mutate du otherwise it will create a copy.
+    du .= vcat(grid_to_linear(grid_GS, du_gs), grid_to_linear(grid_GS, dv_gs))
 end
 
-# out of place: return du, also see that there is no `!` in the function signature
+# out of place: return `du`, also see that there is no `!` in the function signature
 function rhs_ode_problem_out(u, p, t)
     #u has dimensions (cat(flattened(u,v)), nsamples)
     u_gs = reshape(u[1:(grid_GS.N), :], grid_GS.nx, grid_GS.ny, size(u)[end])
@@ -142,8 +142,10 @@ function rhs_ode_problem_out(u, p, t)
 end
 
 # and let's see if there is any difference in performance
-#ODE_problem_in = ODEProblem(rhs_ode_problem_in!, uv0, trange);
-#@time ODE_exact_sol_in = solve(ODE_problem_in, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+ODE_problem_in = ODEProblem(rhs_ode_problem_in!, uv0, trange);
+@time ODE_exact_sol_in = solve(
+    ODE_problem_in, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+# `33.438104 seconds (3.94 M allocations: 222.298 GiB, 11.76% gc time, 2.21% compilation time)`
 
 ODE_problem_out = ODEProblem(rhs_ode_problem_out, uv0, trange);
 @time ODE_exact_sol_out = solve(
@@ -153,14 +155,14 @@ ODE_problem_out = ODEProblem(rhs_ode_problem_out, uv0, trange);
 # ### c. ODEProblem for PDEs following https://docs.sciml.ai/Overview/stable/showcase/gpu_spde/
 # In this approach `u` is a matrix in which the first dimension correspont to the variable ($u$ or $v$).
 
-# In place definition (not working) same as above the solution is noise.
+# In place definition. Pay attenton to `!` and `.=`. 
 function rhs_pde!(du, u, p, t)
     u_gs = @view u[1, :, :, :]
     v_gs = @view u[2, :, :, :]
     du_gs = @view du[1, :, :, :]
     dv_gs = @view du[2, :, :, :]
-    du_gs = F_u(u_gs, v_gs)
-    dv_gs = G_v(u_gs, v_gs)
+    du_gs .= F_u(u_gs, v_gs)
+    dv_gs .= G_v(u_gs, v_gs)
 end
 
 # Out of place definition (not working either)
@@ -173,11 +175,15 @@ function rhs_pde(u, p, t)
 end
 
 u0 = permutedims(cat(u_initial, v_initial, dims = 4), [4, 1, 2, 3]); # 2x64x64x20 n_vars x nx x ny x n_samples
-PDE_problem = ODEProblem(rhs_pde, u0, trange)
+PDE_problem = ODEProblem(rhs_pde!, u0, trange)
 @time PDE_exact_sol = solve(
     PDE_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat);
-# 1st time: `61.979926 seconds (3.93 M allocations: 298.467 GiB, 36.20% gc time, 1.46% compilation time)`
-# 2nd time: `59.904910 seconds (2.30 M allocations: 298.362 GiB, 35.24% gc time)`
+# With out-of-place definition:
+# - 1st time: `61.979926 seconds (3.93 M allocations: 298.467 GiB, 36.20% gc time, 1.46% compilation time)`
+# - 2nd time: `59.904910 seconds (2.30 M allocations: 298.362 GiB, 35.24% gc time)`
+# With in-place definition:
+# - 1st time: `29.790686 seconds (9.65 M allocations: 203.936 GiB, 9.15% gc time, 6.55% compilation time)`
+# - 2nd time: `26.900031 seconds (1.90 M allocations: 203.431 GiB, 12.54% gc time)`
 u_PDE = Array(PDE_exact_sol)[1, :, :, :, :];
 v_PDE = Array(PDE_exact_sol)[2, :, :, :, :];
 
@@ -192,10 +198,15 @@ any(v_PDE - v_neural_ODE .!= 0.0)
 # - _ODEProblem vs NeuralODE_: all values are zero, the solutions are identical!
 # - _PDEProblem vs NeuralODE_: there are differences between the solutions. (_PDEProblem_ is ODEProblem formulated as a PDE)
 
+# Also let's see if there is any difference between the in-place and out-of-place definitions
+any(ODE_exact_sol_in .!= ODE_exact_sol)
+any(ODE_exact_sol_out .!= ODE_exact_sol)
+any(ODE_exact_sol_in .!= ODE_exact_sol_out)
+# We see that the spolutions of out-of-place and defining the right hand side as the CNODE are identical. However, defining the right hand side as an in-place function gives different results.
+
 # #### Plots
 using Plots, Plots.PlotMeasures
 anim = Animation()
-#fig = plot(layout = (4, 3), size = (1200, 400))
 fig = plot(layout = (4, 3))
 @gif for i in 1:1:size(u_ODE, 4)
     ## First row: set of parameters 1
@@ -220,8 +231,11 @@ fig = plot(layout = (4, 3))
     frame(anim, fig)
 end
 
-# #### Time
+# #### Time and memory usage
 # We can see that the `NeuralODE` and `ODEProblem` have similar performance, while the `PDEProblem` is slower.
 # All of the implementations presented here have a similar (high) number of allocations and memory usage.
+
+# ##### In-place and out-of-place right hand side definitions
+# We see aspeed up in time but also more allocations.
 
 # **Next steps:** Try out with a different (better written) implementation of the forces.
