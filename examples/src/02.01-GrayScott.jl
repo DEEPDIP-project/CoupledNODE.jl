@@ -12,29 +12,36 @@
 
 # ## I. Solving GS to collect data
 # Definition of the grid
-import CoupledNODE: Grid
-dux = duy = dvx = dvy = 1.0
+include("./../../src/grid.jl")
+dux = duy = dvx = dvy = 1.0f0
 nux = nuy = nvx = nvy = 64
-grid_GS_u = Grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy)
-grid_GS_v = Grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy)
+
 
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
 import Random
-function initial_condition(grid_u, grid_v, U₀, V₀, ε_u, ε_v; nsimulations = 1)
-    u_init = U₀ .+ ε_u .* Random.randn(grid_u.nx, grid_u.ny, nsimulations)
-    v_init = V₀ .+ ε_v .* Random.randn(grid_v.nx, grid_v.ny, nsimulations)
+function initial_condition(U₀, V₀, ε_u, ε_v; nsimulations = 1)
+    u_init = U₀ .+ ε_u .* Random.randn(Float32, nux, nuy, nsimulations)
+    v_init = V₀ .+ ε_v .* Random.randn(Float32, nvx, nvy, nsimulations)
     return u_init, v_init
 end
-U₀ = 0.5    # initial concentration of u
-V₀ = 0.25   # initial concentration of v
-ε_u = 0.05  # magnitude of the perturbation on u
-ε_v = 0.1   # magnitude of the perturbation on v
-u_initial, v_initial = initial_condition(
-    grid_GS_u, grid_GS_v, U₀, V₀, ε_u, ε_v, nsimulations = 20);
+U₀ = 0.5f0    # initial concentration of u
+V₀ = 0.25f0   # initial concentration of v
+ε_u = 0.05f0  # magnitude of the perturbation on u
+ε_v = 0.1f0   # magnitude of the perturbation on v
+nsim = 20
+u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
+
+# Declare the grid object 
+grid_GS_u = make_grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
+grid_GS_v = make_grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
+
 
 # We define the initial condition as a flattened concatenated array
-uv0 = vcat(reshape(u_initial, grid_GS_u.N, :), reshape(v_initial, grid_GS_v.N, :));
+#uv0 = vcat(reshape(u_initial, grid_GS_u.N, :), reshape(v_initial, grid_GS_v.N, :))
+grid_to_linear(grid_GS_u)
+grid_to_linear(grid_GS_v)
+uv0 = vcat(grid_GS_u.linear_data, grid_GS_v.linear_data)
 
 # These are the GS parameters (also used in example 02.01) that we will try to learn
 D_u = 0.16
@@ -43,14 +50,15 @@ f = 0.055
 k = 0.062;
 
 # Exact right hand sides (functions) of the GS model
-import CoupledNODE: Laplacian
+include("./../../src/derivatives.jl")
 F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
 G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Definition of the CNODE
 import Lux
-import CoupledNODE: create_f_CNODE
-f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false);
+#import CoupledNODE: create_f_CNODE
+include("./../../src/NODE.jl")
+f_CNODE = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false)
 rng = Random.seed!(1234);
 θ_0, st_0 = Lux.setup(rng, f_CNODE);
 
@@ -58,16 +66,52 @@ rng = Random.seed!(1234);
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
-trange_burn = (0.0, 1.0)
-dt, saveat = (1e-2, 1)
+trange_burn = (0.0, 10.0)
+dt, saveat = (1e-2, 0.5)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
     Tsit5(),
     adaptive = false,
     dt = dt,
     saveat = saveat);
-burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
-# Second burnout with a smaller timestep
+@time burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
+
+u = reshape(burnout_CNODE_solution[1:(grid_GS_u.N), :, :],
+    grid_GS_u.nx,
+    grid_GS_u.ny,
+    size(burnout_CNODE_solution, 2),
+    :);
+v = reshape(burnout_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
+    grid_GS_v.nx,
+    grid_GS_v.ny,
+    size(burnout_CNODE_solution, 2),
+    :);
+
+# Finally, plot the solution as an animation
+using Plots
+anim = Animation()
+fig = plot(layout = (1, 2), size = (600, 300))
+@gif for i in 1:2:size(u, 4)
+    p1 = heatmap(u[:, :, 1, i],
+        axis = false,
+        bar = true,
+        aspect_ratio = 1,
+        color = :reds,
+        title = "u(x,y)")
+    p2 = heatmap(v[:, :, 1, i],
+        axis = false,
+        bar = true,
+        aspect_ratio = 1,
+        color = :blues,
+        title = "v(x,y)")
+    time = round(i * saveat, digits = 0)
+    fig = plot(p1, p2, layout = (1, 2), plot_title = "time = $(time)")
+    frame(anim, fig)
+end
+
+#-------------
+
+# Second burnout with a larger timestep
 trange_burn = (0.0, 500.0)
 dt, saveat = (1 / (4 * max(D_u, D_v)), 100)
 burnout_CNODE = NeuralODE(f_CNODE,
@@ -84,11 +128,45 @@ trange = (0.0, 2000.0);
 dt, saveat = (1 / (4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
+
+u = reshape(GS_sim[1:(grid_GS_u.N), :, :],
+    grid_GS_u.nx,
+    grid_GS_u.ny,
+    size(GS_sim, 2),
+    :);
+v = reshape(GS_sim[(grid_GS_u.N + 1):end, :, :],
+    grid_GS_v.nx,
+    grid_GS_v.ny,
+    size(GS_sim, 2),
+    :);
+
+# Finally, plot the solution as an animation
+using Plots
+anim = Animation()
+fig = plot(layout = (1, 2), size = (600, 300))
+@gif for i in 1:2:size(u, 4)
+    p1 = heatmap(u[:, :, 1, i],
+        axis = false,
+        bar = true,
+        aspect_ratio = 1,
+        color = :reds,
+        title = "u(x,y)")
+    p2 = heatmap(v[:, :, 1, i],
+        axis = false,
+        bar = true,
+        aspect_ratio = 1,
+        color = :blues,
+        title = "v(x,y)")
+    time = round(i * saveat, digits = 0)
+    fig = plot(p1, p2, layout = (1, 2), plot_title = "time = $(time)")
+    frame(anim, fig)
+end
+
 # `GS_sim` contains the solutions of $u$ and $v$ for the specified `trange` and `nsimulations` initial conditions. If you explore `GS_sim` you will see that it has the shape `((nux * nuy) + (nvx * nvy), nsimulations, timesteps)`.
 # `uv_data` is a reshaped version of `GS_sim` that has the shape `(nux * nuy + nvx * nvy, nsimulations * timesteps)`. This is the format that we will use to train the CNODE.
 uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3));
 # We define `FG_target` containing the right hand sides (i.e. $\frac{du}{dt} and \frac{dv}{dt}$) of each one of the samples. We will see later that for the training `FG_target` is used as the labels to do derivative fitting.
-FG_target = Array(f_CNODE(uv_data, θ_0, st_0)[1]);
+FG_target = Array(f_CNODE(GS_sim, θ_0, st_0)[1]);
 
 # ## II. Training a CNODE to learn the GS model via a priori training
 # To learn the GS model, we will use the following CNODE
