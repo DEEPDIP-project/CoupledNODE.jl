@@ -24,24 +24,39 @@ Base.@kwdef struct Grid
     nx::Int
     ny::Int = 0
     nz::Int = 0
-    N::Int = nx * max(1, ny) * max(1, nz)
-    x::Union{Vector{Float32}, Vector{Float64}} = collect(0:dx:((nx - 1) * dx))
-    y::Union{Vector{Float32}, Vector{Float64}, Nothing} = dy == 0 ? nothing :
-                                                          collect(0:dy:((ny - 1) * dy))
-    z::Union{Vector{Float32}, Vector{Float64}, Nothing} = dz == 0 ? nothing :
-                                                          collect(0:dz:((nz - 1) * dz))
+    nsim::Int = 1
+    grid_data::Any
+    N::Int
+    x::Union{Vector{Float32}, Vector{Float64}, Nothing}
+    y::Union{Vector{Float32}, Vector{Float64}, Nothing}
+    z::Union{Vector{Float32}, Vector{Float64}, Nothing}
+    linear_data::Any
 end
 
-function linear_to_grid(g::Grid, u)
-    if g.dim == 1
-        return reshape(u, g.nx, size(u)[end])
-    elseif g.dim == 2
-        return reshape(u, g.nx, g.ny, size(u)[end])
-    elseif g.dim == 3
-        return reshape(u, g.nx, g.ny, g.nz, size(u)[end])
+function make_grid(; dim::Int, dx::Union{Float32, Float64}, nx::Int,
+                   dy::Union{Float32, Float64} = 0.0f0, ny::Int = 0,
+                   dz::Union{Float32, Float64} = 0.0f0, nz::Int = 0,
+                   nsim::Int = 1, grid_data)
+    
+    N = nx * max(1, ny) * max(1, nz)
+    x = collect(0:dx:((nx - 1) * dx))
+    y = dy == 0 ? nothing : collect(0:dy:((ny - 1) * dy))
+    z = dz == 0 ? nothing : collect(0:dz:((nz - 1) * dz))
+
+    if nz > 0
+        linear_data = zeros(eltype(grid_data),nx*ny*nz, nsim)
+    elseif ny > 0
+        linear_data = zeros(eltype(grid_data),nx*ny, nsim)
+    else
+        linear_data = zeros(eltype(grid_data), nx, nsim)
     end
+
+    return Grid(dim, dx, dy, dz, nx, ny, nz, nsim, grid_data, N, x, y, z, linear_data)
 end
 
-function grid_to_linear(g::Grid, u)
-    return reshape(u, g.N, size(u)[end])
+function linear_to_grid(grid::Grid)
+    grid.grid_data[:] .= grid.linear_data[:]
+end
+function grid_to_linear(grid::Grid)
+    grid.linear_data[:] .= grid.grid_data[:]
 end
