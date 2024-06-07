@@ -1,3 +1,5 @@
+const MY_TYPE = Float32 # use float32 if you plan to use a GPU
+
 # # Learning the Gray-Scott model: a priori fitting
 # In the previous example [02.00-GrayScott.jl](02.00-GrayScott.jl) we have seen how to use the CNODE to solve the Gray-Scott model via an explicit method.
 # Here we introduce the *Learning part* of the CNODE, and show how it can be used to close the CNODE. We are going to train the neural network via **a priori fitting** and in the next example [02.02-GrayScott](02.02-GrayScott.jl) we will show how to use a posteriori fitting.
@@ -33,26 +35,26 @@ nsim = 20
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 
 # Declare the grid object 
-grid_GS_u = make_grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
-grid_GS_v = make_grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
-
+grid_GS_u = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
+grid_GS_v = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
 
 # We define the initial condition as a flattened concatenated array
 #uv0 = vcat(reshape(u_initial, grid_GS_u.N, :), reshape(v_initial, grid_GS_v.N, :))
-grid_to_linear(grid_GS_u)
-grid_to_linear(grid_GS_v)
 uv0 = vcat(grid_GS_u.linear_data, grid_GS_v.linear_data)
 
+
 # These are the GS parameters (also used in example 02.01) that we will try to learn
-D_u = 0.16
-D_v = 0.08
-f = 0.055
-k = 0.062;
+D_u = 0.16f0
+D_v = 0.08f0
+f = 0.055f0
+k = 0.062f0;
+
 
 # Exact right hand sides (functions) of the GS model
 include("./../../src/derivatives.jl")
-F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u)
 G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
+
 
 # Definition of the CNODE
 import Lux
@@ -66,8 +68,8 @@ rng = Random.seed!(1234);
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
-trange_burn = (0.0, 10.0)
-dt, saveat = (1e-2, 0.5)
+trange_burn = (0.0f0, 10.0f0)
+dt, saveat = (0.01f0, 0.5f0)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
     Tsit5(),

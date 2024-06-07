@@ -18,6 +18,7 @@ Constructor:
 """
 Base.@kwdef struct Grid
     dim::Int
+    dtype::DataType = Float32
     dx::Union{Float32, Float64}
     dy::Union{Float32, Float64} = 0.0f0
     dz::Union{Float32, Float64} = 0.0f0
@@ -33,7 +34,7 @@ Base.@kwdef struct Grid
     linear_data::Any
 end
 
-function make_grid(; dim::Int, dx::Union{Float32, Float64}, nx::Int,
+function make_grid(; dim::Int, dtype::DataType, dx::Union{Float32, Float64}, nx::Int,
                    dy::Union{Float32, Float64} = 0.0f0, ny::Int = 0,
                    dz::Union{Float32, Float64} = 0.0f0, nz::Int = 0,
                    nsim::Int = 1, grid_data)
@@ -43,20 +44,30 @@ function make_grid(; dim::Int, dx::Union{Float32, Float64}, nx::Int,
     y = dy == 0 ? nothing : collect(0:dy:((ny - 1) * dy))
     z = dz == 0 ? nothing : collect(0:dz:((nz - 1) * dz))
 
+    if eltype(grid_data) != dtype
+        throw(ArgumentError("The grid data type is not the same as the specified data type."))
+    end
     if nz > 0
-        linear_data = zeros(eltype(grid_data),nx*ny*nz, nsim)
+        linear_data = view(grid_data, :, :, :, :)
+        linear_data = reshape(linear_data, nx*ny*nz, nsim)
     elseif ny > 0
-        linear_data = zeros(eltype(grid_data),nx*ny, nsim)
+#        linear_data = zeros(eltype(grid_data),nx*ny, nsim)
+        linear_data = view(grid_data, :, :, :)
+        linear_data = reshape(linear_data, nx*ny, nsim)
     else
-        linear_data = zeros(eltype(grid_data), nx, nsim)
+#        linear_data = zeros(eltype(grid_data), nx, nsim)
+        linear_data = view(grid_data, :, :)
+        linear_data = reshape(linear_data, nx, nsim)
     end
 
-    return Grid(dim, dx, dy, dz, nx, ny, nz, nsim, grid_data, N, x, y, z, linear_data)
+    return Grid(dim, dtype, dx, dy, dz, nx, ny, nz, nsim, grid_data, N, x, y, z, linear_data)
 end
 
-function linear_to_grid(grid::Grid)
-    grid.grid_data[:] .= grid.linear_data[:]
-end
-function grid_to_linear(grid::Grid)
-    grid.linear_data[:] .= grid.grid_data[:]
-end
+#function linear_to_grid(grid::Grid)
+#    grid.grid_data[:] .= grid.linear_data[:]
+#    #view(grid.grid_data, :) .= view(grid.linear_data, :)
+#end
+#function grid_to_linear(grid::Grid)
+#    grid.linear_data[:] .= grid.grid_data[:]
+#    #view(grid.linear_data, :) .= view(grid.grid_data, :)
+#end

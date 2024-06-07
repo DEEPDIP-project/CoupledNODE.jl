@@ -23,7 +23,7 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     # Get the number of equations from the number of grids passed
     dim = length(forces)
 
-    unpack = Unpack(grids)
+    #unpack = Unpack(grids)
     concatenate = Concatenate(grids)
 
     # Define the force layer
@@ -58,11 +58,12 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     end
 
     return Chain(
-        unpack, # redundant (maybe it has to copy back in grid? if change not in place)
+        #unpack, # redundant (maybe it has to copy back in grid? if change not in place)
         #pre_force,
         apply_force,
         #post_force,
-        concatenate)
+        #concatenate
+        )
 end
 
 # sciml gets the linear , force gets the grid
@@ -124,21 +125,20 @@ Creates a function to concatenate the coupled variables to a single vector.
 function Concatenate(grids)
     dim = length(grids)
     if dim == 1
-        return u -> let u = u
+        return u -> 
             # make u linear
             #u = grid_to_linear(grids[1], u)
-            grids[1].grid_data[:] .= u[:]
-            grid_to_linear(grids[1])
+            #grids[1].grid_data[:] .= u[:]
+            #grid_to_linear(grids[1])
             grids[1].linear_data
-        end
     elseif dim == 2
-        return uv -> let u = uv[1], v = uv[2]
-            grids[1].grid_data[:] .= u[:]
-            grids[2].grid_data[:] .= v[:]
-            grid_to_linear(grids[1])
-            grid_to_linear(grids[2])
+        #return uv -> let u = uv[1], v = uv[2]
+        return uv -> 
+            #grids[1].grid_data[:] .= u[:]
+            #grids[2].grid_data[:] .= v[:]
+            #grid_to_linear(grids[1])
+            #grid_to_linear(grids[2])
             vcat(grids[1].linear_data, grids[2].linear_data)
-        end
     end
 end
 
@@ -147,11 +147,19 @@ end
 function Force_layer(F, grids)
     dim = length(F)
     if dim == 1
-        return x-> (F[1](grids[1].grid_data),)
+        return x-> let x=x 
+            F1 = F[1](grids[1].grid_data)
+            return (reshape(view(F1,:,:), grids[1].N, :),)
+        end
     elseif dim == 2
-        return x-> (F[1](grids[1].grid_data, grids[2].grid_data), F[2](grids[1].grid_data, grids[2].grid_data))
+        return x-> let x=x 
+            F1 = F[1](grids[1].grid_data, grids[2].grid_data)
+            F2 = F[2](grids[1].grid_data, grids[2].grid_data)
+            # make a linear view of Fs and concatenate them
+            vcat(reshape(view(F1,:,:,:), grids[1].N, :) , reshape(view(F2,:,:,:), grids[2].N, :))
+        end
     elseif dim == 3
-        return x-> (F[1](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data), F[2](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data), F[3](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data))
+        return x-> vcat(F[1](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data), F[2](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data), F[3](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data))
     else
         error("ERROR: Unsupported number of dimensions: $dim")
     end
