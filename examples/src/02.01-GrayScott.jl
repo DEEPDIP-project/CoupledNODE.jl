@@ -125,17 +125,19 @@ burnout_CNODE = NeuralODE(f_CNODE,
 burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:, :, end], θ_0, st_0)[1]);
 
 # Data collection run
-uv0 = burnout_CNODE_solution[:, :, end];
+uv0 = burnout_CNODE_solution[:, :, end]
 trange = (0.0, 2000.0);
 dt, saveat = (1 / (4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
+GS_sim
 
 u = reshape(GS_sim[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
     size(GS_sim, 2),
     :);
+u
 v = reshape(GS_sim[(grid_GS_u.N + 1):end, :, :],
     grid_GS_v.nx,
     grid_GS_v.ny,
