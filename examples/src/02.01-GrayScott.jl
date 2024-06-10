@@ -38,8 +38,18 @@ u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = 
 grid_GS_u = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
 grid_GS_v = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
 
+
+# Notice that the grid can also be created from a linear array of data 
+ui2 = reshape(u_initial, nux*nuy, nsim) 
+vi2 = reshape(v_initial, nvx*nvy, nsim)
+grid_GS_u2 = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, linear_data=ui2)
+grid_GS_v2 = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, linear_data=vi2)
+# check that the two grids are the same
+grid_GS_u2 == grid_GS_u
+grid_GS_v2 == grid_GS_v
+
+
 # We define the initial condition as a flattened concatenated array
-#uv0 = vcat(reshape(u_initial, grid_GS_u.N, :), reshape(v_initial, grid_GS_v.N, :))
 uv0 = vcat(grid_GS_u.linear_data, grid_GS_v.linear_data)
 
 
@@ -68,7 +78,7 @@ rng = Random.seed!(1234);
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
-trange_burn = (0.0f0, 10.0f0)
+trange_burn = (0.0f0, 1.0f0)
 dt, saveat = (0.01f0, 0.5f0)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
@@ -76,42 +86,7 @@ burnout_CNODE = NeuralODE(f_CNODE,
     adaptive = false,
     dt = dt,
     saveat = saveat);
-@time burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
-
-u = reshape(burnout_CNODE_solution[1:(grid_GS_u.N), :, :],
-    grid_GS_u.nx,
-    grid_GS_u.ny,
-    size(burnout_CNODE_solution, 2),
-    :);
-v = reshape(burnout_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
-    grid_GS_v.nx,
-    grid_GS_v.ny,
-    size(burnout_CNODE_solution, 2),
-    :);
-
-# Finally, plot the solution as an animation
-using Plots
-anim = Animation()
-fig = plot(layout = (1, 2), size = (600, 300))
-@gif for i in 1:2:size(u, 4)
-    p1 = heatmap(u[:, :, 1, i],
-        axis = false,
-        bar = true,
-        aspect_ratio = 1,
-        color = :reds,
-        title = "u(x,y)")
-    p2 = heatmap(v[:, :, 1, i],
-        axis = false,
-        bar = true,
-        aspect_ratio = 1,
-        color = :blues,
-        title = "v(x,y)")
-    time = round(i * saveat, digits = 0)
-    fig = plot(p1, p2, layout = (1, 2), plot_title = "time = $(time)")
-    frame(anim, fig)
-end
-
-#-------------
+burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 
 # Second burnout with a larger timestep
 trange_burn = (0.0, 500.0)
@@ -130,14 +105,12 @@ trange = (0.0, 2000.0);
 dt, saveat = (1 / (4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
 GS_sim = Array(GS_CNODE(uv0, θ_0, st_0)[1]);
-GS_sim
 
 u = reshape(GS_sim[1:(grid_GS_u.N), :, :],
     grid_GS_u.nx,
     grid_GS_u.ny,
     size(GS_sim, 2),
     :);
-u
 v = reshape(GS_sim[(grid_GS_u.N + 1):end, :, :],
     grid_GS_v.nx,
     grid_GS_v.ny,
@@ -148,7 +121,7 @@ v = reshape(GS_sim[(grid_GS_u.N + 1):end, :, :],
 using Plots
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
-@gif for i in 1:2:size(u, 4)
+@gif for i in 1:5:size(u, 4)
     p1 = heatmap(u[:, :, 1, i],
         axis = false,
         bar = true,
@@ -167,10 +140,19 @@ fig = plot(layout = (1, 2), size = (600, 300))
 end
 
 # `GS_sim` contains the solutions of $u$ and $v$ for the specified `trange` and `nsimulations` initial conditions. If you explore `GS_sim` you will see that it has the shape `((nux * nuy) + (nvx * nvy), nsimulations, timesteps)`.
+
+
 # `uv_data` is a reshaped version of `GS_sim` that has the shape `(nux * nuy + nvx * nvy, nsimulations * timesteps)`. This is the format that we will use to train the CNODE.
 uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3));
+
+
+# Make all the data into a single grid
+grid_GS_u_all = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = size(uv_data,2), linear_data=uv_data[1:grid_GS_u.N, :])
+grid_GS_v_all = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = size(uv_data,2), linear_data=uv_data[grid_GS_u.N+1:end, :])
+f_CNODE_all = create_f_CNODE((F_u, G_v), (grid_GS_u_all, grid_GS_v_all); is_closed = false)
 # We define `FG_target` containing the right hand sides (i.e. $\frac{du}{dt} and \frac{dv}{dt}$) of each one of the samples. We will see later that for the training `FG_target` is used as the labels to do derivative fitting.
-FG_target = Array(f_CNODE(GS_sim, θ_0, st_0)[1]);
+FG_target = Array(f_CNODE_all(uv_data, θ_0, st_0)[1]);
+
 
 # ## II. Training a CNODE to learn the GS model via a priori training
 # To learn the GS model, we will use the following CNODE
@@ -218,8 +200,11 @@ end
 # We create the trainable models. In this case is just a GS layer, but the model can be as complex as needed.
 NN_u = GSLayer()
 NN_v = GSLayer()
+# !!!!!!!!!!!! Fix how the layer gets applied to the input data
+NN_u()(GS_sim[1:grid_GS_u.N, :, end])
 
 # We can now close the CNODE with the Neural Network
+include("./../../src/NODE.jl")
 f_closed_CNODE = create_f_CNODE(
     (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
 θ, st = Lux.setup(rng, f_closed_CNODE);
@@ -230,12 +215,17 @@ import ComponentArrays
 correct_w_u = [-f, 0, f];
 correct_w_v = [0, -(f + k), 0];
 θ_correct = ComponentArrays.ComponentArray(θ)
-θ_correct.layer_2.layer_1.gs_weights = correct_w_u;
-θ_correct.layer_2.layer_2.gs_weights = correct_w_v;
+θ_correct.layer_1.gs_weights = correct_w_u;
+θ_correct.layer_2.gs_weights = correct_w_v;
+
+GS_sim
+##3   !!!!!!! Fix how the input size is handled 
+f_closed_CNODE(GS_sim[:, :, end], θ_correct, st)[1][1]
+f_CNODE(GS_sim[:, :, end], θ_0, st_0)[1]
 
 # Notice that they are the same within a tolerance of 1e-7
-isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
-    f_CNODE(GS_sim[:, 1, 1], θ_0, st_0)[1],
+isapprox(f_closed_CNODE(GS_sim[:, :, end], θ_correct, st)[1],
+    f_CNODE(GS_sim[:, :, end], θ_0, st_0)[1],
     atol = 1e-7,
     rtol = 1e-7)
 # but now with a tolerance of 1e-8 this check returns `false`.
