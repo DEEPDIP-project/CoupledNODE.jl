@@ -147,12 +147,15 @@ end
 function Force_layer(F, grids)
     dim = length(F)
     if dim == 1
-        return x-> let x=x 
+        return u-> let u=u 
+            grids[1].linear_data[:] .= u[:]
             F1 = F[1](grids[1].grid_data)
             return (reshape(view(F1,:,:), grids[1].N, :),)
         end
     elseif dim == 2
-        return x-> let x=x 
+        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
+            grids[1].linear_data[:] .= u[:]
+            grids[2].linear_data[:] .= v[:]
             F1 = F[1](grids[1].grid_data, grids[2].grid_data)
             F2 = F[2](grids[1].grid_data, grids[2].grid_data)
             # make a linear view of Fs and concatenate them
