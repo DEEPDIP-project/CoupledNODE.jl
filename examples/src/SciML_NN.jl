@@ -269,7 +269,55 @@ split_problem = SplitODEProblem(f1, f2, u0, trange);
 u_split = Array(split_sol)[1, :, :, :, :];
 v_split = Array(split_sol)[2, :, :, :, :];
 
-# ### c. NeuralPDE.jl [NNODE](https://docs.sciml.ai/NeuralPDE/stable/manual/ode/#ODE-Specialized-Physics-Informed-Neural-Network-(PINN)-Solver)
+# ### d. ODEProblem following [Missing Physics showcase](https://docs.sciml.ai/Overview/stable/showcase/missing_physics/)
+#Multilayer FeedForward
+rbf(x) = exp.(-(x .^ 2))
+const U = Lux.Chain(Lux.Dense(2, 5, rbf), Lux.Dense(5, 5, rbf), Lux.Dense(5, 5, rbf),
+    Lux.Dense(5, 2))
+
+U(u0, p_mp, _st)[1]
+#Get the initial parameters and state variables of the model
+p_mp, st_mp = Lux.setup(rng, U)
+const _st = st_mp
+
+# UDE: universal differential equation : `u' = known(u) + NN(u)` in our case `F_u_open` and `G_v_open` contain part of the known physics. 
+# The NNs should approximate the rest.
+function ude!(du, u, p, t)
+    u_gs = @view u[1, :, :, :]
+    v_gs = @view u[2, :, :, :]
+    du_gs = @view du[1, :, :, :]
+    dv_gs = @view du[2, :, :, :]
+    u_nn = U(u, p, _st)[1]
+    du_gs .= F_u_open(u_gs, v_gs) + u_nn[1, :, :, :]
+    dv_gs .= G_v_open(u_gs, v_gs) + u_nn[2, :, :, :]
+end
+
+prob_nn = ODEProblem(ude!, u0, trange, p_mp)
+# Trainin loop
+using SciMLSensitivity: QuadratureAdjoint, ReverseDiffVJP
+function predict(θ, X = u0, T = trange)
+    _prob = remake(prob_nn, u0 = X, tspan = (T[1], T[end]), p = θ)
+    Array(solve(_prob, solver_algo, saveat = saveat, dt = dt,
+        sensealg = QuadratureAdjoint(autojacvec = ReverseDiffVJP(true))))
+end
+
+function loss_mp(θ)
+    X̂ = predict(θ)
+    mean(abs2, forces_target_grid .- X̂)
+end
+
+# training
+optf = Optimization.OptimizationFunction((x, p) -> loss_mp(x), adtype)
+optprob = Optimization.OptimizationProblem(
+    optf, ComponentArrays.ComponentVector{Float64}(p_mp))
+res1 = Optimization.solve(optprob, train_algo, callback = callback, maxiters = 100)
+
+p_trained = res1.u
+sol_mp = predict(p_trained, u0, trange)
+u_mp = @view sol_mp[1, :, :, :]
+v_mp = @view sol_mp[2, :, :, :]
+
+# ### e. NeuralPDE.jl [NNODE](https://docs.sciml.ai/NeuralPDE/stable/manual/ode/#ODE-Specialized-Physics-Informed-Neural-Network-(PINN)-Solver)
 # [NNODE](https://docs.sciml.ai/NeuralPDE/stable/tutorials/ode/) is a specific implementation for PINNs such that for an ODE problem:
 # \begin{equation} \frac{du}{dt}=f(u,p,t) \end{equation}
 # They consider that the solution of the ODE $u \approx NN$ and thus:
@@ -315,22 +363,21 @@ function additional_loss(phi, θ)
     return sum(abs2, phi(u_, θ) .- labels_) / sum(abs2, labels_)
 end
 
-using NeuralPDE: NNODE, WeightedIntervalTraining, GridTraining
+using NeuralPDE: NNODE, WeightedIntervalTraining
 strategy_1 = WeightedIntervalTraining([0.7, 0.2, 0.1], 65) # last argument is number of intervals I think it has to match loss dimensions.
-strategy_2 = GridTraining([1, dx, dy, dt])
+# NOTE: tried GridTraining because I saw it in the docs but then found that [is never a good idea to use it](https://github.com/SciML/NeuralPDE.jl/issues/551).
 alg_NNODE = NNODE(NN_PDE, train_algo, ps; strategy = strategy_1,
     param_estim = true, additional_loss = additional_loss, dt = dt)
 sol = solve(prob, alg_NNODE, verbose = true, abstol = 1e-8,
     maxiters = 5000, dt = dt, saveat = saveat)
 #TODO: still not working probably the strategy is not well defined but with the defaults is also a problem. 
 
-# ### e. NeuralPDE.jl
+# ### f. NeuralPDE.jl and ModelingToolkit.jl
 using NeuralPDE, Flux, ModelingToolkit, DiffEqFlux
 
 # Define the parameters for the problem
 @parameters t x y
 @variables u(..) v(..)
-D = Differential(t)
 Dxx = Differential(x)^2
 Dyy = Differential(y)^2
 
@@ -341,9 +388,9 @@ eqs = [
     D(v(t, x, y)) ~ Dxx(v(t, x, y)) + Dyy(v(t, x, y)) - u(t, x, y)^2 * v(t, x, y)]
 
 # Define the domains and boundary conditions
-domains = [t ∈ IntervalDomain(0.0, 10.0),
-    x ∈ IntervalDomain(0.0, 1.0),
-    y ∈ IntervalDomain(0.0, 1.0)]
+domains = [t ∈ IntervalDomain(trange[1], trange[end]),
+    x ∈ IntervalDomain(0.0, nx),
+    y ∈ IntervalDomain(0.0, ny)]
 bcs = [u(0, x, y) ~ cos(pi * x) * cos(pi * y),
     v(0, x, y) ~ sin(pi * x) * sin(pi * y),
     u(t, 0, y) ~ u(t, 1, y),
