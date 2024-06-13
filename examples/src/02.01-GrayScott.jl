@@ -1,3 +1,5 @@
+const MY_TYPE = Float32 # use float32 if you plan to use a GPU
+
 # # Learning the Gray-Scott model: a priori fitting
 # In the previous example [02.00-GrayScott.jl](02.00-GrayScott.jl) we have seen how to use the CNODE to solve the Gray-Scott model via an explicit method.
 # Here we introduce the *Learning part* of the CNODE, and show how it can be used to close the CNODE. We are going to train the neural network via **a priori fitting** and in the next example [02.02-GrayScott](02.02-GrayScott.jl) we will show how to use a posteriori fitting.
@@ -16,7 +18,6 @@ include("./../../src/grid.jl")
 dux = duy = dvx = dvy = 1.0f0
 nux = nuy = nvx = nvy = 64
 
-
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
 import Random
@@ -33,25 +34,36 @@ nsim = 20
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 
 # Declare the grid object 
-grid_GS_u = make_grid(dim = 2, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
-grid_GS_v = make_grid(dim = 2, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
+grid_GS_u = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux, dy = duy,
+    ny = nuy, nsim = nsim, grid_data = u_initial)
+grid_GS_v = make_grid(dim = 2, dtype = MY_TYPE, dx = dvx, nx = nvx, dy = dvy,
+    ny = nvy, nsim = nsim, grid_data = v_initial)
 
+# Notice that the grid can also be created from a linear array of data 
+ui2 = reshape(u_initial, nux * nuy, nsim)
+vi2 = reshape(v_initial, nvx * nvy, nsim)
+grid_GS_u2 = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux,
+    dy = duy, ny = nuy, nsim = nsim, linear_data = ui2)
+grid_GS_v2 = make_grid(dim = 2, dtype = MY_TYPE, dx = dvx, nx = nvx,
+    dy = dvy, ny = nvy, nsim = nsim, linear_data = vi2)
+# check that the two grids are the same
+grid_GS_u2 == grid_GS_u
+grid_GS_v2 == grid_GS_v
 
 # We define the initial condition as a flattened concatenated array
-#uv0 = vcat(reshape(u_initial, grid_GS_u.N, :), reshape(v_initial, grid_GS_v.N, :))
-grid_to_linear(grid_GS_u)
-grid_to_linear(grid_GS_v)
 uv0 = vcat(grid_GS_u.linear_data, grid_GS_v.linear_data)
 
 # These are the GS parameters (also used in example 02.01) that we will try to learn
-D_u = 0.16
-D_v = 0.08
-f = 0.055
-k = 0.062;
+D_u = 0.16f0
+D_v = 0.08f0
+f = 0.055f0
+k = 0.062f0;
 
 # Exact right hand sides (functions) of the GS model
 include("./../../src/derivatives.jl")
-F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0 .- u)
+function F_u(u, v)
+    D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u)
+end
 G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
 
 # Definition of the CNODE
@@ -66,50 +78,15 @@ rng = Random.seed!(1234);
 # In this case we need 2 burnouts: first one with a relatively large time step and then another one with a smaller time step. This allow us to discard the transient dynamics and to have a good initial condition for the data collection run.
 import DifferentialEquations: Tsit5
 import DiffEqFlux: NeuralODE
-trange_burn = (0.0, 10.0)
-dt, saveat = (1e-2, 0.5)
+trange_burn = (0.0f0, 1.0f0)
+dt, saveat = (0.01f0, 0.5f0)
 burnout_CNODE = NeuralODE(f_CNODE,
     trange_burn,
     Tsit5(),
     adaptive = false,
     dt = dt,
     saveat = saveat);
-@time burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
-
-u = reshape(burnout_CNODE_solution[1:(grid_GS_u.N), :, :],
-    grid_GS_u.nx,
-    grid_GS_u.ny,
-    size(burnout_CNODE_solution, 2),
-    :);
-v = reshape(burnout_CNODE_solution[(grid_GS_u.N + 1):end, :, :],
-    grid_GS_v.nx,
-    grid_GS_v.ny,
-    size(burnout_CNODE_solution, 2),
-    :);
-
-# Finally, plot the solution as an animation
-using Plots
-anim = Animation()
-fig = plot(layout = (1, 2), size = (600, 300))
-@gif for i in 1:2:size(u, 4)
-    p1 = heatmap(u[:, :, 1, i],
-        axis = false,
-        bar = true,
-        aspect_ratio = 1,
-        color = :reds,
-        title = "u(x,y)")
-    p2 = heatmap(v[:, :, 1, i],
-        axis = false,
-        bar = true,
-        aspect_ratio = 1,
-        color = :blues,
-        title = "v(x,y)")
-    time = round(i * saveat, digits = 0)
-    fig = plot(p1, p2, layout = (1, 2), plot_title = "time = $(time)")
-    frame(anim, fig)
-end
-
-#-------------
+burnout_CNODE_solution = Array(burnout_CNODE(uv0, θ_0, st_0)[1]);
 
 # Second burnout with a larger timestep
 trange_burn = (0.0, 500.0)
@@ -123,7 +100,7 @@ burnout_CNODE = NeuralODE(f_CNODE,
 burnout_CNODE_solution = Array(burnout_CNODE(burnout_CNODE_solution[:, :, end], θ_0, st_0)[1]);
 
 # Data collection run
-uv0 = burnout_CNODE_solution[:, :, end];
+uv0 = burnout_CNODE_solution[:, :, end]
 trange = (0.0, 2000.0);
 dt, saveat = (1 / (4 * max(D_u, D_v)), 1);
 GS_CNODE = NeuralODE(f_CNODE, trange, Tsit5(), adaptive = false, dt = dt, saveat = saveat);
@@ -144,7 +121,7 @@ v = reshape(GS_sim[(grid_GS_u.N + 1):end, :, :],
 using Plots
 anim = Animation()
 fig = plot(layout = (1, 2), size = (600, 300))
-@gif for i in 1:2:size(u, 4)
+@gif for i in 1:5:size(u, 4)
     p1 = heatmap(u[:, :, 1, i],
         axis = false,
         bar = true,
@@ -164,9 +141,9 @@ end
 
 # `GS_sim` contains the solutions of $u$ and $v$ for the specified `trange` and `nsimulations` initial conditions. If you explore `GS_sim` you will see that it has the shape `((nux * nuy) + (nvx * nvy), nsimulations, timesteps)`.
 # `uv_data` is a reshaped version of `GS_sim` that has the shape `(nux * nuy + nvx * nvy, nsimulations * timesteps)`. This is the format that we will use to train the CNODE.
-uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3));
+uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3))
 # We define `FG_target` containing the right hand sides (i.e. $\frac{du}{dt} and \frac{dv}{dt}$) of each one of the samples. We will see later that for the training `FG_target` is used as the labels to do derivative fitting.
-FG_target = Array(f_CNODE(GS_sim, θ_0, st_0)[1]);
+FG_target = Array(f_CNODE(uv_data[:, :], θ_0, st_0)[1]);
 
 # ## II. Training a CNODE to learn the GS model via a priori training
 # To learn the GS model, we will use the following CNODE
@@ -216,6 +193,7 @@ NN_u = GSLayer()
 NN_v = GSLayer()
 
 # We can now close the CNODE with the Neural Network
+include("./../../src/NODE.jl")
 f_closed_CNODE = create_f_CNODE(
     (F_u_open, G_v_open), (grid_GS_u, grid_GS_v), (NN_u, NN_v); is_closed = true)
 θ, st = Lux.setup(rng, f_closed_CNODE);
@@ -226,14 +204,17 @@ import ComponentArrays
 correct_w_u = [-f, 0, f];
 correct_w_v = [0, -(f + k), 0];
 θ_correct = ComponentArrays.ComponentArray(θ)
-θ_correct.layer_2.layer_1.gs_weights = correct_w_u;
-θ_correct.layer_2.layer_2.gs_weights = correct_w_v;
+θ_correct.layer_2.layer_1.gs_weights = correct_w_u
+θ_correct.layer_2.layer_2.gs_weights = correct_w_v
 
-# Notice that they are the same within a tolerance of 1e-7
-isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
-    f_CNODE(GS_sim[:, 1, 1], θ_0, st_0)[1],
-    atol = 1e-7,
-    rtol = 1e-7)
+f_closed_CNODE(GS_sim[:, 1, end], θ_correct, st)[1];
+f_CNODE(GS_sim[:, 1, end], θ_0, st_0)[1]
+
+# Notice that they are the same within a tolerance of 1e-6
+isapprox(f_closed_CNODE(GS_sim[:, :, end], θ_correct, st)[1],
+    f_CNODE(GS_sim[:, :, end], θ_0, st_0)[1],
+    atol = 1e-6,
+    rtol = 1e-6)
 # but now with a tolerance of 1e-8 this check returns `false`.
 isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
     f_CNODE(GS_sim[:, 1, 1], θ_0, st_0)[1],
@@ -252,6 +233,9 @@ isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
 # For this example, we use *a priori* fitting. In this approach, the loss function is defined to minimize the difference between the derivatives of $\frac{du}{dt}$ and $\frac{dv}{dt}$ predicted by the model and calculated via explicit method `FG_target`.
 # In practice, we use [Zygote](https://fluxml.ai/Zygote.jl/stable/) to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
 import CoupledNODE: create_randloss_derivative
+include("./../../src/loss_priori.jl")
+ArrayType = Array
+FG_target
 myloss = create_randloss_derivative(uv_data,
     FG_target,
     f_closed_CNODE,
@@ -261,7 +245,7 @@ myloss = create_randloss_derivative(uv_data,
 
 ## Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ);
-myloss(pinit);
+myloss(pinit)
 ## [!] Check that the loss does not get type warnings, otherwise it will be slower
 
 # We transform the NeuralODE into an optimization problem
