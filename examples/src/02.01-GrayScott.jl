@@ -18,7 +18,6 @@ include("./../../src/grid.jl")
 dux = duy = dvx = dvy = 1.0f0
 nux = nuy = nvx = nvy = 64
 
-
 # Definition of the initial condition as a random perturbation over a constant background to add variety. 
 # Notice that this initial conditions are different from those of the previous example.
 import Random
@@ -35,23 +34,24 @@ nsim = 20
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 
 # Declare the grid object 
-grid_GS_u = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, grid_data=u_initial)
-grid_GS_v = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, grid_data=v_initial)
-
+grid_GS_u = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux, dy = duy,
+    ny = nuy, nsim = nsim, grid_data = u_initial)
+grid_GS_v = make_grid(dim = 2, dtype = MY_TYPE, dx = dvx, nx = nvx, dy = dvy,
+    ny = nvy, nsim = nsim, grid_data = v_initial)
 
 # Notice that the grid can also be created from a linear array of data 
-ui2 = reshape(u_initial, nux*nuy, nsim) 
-vi2 = reshape(v_initial, nvx*nvy, nsim)
-grid_GS_u2 = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = nsim, linear_data=ui2)
-grid_GS_v2 = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = nsim, linear_data=vi2)
+ui2 = reshape(u_initial, nux * nuy, nsim)
+vi2 = reshape(v_initial, nvx * nvy, nsim)
+grid_GS_u2 = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux,
+    dy = duy, ny = nuy, nsim = nsim, linear_data = ui2)
+grid_GS_v2 = make_grid(dim = 2, dtype = MY_TYPE, dx = dvx, nx = nvx,
+    dy = dvy, ny = nvy, nsim = nsim, linear_data = vi2)
 # check that the two grids are the same
 grid_GS_u2 == grid_GS_u
 grid_GS_v2 == grid_GS_v
 
-
 # We define the initial condition as a flattened concatenated array
 uv0 = vcat(grid_GS_u.linear_data, grid_GS_v.linear_data)
-
 
 # These are the GS parameters (also used in example 02.01) that we will try to learn
 D_u = 0.16f0
@@ -59,12 +59,12 @@ D_v = 0.08f0
 f = 0.055f0
 k = 0.062f0;
 
-
 # Exact right hand sides (functions) of the GS model
 include("./../../src/derivatives.jl")
-F_u(u, v) = D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u)
+function F_u(u, v)
+    D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+ f .* (1.0f0 .- u)
+end
 G_v(u, v) = D_v * Laplacian(v, grid_GS_v.dx, grid_GS_v.dy) .+ u .* v .^ 2 .- (f + k) .* v
-
 
 # Definition of the CNODE
 import Lux
@@ -140,19 +140,10 @@ fig = plot(layout = (1, 2), size = (600, 300))
 end
 
 # `GS_sim` contains the solutions of $u$ and $v$ for the specified `trange` and `nsimulations` initial conditions. If you explore `GS_sim` you will see that it has the shape `((nux * nuy) + (nvx * nvy), nsimulations, timesteps)`.
-
-
 # `uv_data` is a reshaped version of `GS_sim` that has the shape `(nux * nuy + nvx * nvy, nsimulations * timesteps)`. This is the format that we will use to train the CNODE.
-uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3));
-
-
-# Make all the data into a single grid
-grid_GS_u_all = make_grid(dim = 2, dtype=MY_TYPE, dx = dux, nx = nux, dy = duy, ny = nuy, nsim = size(uv_data,2), linear_data=uv_data[1:grid_GS_u.N, :])
-grid_GS_v_all = make_grid(dim = 2, dtype=MY_TYPE, dx = dvx, nx = nvx, dy = dvy, ny = nvy, nsim = size(uv_data,2), linear_data=uv_data[grid_GS_u.N+1:end, :])
-f_CNODE_all = create_f_CNODE((F_u, G_v), (grid_GS_u_all, grid_GS_v_all); is_closed = false)
+uv_data = reshape(GS_sim, size(GS_sim, 1), size(GS_sim, 2) * size(GS_sim, 3))
 # We define `FG_target` containing the right hand sides (i.e. $\frac{du}{dt} and \frac{dv}{dt}$) of each one of the samples. We will see later that for the training `FG_target` is used as the labels to do derivative fitting.
-FG_target = Array(f_CNODE_all(uv_data, θ_0, st_0)[1]);
-
+FG_target = Array(f_CNODE(uv_data[:, :], θ_0, st_0)[1]);
 
 # ## II. Training a CNODE to learn the GS model via a priori training
 # To learn the GS model, we will use the following CNODE
@@ -200,8 +191,6 @@ end
 # We create the trainable models. In this case is just a GS layer, but the model can be as complex as needed.
 NN_u = GSLayer()
 NN_v = GSLayer()
-# !!!!!!!!!!!! Fix how the layer gets applied to the input data
-NN_u()(GS_sim[1:grid_GS_u.N, :, end])
 
 # We can now close the CNODE with the Neural Network
 include("./../../src/NODE.jl")
@@ -215,19 +204,17 @@ import ComponentArrays
 correct_w_u = [-f, 0, f];
 correct_w_v = [0, -(f + k), 0];
 θ_correct = ComponentArrays.ComponentArray(θ)
-θ_correct.layer_1.gs_weights = correct_w_u;
-θ_correct.layer_2.gs_weights = correct_w_v;
+θ_correct.layer_2.layer_1.gs_weights = correct_w_u
+θ_correct.layer_2.layer_2.gs_weights = correct_w_v
 
-GS_sim
-##3   !!!!!!! Fix how the input size is handled 
-f_closed_CNODE(GS_sim[:, :, end], θ_correct, st)[1][1]
-f_CNODE(GS_sim[:, :, end], θ_0, st_0)[1]
+f_closed_CNODE(GS_sim[:, 1, end], θ_correct, st)[1];
+f_CNODE(GS_sim[:, 1, end], θ_0, st_0)[1]
 
-# Notice that they are the same within a tolerance of 1e-7
+# Notice that they are the same within a tolerance of 1e-6
 isapprox(f_closed_CNODE(GS_sim[:, :, end], θ_correct, st)[1],
     f_CNODE(GS_sim[:, :, end], θ_0, st_0)[1],
-    atol = 1e-7,
-    rtol = 1e-7)
+    atol = 1e-6,
+    rtol = 1e-6)
 # but now with a tolerance of 1e-8 this check returns `false`.
 isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
     f_CNODE(GS_sim[:, 1, 1], θ_0, st_0)[1],
@@ -246,6 +233,9 @@ isapprox(f_closed_CNODE(GS_sim[:, 1, 1], θ_correct, st)[1],
 # For this example, we use *a priori* fitting. In this approach, the loss function is defined to minimize the difference between the derivatives of $\frac{du}{dt}$ and $\frac{dv}{dt}$ predicted by the model and calculated via explicit method `FG_target`.
 # In practice, we use [Zygote](https://fluxml.ai/Zygote.jl/stable/) to compare the right hand side of the GS model with the right hand side of the CNODE, and we ask it to minimize the difference.
 import CoupledNODE: create_randloss_derivative
+include("./../../src/loss_priori.jl")
+ArrayType = Array
+FG_target
 myloss = create_randloss_derivative(uv_data,
     FG_target,
     f_closed_CNODE,
@@ -255,7 +245,7 @@ myloss = create_randloss_derivative(uv_data,
 
 ## Initialize and trigger the compilation of the model
 pinit = ComponentArrays.ComponentArray(θ);
-myloss(pinit);
+myloss(pinit)
 ## [!] Check that the loss does not get type warnings, otherwise it will be slower
 
 # We transform the NeuralODE into an optimization problem
