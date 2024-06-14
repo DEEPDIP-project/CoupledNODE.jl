@@ -1,31 +1,15 @@
-using Lux
-using LuxCUDA
-using SciMLSensitivity
-using DiffEqFlux
-using DifferentialEquations
-#using Plots
-#using Plots.PlotMeasures
-using Zygote
-using Random
-rng = Random.seed!(1234)
-#using OptimizationOptimisers
-#using Statistics
-using ComponentArrays
 using CUDA
-#using Images
-#using Interpolations
-#using NNlib
-#using FFTW
-using DiffEqGPU
-# Test if CUDA is running
+CUDA.memory_status()
 CUDA.functional()
 CUDA.allowscalar(false)
 const ArrayType = CUDA.functional() ? CuArray : Array;
 const z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(Float32, s...);
-const solver_algo = CUDA.functional() ? GPUTsit5() : Tsit5();
 const MY_DEVICE = CUDA.functional() ? cu : identity;
 # and remember to use float32 if you plan to use a GPU
 const MY_TYPE = Float32;
+
+using Random
+rng = Random.seed!(1234)
 
 # ## Testing SciML on GPU
 
@@ -48,7 +32,7 @@ U₀ = 0.5f0    # initial concentration of u
 V₀ = 0.25f0   # initial concentration of v
 ε_u = 0.05f0  # magnitude of the perturbation on u
 ε_v = 0.1f0   # magnitude of the perturbation on v
-nsim = 10
+nsim = 1
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 
 # Declare the grid object 
@@ -63,29 +47,47 @@ D_v = 0.08f0
 f = 0.055f0
 k = 0.062f0;
 
+CUDA.memory_status()
+
 using ShiftedArrays
 include("./../../src/derivatives.jl")
-function F_u(u, v)
-    D_u * Laplacian(u, grid_GS_u.dx, grid_GS_u.dy) .- u .* v .^ 2 .+
-    f .* (1.0f0 .- u)
-end
+F_u(gu, gv) =  D_u * Laplacian(gu.grid_data, gu.dx, gv.dy) .- gu.grid_data .* gv.grid_data .^ 2 .+
+    f .* (1.0f0 .- gu.grid_data)
 
 using Profile
 # Trigger and test if the force keeps the array on the GPU
-@time zz = F_u(u_initial, v_initial);
-cuu = cu(u_initial);
-cuv = cu(v_initial);
-@time zz = F_u(cuu, cuv);
+@time zz = F_u(grid_GS_u, grid_GS_v);
+CUDA.reclaim()
+CUDA.memory_status()
+# Create the GPU grid
+cugu = make_grid(dim = 2, dtype = MY_TYPE, dx = cu(dux), nx = cu(nux), dy = cu(duy),
+    ny = cu(nuy), nsim = nsim, grid_data = cu(u_initial))
+typeof(cu(cugu.dx))
+cugv = make_grid(dim = 2, dtype = MY_TYPE, dx = cu(dvx), nx = cu(nvx), dy = cu(dvy),
+    ny = cu(nvy), nsim = cu(nsim), grid_data = cu(v_initial))
+CUDA.memory_status()
+@time zz = F_u(cugu, cugv);
 @time for i in 1:1000
     ##@profview for i in 1:100
     ##CUDA.@profile for i in 1:100
-    zz = F_u(u_initial, v_initial)
+    zz = F_u(grid_GS_u.grid_data, grid_GS_v.grid_data);
 end
 @time for i in 1:1000
     ##CUDA.@profile for i in 1:100
     ##@profview for i in 1:100
-    zz = F_u(cuu, cuv)
+    zz = F_u(cugu.grid_data, cugv.grid_data);
 end
+typeof(zz)
+
+
+
+using Lux
+using LuxCUDA
+using SciMLSensitivity
+using DiffEqFlux
+using DifferentialEquations
+using Zygote
+using DiffEqGPU
 
 # Typical cnode
 f_CNODE_cpu = create_f_CNODE((F_u, G_v), (grid_GS_u, grid_GS_v); is_closed = false)
