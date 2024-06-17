@@ -22,7 +22,7 @@ k = 0.062f0;
 # Declare the grid object 
 include("./../../src/grid.jl")
 dux = duy = dvx = dvy = 1.0f0
-nux = nuy = nvx = nvy = 1024
+nux = nuy = nvx = nvy = 64
 nsim = 10
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 grid_GS_u = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux, dy = duy,
@@ -136,10 +136,31 @@ end
 
 
 ###############
+# this is a Lux variant with padding instead of preallocation
+Mpd = Lux.Chain( 
+    # Pad for PBC
+    WrappedFunction(x -> unsqueeze(NNlib.pad_circular(x, 1; dims=[1,2]), 3)), 
+    Lux.Conv((3,3),1=>1, use_bias=false),
+    SelectDim(3, 1),
+)
+θpd, stpd = Lux.setup(rng, Mpd);
+θpd = ComponentArrays.ComponentArray(θ)
+θpd.layer_2.weight = [
+    0.0f0 1.0f0 0.0f0;
+    1.0f0 -4.0f0 1.0f0;
+    0.0f0 1.0f0 0.0f0
+]
+function Laplacian_Lux_pd(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
+    Lux.apply(Mpd, u, θpd, stpd)[1]
+end
+
+
+
+###############
 # This one uses a stencil and matrix multiplication
 # similarly to [this](https://docs.sciml.ai/DiffEqDocs/stable/tutorials/faster_ode_example/#Example-Accelerating-Linear-Algebra-PDE-Semi-Discretization)
-N = 1024
-using LinearAlgebra, Kronecker
+N = nux
+using LinearAlgebra#, Kronecker
 K = Array(Tridiagonal([1.0f0 for i in 1:(N - 1)], [-2.0f0 for i in 1:N],
     [1.0f0 for i in 1:(N - 1)]))
 # Use periodic boundary conditions
@@ -195,6 +216,7 @@ function_list = [
     Laplacian_c2,
     Laplacian_c3,
     Laplacian_Lux,
+    Laplacian_Lux_pd,
     Laplacian_stencil,
     Laplacian_conv,
 ]
@@ -213,22 +235,10 @@ for f in function_list
     GC.gc()
 end
 
-# also compare the results
-o = Old_Laplacian(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-c1 = Laplacian_c1(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-c2 = Laplacian_c2(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-c3 = Laplacian_c3(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-lux = Laplacian_Lux(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-stencil = Laplacian_stencil(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
-uconv = Laplacian_conv(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy);
 
 # check the results
-o ≈ c1
-o ≈ c2
-o ≈ c3
-o ≈ lux
-o ≈ stencil
-o ≈ uconv
+results = [method(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy) for method in function_list];
+all(results[1] ≈ result for result in results[2:end])
 
 
 
@@ -238,27 +248,112 @@ o ≈ uconv
 ##############################
 # If you are on a GPU, you can also test the GPU version of the Laplacian
 using CUDA
+CUDA.allowscalar(false)
+using LuxCUDA
 CUDA.reclaim()
 CUDA.memory_status()
 
 # Create the GPU grid
 cugu = make_grid(dim = 2, dtype = MY_TYPE, dx = cu(dux), nx = cu(nux), dy = cu(duy),
     ny = cu(nuy), nsim = nsim, grid_data = cu(u_initial))
-typeof(cu(cugu.dx))
 cugv = make_grid(dim = 2, dtype = MY_TYPE, dx = cu(dvx), nx = cu(nvx), dy = cu(dvy),
     ny = cu(nvy), nsim = cu(nsim), grid_data = cu(v_initial))
 CUDA.memory_status()
 
+# we need to port the functions in GPU things
+upx0 = cu(similar(u_initial));
+umx0 = cu(similar(u_initial));
+upy0 = cu(similar(u_initial));
+umy0 = cu(similar(u_initial));
+uu = cu(zeros(MY_TYPE,size(u_initial)[1]+2, size(u_initial)[2]+2, size(u_initial)[3]));
+uu2 = cu(zeros(MY_TYPE,size(u_initial)[1]+2, size(u_initial)[2]+2, 1, size(u_initial)[3]));
+K = cu(K)
+D_3D = cu(D_3D)
+M = Lux.Chain( 
+    # Pad for PBC
+    x -> begin
+        @views uu2[2:end-1, 2:end-1, 1, :] .= x
+        @views uu2[1, 2:end-1, 1, :] .= x[end, :,:]
+        @views uu2[end, 2:end-1, 1, :] .= x[1, :, :]
+        @views uu2[2:end-1, 1, 1, :] .= x[:, end, :]
+        @views uu2[2:end-1, end, 1,:] .= x[:, 1, :]
+        uu2
+    end,
+    Lux.Conv((3,3),1=>1, use_bias=false),
+    SelectDim(3, 1),
+)
+θ, st = setup(rng, M);
+θ = ComponentArrays.ComponentArray(θ)
+θ.layer_2.weight = [
+    0.0f0 1.0f0 0.0f0;
+    1.0f0 -4.0f0 1.0f0;
+    0.0f0 1.0f0 0.0f0
+]
+function Laplacian_Lux(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
+    Lux.apply(M, u, θ, st)[1]
+end
+# this is a Lux variant with padding instead of preallocation
+Mpd = Lux.Chain( 
+    # Pad for PBC
+    WrappedFunction(x -> unsqueeze(NNlib.pad_circular(x, 1; dims=[1,2]), 3)), 
+    #x -> reshape(x, size(x)[1], size(x)[2], 1, size(x)[3]),
+    Lux.Conv((3,3),1=>1, use_bias=false),
+    SelectDim(3, 1),
+)
+θpd, stpd = Lux.setup(rng, Mpd);
+θpd = ComponentArrays.ComponentArray(θ)
+θpd.layer_2.weight = [
+    0.0f0 1.0f0 0.0f0;
+    1.0f0 -4.0f0 1.0f0;
+    0.0f0 1.0f0 0.0f0
+]
+function Laplacian_Lux_pd(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
+    Lux.apply(Mpd, u, θpd, stpd)[1]
+end
+function Laplacian_stencil(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
+    NNlib.batched_mul(K,u_initial) + NNlib.batched_mul(u_initial,K)
+end
+function Laplacian_conv(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
+    # Create the ghost grid
+    uu[2:end-1, 2:end-1, :] .= u
+    uu[1, 2:end-1,:] .= u[end, :,:]
+    uu[end, 2:end-1,:] .= u[1, :, :]
+    uu[2:end-1, 1, :] .= u[:, end, :]
+    uu[2:end-1, end, :] .= u[:, 1, :]
+    dropdims(NNlib.conv(unsqueeze(uu, 3), D_3D), dims=3)
+end
+
+Laplacian_Lux(cugu.grid_data, cugu.dx, cugu.dy);
+Laplacian_Lux_pd(cugu.grid_data, cugu.dx, cugu.dy);
+Old_Laplacian(cugu.grid_data, cugu.dx, cugu.dy);
+
 # trigger the GPU version of the Laplacian
+f_good = []
 for f in function_list
-    f(cugu.grid_data, cugu.dx, cugu.dy)
+    println("\n")
+    println(f)
+    try
+        f(cugu.grid_data, cugu.dx, cugu.dy);
+        push!(f_good,f)
+        GC.gc()
+        CUDA.reclaim()
+        CUDA.memory_status()
+    catch e
+        println("Above method produced and error")
+        #println(e)
+    end
 end
 GC.gc()
 CUDA.reclaim()
 CUDA.memory_status()
 
+printlnt("They compiled:")
+println(f_good)
+
 # and test them by running them 10 times
-for f in function_list
+for f in f_good
+    println("\n")
+    println(f)
     @time for i in 1:10
         f(cugu.grid_data, cugu.dx, cugu.dy)
     end
@@ -266,3 +361,7 @@ for f in function_list
     CUDA.reclaim()
     CUDA.memory_status()
 end
+
+# check the results
+results = [method(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy) for method in f_good];
+all(results[1] ≈ result for result in results[2:end])
