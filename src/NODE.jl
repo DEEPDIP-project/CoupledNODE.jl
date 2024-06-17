@@ -146,15 +146,15 @@ function Force_layer(F, grids, NN_closure = nothing)
     dim = length(F)
     if NN_closure === nothing
         if dim == 1
-            return u -> let u = u
-                grids[1].linear_data[:] .= u[:]
+            return u -> begin
+                assign_grid_data(grids, u = u)
                 F1 = F[1](grids[1].grid_data)
-                return (reshape(view(F1, :, :), grids[1].N, :),)
+                return reshape(view(F1, :, :), grids[1].N, :)
             end
         elseif dim == 2
             return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
                 #grids = assign_grid_data(grids, u, v)
-                assign_grid_data(grids, u, v)
+                assign_grid_data(grids, u = u, v = v)
                 F1 = F[1](grids[1].grid_data, grids[2].grid_data)
                 F2 = F[2](grids[1].grid_data, grids[2].grid_data)
                 # make a linear view of Fs and concatenate them
@@ -173,7 +173,7 @@ function Force_layer(F, grids, NN_closure = nothing)
             return Chain(
                 # Get the data
                 uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
-                    assign_grid_data(grids, u, v)
+                    assign_grid_data(grids, u = u, v = v)
                     # If you pass a tuple you split the input to the two NNs
                     # (u, v)
                     # If you don't want this, just pass an array
@@ -220,14 +220,13 @@ end
 #    end
 #end
 
-function assign_grid_data(grids, u, v)
-    if size(grids[1].linear_data)[end] == size(u)[end] &&
-       size(grids[2].linear_data)[end] == size(v)[end]
-        grids[1].linear_data[:] .= u[:]
-        grids[2].linear_data[:] .= v[:]
-    else
-        println("Size of input does not match size of grid data -> reshaping to handle data of shape $(size(u)), $(size(v))")
-        data_from_linear(grids[1], u)
-        data_from_linear(grids[2], v)
+function assign_grid_data(grids; u = nothing, v = nothing, w = nothing)
+    for (i, data) in enumerate([u, v, w])
+        if data !== nothing && size(grids[i].linear_data)[end] == size(data)[end]
+            grids[i].linear_data[:] .= data[:]
+        elseif data !== nothing
+            println("Size of input does not match size of grid data -> reshaping to handle data of shape $(size(data))")
+            data_from_linear(grids[i], data)
+        end
     end
 end

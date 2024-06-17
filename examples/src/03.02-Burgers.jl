@@ -9,47 +9,50 @@ if CUDA.functional()
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
+using ShiftedArrays
 
 # # Burgers equations with small scale
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
-# So the first step is to define the grid that we are going to use.
-# We define a DNS and a LES
-import CoupledNODE: Grid
+# We start from the parameters that define DNS and LES
 nux_dns = 1000
-dux_dns = 2π / nux_dns
-grid_u_dns = Grid(dim = 1, dx = dux_dns, nx = nux_dns)
+dux_dns = MY_TYPE(2π / nux_dns)
 nux_les = 40 # This is I in Toby's paper
-dux_les = 2π / nux_les
-grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
+dux_les = MY_TYPE(2π / nux_les)
 
 # Construct the right-hand side of the Burgers equation
 include("./../../src/Burgers.jl")
 ν = 0.001f0
 force_params = (ν,)
-grid_B_dns = (grid_u_dns,)
-grid_B_les = (grid_u_les,)
-F_dns = create_burgers_rhs(grid_B_dns, force_params)
-F_les = create_burgers_rhs(grid_B_les, force_params)
+F_dns = create_burgers_rhs(dux_dns, force_params)
+F_les = create_burgers_rhs(dux_les, force_params)
 
 # and generate some initial conditions
-u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1, kmax = 4);
+nsim = 1
+u0_dns = generate_initial_conditions(
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+include("./../../src/grid.jl")
+grid_u_dns = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u0_dns)
 
 # Use a gaussian filter to get the coarse grid
-ΔΦ = 5 * grid_B_les[1].dx
-Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
+ΔΦ = 5 * dux_les
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "gaussian")
 # or a top hat filter similar to the one used by Toby
-ΔΦ = 3 * grid_B_les[1].dx
-Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "hat")
+ΔΦ = 3 * dux_les
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "hat")
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
+# and Finally create the grid
+grid_u_les = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_les, nx = nux_les, nsim = nsim, grid_data = u0_les)
 
 # ### Subgrid scale (SGS) 
 # The Subgrid scale (SGS) is defined as the difference between the DNS and the reconstructed LES.
 # Let's show an example of the SGS term for the Burgers equation:
 # To get the reconstruction operator I need the small cell volume ω and the large cell volume Ω (nha that is only for average)
-ω = grid_B_dns[1].dx
-Ω = grid_B_les[1].dx
+ω = grid_u_dns.dx
+Ω = grid_u_les.dx
 R = 1 / ω * transpose(Φ) * Ω
 # We construct R as a pseudo-inverse operator via the following
 R = transpose(Φ) * inv(Matrix(Φ * transpose(Φ)))
@@ -59,11 +62,11 @@ sgs = u0_dns - u0_rec
 
 # Let's plot a comparison of the different terms
 using LaTeXStrings
-plot(grid_B_dns[1].x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
+plot(grid_u_dns.x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
     xlabel = "x", ylabel = L"u", legend = :topleft)
-plot!(grid_B_les[1].x, u0_les, seriestype = :stepmid, label = L"\bar{u}=\mathbf{\Phi} u")
-plot!(grid_B_dns[1].x, u0_rec, label = L"\mathbf{R} \bar{u}")
-plot!(grid_B_dns[1].x, sgs, label = "SGS")
+plot!(grid_u_les.x, u0_les, seriestype = :stepmid, label = L"\bar{u}=\mathbf{\Phi} u")
+plot!(grid_u_dns.x, u0_rec, label = L"\mathbf{R} \bar{u}")
+plot!(grid_u_dns.x, sgs, label = "SGS")
 
 # ## Energy
 
@@ -129,15 +132,15 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # First we have to solve the dynamics
 import DiffEqFlux: NeuralODE
 include("./../../src/NODE.jl")
-f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
-f_les = create_f_CNODE((F_les,), grid_B_les; is_closed = false);
+f_dns = create_f_CNODE((F_dns,), (grid_u_dns,); is_closed = false);
+f_les = create_f_CNODE((F_les,), (grid_u_les,); is_closed = false);
 using Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
 θ_dns, st_dns = Lux.setup(rng, f_dns);
 θ_les, st_les = Lux.setup(rng, f_les);
 t_sim = 40.0f0
-dt_dns = 0.005f0
+dt_dns = 0.003f0
 trange = (0.0f0, t_sim)
 saveat = 0.01f0
 dns = NeuralODE(f_dns,
@@ -157,8 +160,8 @@ u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 u_dns = u_dns[:, 1, :]
 u_filt = Φ * u_dns
 
-E_dns = sum(u_dns .^ 2, dims = 1) * grid_B_dns[1].dx / 2
-E_filt = sum(u_filt .^ 2, dims = 1) * grid_B_les[1].dx / 2
+E_dns = sum(u_dns .^ 2, dims = 1) * grid_u_dns.dx / 2
+E_filt = sum(u_filt .^ 2, dims = 1) * grid_u_les.dx / 2
 
 plot(E_dns[1, :], label = L"E", title = "Energy",
     xlabel = "Time steps", ylabel = "Energy")
@@ -191,13 +194,13 @@ plot(T.prinvars, label = "PCA explained variance")
 test_reduced = predict(T, test_data)
 test_reconstructed = reconstruct(T, test_reduced)
 print("Reconstruction error: ", norm(test_data - test_reconstructed))
-plot(grid_B_dns[1].x, test_data[:, 1], label = "Original")
-plot!(grid_B_dns[1].x, test_reconstructed[:, 1], label = "Reconstructed w PCA")
+plot(grid_u_dns.x, test_data[:, 1], label = "Original")
+plot!(grid_u_dns.x, test_reconstructed[:, 1], label = "Reconstructed w PCA")
 
 # Compare energy predicted with PCA
-E_prime = sum(u_prime .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+E_prime = sum(u_prime .^ 2, dims = 1) * grid_u_dns.dx / 2
 u_pca = predict(T, u_prime)
-E_pca = sum(u_pca .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+E_pca = sum(u_pca .^ 2, dims = 1) * grid_u_dns.dx / 2
 plot(E_prime, E_pca, title = "Energy SGS", legend = false,
     xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
 finite_inds = isfinite.(E_prime) .& isfinite.(E_pca)
@@ -215,22 +218,11 @@ plot!([0, maximum(E_prime_finite)], [0, maximum(E_prime_finite)], label = "y=x")
 
 # Generate data for the a-priori fitting
 nsamples = 500
-nsamples = 10
-ntimes = size(u_dns)[2]
-all_u_dns = zeros(size(u_dns)[1], nsamples, ntimes)
-batch_size = 10
-n_batches = Int(nsamples / batch_size)
-for i in 1:n_batches
-    good = 0
-    all_u_dns_batch = zeros(size(u_dns)[1], batch_size, ntimes)
-    while good < ntimes
-        println("Generating batch $(i) (size: $(good) < $(ntimes)")
-        all_u0_dns = generate_initial_conditions(grid_B_dns[1].nx, batch_size)
-        all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
-        good = size(all_u_dns_batch)[3]
-    end
-    all_u_dns[:, ((i - 1) * batch_size + 1):(i * batch_size), :] = all_u_dns_batch
-end
+nsamples = 50
+all_u0_dns = generate_initial_conditions(
+    nux_dns, nsamples, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
+all_u_dns
 
 # ### Data filtering 
 all_F_dns = F_dns(reshape(
@@ -263,9 +255,14 @@ all_in = vcat(all_u_les_flat, target_sgs)
 target = vcat(target_F_flat, target_F_sgs)
 
 # Pack the grids 
-dux_s = 2π / sgs_size
+dux_s = MY_TYPE(2π / sgs_size)
+
 grid_s = Grid(dim = 1, dx = 2π / sgs_size, nx = sgs_size)
-grids = (grid_u_les, grid_s)
+
+### HEREEE
+
+grid_s = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_s, nx = sgs_size, nsim = nsim, grid_data = u0_les)
 
 # Now create the the Neural Network
 using NNlib: gelu
