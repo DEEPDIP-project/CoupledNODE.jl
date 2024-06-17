@@ -21,8 +21,8 @@ k = 0.062f0;
 # Declare the grid object 
 include("./../../src/grid.jl")
 dux = duy = dvx = dvy = 1.0f0
-nux = nuy = nvx = nvy = 1024
-nsim = 10
+nux = nuy = nvx = nvy = 64
+nsim = 1000
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 grid_GS_u = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux, dy = duy,
     ny = nuy, nsim = nsim, grid_data = u_initial)
@@ -210,12 +210,12 @@ function_list = [
     Old_Laplacian,
     Laplacian_c1,
     Laplacian_c2,
-    Laplacian_c3,
+    #Laplacian_c3, #[GPU] deactivate
     Laplacian_c4,
-    Laplacian_Lux,
-    Laplacian_Lux_pd,
-    Laplacian_stencil,
-    Laplacian_conv
+    #Laplacian_Lux, #[GPU] deactivate
+    #Laplacian_Lux_pd, #[GPU] deactivate
+    #Laplacian_stencil, #[GPU] deactivate
+    #Laplacian_conv #[GPU] deactivate
 ]
 for f in function_list
     println(f)
@@ -233,7 +233,7 @@ end
 
 # and test them by running them 10 times
 using Statistics
-results = Dict()
+results_cpu = Dict()
 GC.gc()
 for f in function_list
     times = Float64[]
@@ -246,7 +246,7 @@ for f in function_list
         push!(gctime, result[4])
     end
     GC.gc()
-    results[string(f)] = (sum(times), sum(allocations), sum(gctime))
+    results_cpu[string(f)] = (sum(times), sum(allocations), sum(gctime))
 end
 
 # sort the results by time
@@ -255,11 +255,11 @@ times = []
 allocations = []
 gctimes = []
 println("Results sorted by time")
-for key in sort(collect(keys(results)), by = x -> results[x][1])
+for key in sort(collect(keys(results_cpu)), by = x -> results_cpu[x][1])
     push!(methods, key)
-    push!(times, results[key][1])
-    push!(allocations, results[key][2])
-    push!(gctimes, results[key][3])
+    push!(times, results_cpu[key][1])
+    push!(allocations, results_cpu[key][2])
+    push!(gctimes, results_cpu[key][3])
 end
 
 # And plot them
@@ -322,7 +322,7 @@ M = Lux.Chain(
     Lux.Conv((3, 3), 1 => 1, use_bias = false),
     SelectDim(3, 1)
 )
-θ, st = setup(rng, M);
+θ, st = Lux.setup(rng, M);
 θ = ComponentArrays.ComponentArray(θ)
 θ.layer_2.weight = [0.0f0 1.0f0 0.0f0;
                     1.0f0 -4.0f0 1.0f0;
@@ -359,8 +359,8 @@ function Laplacian_conv(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
     dropdims(NNlib.conv(unsqueeze(uu, 3), D_3D), dims = 3)
 end
 
-Laplacian_Lux(cugu.grid_data, cugu.dx, cugu.dy);
-Laplacian_Lux_pd(cugu.grid_data, cugu.dx, cugu.dy);
+#Laplacian_Lux(cugu.grid_data, cugu.dx, cugu.dy);
+#Laplacian_Lux_pd(cugu.grid_data, cugu.dx, cugu.dy);
 Old_Laplacian(cugu.grid_data, cugu.dx, cugu.dy);
 
 # trigger the GPU version of the Laplacian
@@ -376,28 +376,71 @@ for f in function_list
         CUDA.memory_status()
     catch e
         println("Above method produced and error")
-        #println(e)
+        println(e)
     end
 end
 GC.gc()
 CUDA.reclaim()
 CUDA.memory_status()
 
-printlnt("They compiled:")
+println("They compiled:")
 println(f_good)
 
 # and test them by running them 10 times
+results_gpu = Dict()
 for f in f_good
+    times_gpu = Float32[]
+    allocations_gpu = Float32[] # somehow result_gpu[3] is Float32 and not Int32, so it cannot be converted.
+    gctime_gpu = Float32[]
     println("\n")
     println(f)
     @time for i in 1:10
-        f(cugu.grid_data, cugu.dx, cugu.dy)
+        result_gpu = @timed f(cugu.grid_data, cugu.dx, cugu.dy)
+        CUDA.@allowscalar push!(times_gpu, result_gpu[2])
+        CUDA.@allowscalar push!(allocations_gpu, result_gpu[3])
+        CUDA.@allowscalar push!(gctime_gpu, result_gpu[4])
     end
     GC.gc()
     CUDA.reclaim()
     CUDA.memory_status()
+    results_gpu[string(f)] = (sum(times_gpu), sum(allocations_gpu), sum(gctime_gpu))
 end
 
 # check the results
-results = [method(grid_GS_u.grid_data, grid_GS_u.dx, grid_GS_u.dy) for method in f_good];
-all(results[1] ≈ result for result in results[2:end])
+results_GPU = [method(cugu.grid_data, cugu.dx, cugu.dy) for method in f_good];
+if all(results_GPU[1] ≈ result for result in results_GPU[2:end])
+    println("[GPU] All methods produce the same results")
+else
+    println("[GPU] ERROR: Some methods produce different results")
+end
+
+# sort the results by time
+methods_gpu = []
+times_gpu = []
+allocations_gpu = []
+gctimes_gpu = []
+println("Results sorted by time")
+for key in sort(collect(keys(results_gpu)), by = x -> results_gpu[x][1])
+    push!(methods_gpu, key)
+    push!(times_gpu, results_gpu[key][1])
+    push!(allocations_gpu, results_gpu[key][2])
+    push!(gctimes_gpu, results_gpu[key][3])
+end
+
+# And plot them
+using Plots
+p1 = bar(methods_gpu, times_gpu, title = "Execution Times", ylabel = "Time (s)",
+    yaxis = :log, legend = false, xrotation = 45, color=:green)
+p2 = bar(methods_gpu, allocations_gpu, title = "Memory Allocations",
+    ylabel = "Bytes", legend = false, xrotation = 45, color=:green)
+p3 = bar(methods_gpu, gctimes_gpu, title = "GC Time", xlabel = "Methods",
+    ylabel = "Time (s)", legend = false, xrotation = 45, color=:green)
+
+P = plot(p1,
+    p2,
+    p3,
+    layout = (3, 1),
+    size = (600, 900),
+    suptitle = "gridsize = $(size(u_initial)[1])x$(size(u_initial)[2])x$(size(u_initial)[3])")
+savefig(P,
+    "examples/plots/derivatives_GPUbenchmark_$(size(u_initial)[1])_$(size(u_initial)[2])_$(size(u_initial)[3]).png")
