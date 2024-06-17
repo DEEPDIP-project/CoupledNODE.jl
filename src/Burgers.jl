@@ -28,15 +28,20 @@
 
 function generate_initial_conditions(
         nx,
-        nsample;
+        nsample,
+        T::Type;
         kmax = 16,
         decay = k -> (1 + abs(k))^(-6 / 5)
 )
+    if T == Float32
+        twopi = 2.0f0 * π
+    end
     ## Fourier basis
-    basis = [exp(2π * im * k * x / nx) for x in 1:nx, k in (-kmax):kmax]
+    basis = [exp(twopi * im * k * x / nx) for x in 1:nx, k in (-kmax):kmax]
 
     ## Fourier coefficients with random phase and amplitude
-    c = [randn() * exp(-2π * im * rand()) * decay(k) for k in (-kmax):kmax, _ in 1:nsample]
+    c = [randn(T) * exp(-twopi * im * rand(T)) * decay(k)
+         for k in (-kmax):kmax, _ in 1:nsample]
 
     ## Random data samples (real-valued)
     ## Note the matrix product for summing over $k$
@@ -46,7 +51,7 @@ end
 # ### Filter
 using SparseArrays, Plots
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-function create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, kernel_type)
+function create_filter_matrix(dx_dns, nx_dns, dx_les, nx_les, ΔΦ, kernel_type)
     ## Filter kernels
     gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
     top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
@@ -54,10 +59,13 @@ function create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, kernel_type)
     ## Choose kernel
     kernel = kernel_type == "gaussian" ? gaussian : top_hat
 
+    x_dns = collect(0:dx_dns:((nx_dns - 1) * dx_dns))
+    x_les = collect(0:dx_les:((nx_les - 1) * dx_les))
+
     ## Discrete filter matrix (with periodic extension and threshold for sparsity)
     Φ = sum(-1:1) do z
         z *= 2π
-        d = @. grid_B_les[1].x - grid_B_dns[1].x' - z
+        d = @. x_les - x_dns' - z
         if kernel_type == "gaussian"
             @. kernel(ΔΦ, d) * (abs(d) ≤ 3 / 2 * ΔΦ)
         else
@@ -99,16 +107,16 @@ end
 # This prevents oscillations near shocks.
 #
 # We can implement this as follows:
-function create_burgers_rhs(grids, force_params)
+function create_burgers_rhs(dx, force_params)
     ν = force_params[1]
-    Δx = grids[1].dx
+    Δx = dx
 
     function Force(u, args...)
         # circshift handles periodic boundary conditions
-        u₊ = circshift(u, -1)
+        u₊ = ShiftedArrays.circshift(u, -1)
         μ₊ = @. ν + Δx * abs(u + u₊) / 4 - Δx * (u₊ - u) / 12
         ϕ₊ = @. (u^2 + u * u₊ + u₊^2) / 6 - μ₊ * (u₊ - u) / Δx
-        ϕ₋ = circshift(ϕ₊, 1)
+        ϕ₋ = ShiftedArrays.circshift(ϕ₊, 1)
         return @. -(ϕ₊ - ϕ₋) / Δx
     end
     return Force
