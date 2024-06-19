@@ -414,6 +414,12 @@ else
     println("[GPU] ERROR: Some methods produce different results")
 end
 
+if all(results[1] ≈ Array(result) for result in results_GPU[2:end])
+    println("[GPU vs CPU] All methods produce the same results")
+else
+    println("[GPU vs CPU] ERROR: Some methods produce different results")
+end
+
 # sort the results by time
 methods_gpu = []
 times_gpu = []
