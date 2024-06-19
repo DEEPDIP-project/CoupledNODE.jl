@@ -21,8 +21,8 @@ k = 0.062f0;
 # Declare the grid object 
 include("./../../src/grid.jl")
 dux = duy = dvx = dvy = 1.0f0
-nux = nuy = nvx = nvy = 64
-nsim = 1000
+nux = nuy = nvx = nvy = 1024
+nsim = 20
 u_initial, v_initial = initial_condition(U₀, V₀, ε_u, ε_v, nsimulations = nsim);
 grid_GS_u = make_grid(dim = 2, dtype = MY_TYPE, dx = dux, nx = nux, dy = duy,
     ny = nuy, nsim = nsim, grid_data = u_initial)
@@ -212,10 +212,10 @@ function_list = [
     Laplacian_c2,
     #Laplacian_c3, #[GPU] deactivate
     Laplacian_c4,
-    #Laplacian_Lux, #[GPU] deactivate
-    #Laplacian_Lux_pd, #[GPU] deactivate
-    #Laplacian_stencil, #[GPU] deactivate
-    #Laplacian_conv #[GPU] deactivate
+    Laplacian_Lux, #[GPU] deactivate
+    Laplacian_Lux_pd, #[GPU] deactivate
+    Laplacian_stencil, #[GPU] deactivate
+    Laplacian_conv #[GPU] deactivate
 ]
 for f in function_list
     println(f)
@@ -328,7 +328,7 @@ M = Lux.Chain(
                     1.0f0 -4.0f0 1.0f0;
                     0.0f0 1.0f0 0.0f0]
 function Laplacian_Lux(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
-    Lux.apply(M, u, θ, st)[1]
+    Lux.apply(M, u, cu(θ), cu(st))[1]
 end
 # this is a Lux variant with padding instead of preallocation
 Mpd = Lux.Chain(
@@ -344,10 +344,10 @@ Mpd = Lux.Chain(
                       1.0f0 -4.0f0 1.0f0;
                       0.0f0 1.0f0 0.0f0]
 function Laplacian_Lux_pd(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
-    Lux.apply(Mpd, u, θpd, stpd)[1]
+    Lux.apply(Mpd, u, cu(θpd), cu(stpd))[1]
 end
 function Laplacian_stencil(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
-    NNlib.batched_mul(K, u_initial) + NNlib.batched_mul(u_initial, K)
+    NNlib.batched_mul(K, cu(u_initial)) + NNlib.batched_mul(cu(u_initial), K)
 end
 function Laplacian_conv(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
     # Create the ghost grid
@@ -359,8 +359,8 @@ function Laplacian_conv(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
     dropdims(NNlib.conv(unsqueeze(uu, 3), D_3D), dims = 3)
 end
 
-#Laplacian_Lux(cugu.grid_data, cugu.dx, cugu.dy);
-#Laplacian_Lux_pd(cugu.grid_data, cugu.dx, cugu.dy);
+Laplacian_Lux(cugu.grid_data, cugu.dx, cugu.dy);
+Laplacian_Lux_pd(cugu.grid_data, cugu.dx, cugu.dy);
 Old_Laplacian(cugu.grid_data, cugu.dx, cugu.dy);
 
 # trigger the GPU version of the Laplacian
@@ -383,7 +383,7 @@ GC.gc()
 CUDA.reclaim()
 CUDA.memory_status()
 
-println("They compiled:")
+println("They compiled on GPU:")
 println(f_good)
 
 # and test them by running them 10 times
@@ -408,7 +408,7 @@ end
 
 # check the results
 results_GPU = [method(cugu.grid_data, cugu.dx, cugu.dy) for method in f_good];
-if all(results_GPU[1] ≈ result for result in results_GPU[2:end])
+if CUDA.@allowscalar all(results_GPU[1] ≈ result for result in results_GPU[2:end])
     println("[GPU] All methods produce the same results")
 else
     println("[GPU] ERROR: Some methods produce different results")
