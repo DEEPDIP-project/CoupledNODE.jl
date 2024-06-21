@@ -30,7 +30,7 @@ F_les = create_burgers_rhs(dux_les, force_params)
 # and generate some initial conditions
 nsim = 1
 u0_dns = generate_initial_conditions(
-    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> MY_TYPE((1 + abs(k))^(-6 / 5)));
 include("./../../src/grid.jl")
 grid_u_dns = make_grid(
     dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u0_dns)
@@ -222,7 +222,6 @@ nsamples = 50
 all_u0_dns = generate_initial_conditions(
     nux_dns, nsamples, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
 all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
-all_u_dns
 
 # ### Data filtering 
 all_F_dns = F_dns(reshape(
@@ -256,13 +255,10 @@ target = vcat(target_F_flat, target_F_sgs)
 
 # Pack the grids 
 dux_s = MY_TYPE(2π / sgs_size)
-
-grid_s = Grid(dim = 1, dx = 2π / sgs_size, nx = sgs_size)
-
-### HEREEE
-
 grid_s = make_grid(
-    dim = 1, dtype = MY_TYPE, dx = dux_s, nx = sgs_size, nsim = nsim, grid_data = u0_les)
+    dim = 1, dtype = MY_TYPE, dx = dux_s, nx = sgs_size, nsim = size(target_F_sgs)[1], linear_data = target_F_sgs)
+
+### [!] Before continuiung from here, you have to debug the FNO
 
 # Now create the the Neural Network
 using NNlib: gelu

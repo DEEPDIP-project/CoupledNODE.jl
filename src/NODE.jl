@@ -64,81 +64,7 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     )
 end
 
-# sciml gets the linear , force gets the grid
 
-#"""
-#    Unpack(grids)
-#
-#Creates a function to unpack the input data from a concatenated list to a tuple.
-#
-## Arguments
-#- `grids`: A vector or tuple containing the grid(s).
-#
-## Returns
-#- A list of the unpacked data (coupled variables)
-#"""
-#function Unpack(grids)
-#    dim = length(grids)
-#    if dim == 1
-#        return u -> let u = u
-#            grids[1].linear_data[:] .= u[:]
-#            linear_to_grid(grids[1])
-#            nothing
-#        end
-#    elseif dim == 2
-#        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
-#            # reshape u and v on their grid while adding a placeholder dimension for the channels
-#            grids[1].linear_data[:] .= u[:]
-#            grids[2].linear_data[:] .= v[:]
-#            linear_to_grid(grids[1])
-#            linear_to_grid(grids[2])
-#            nothing
-#        end
-#    elseif dim == 3
-#        return uvw -> let u = uvw[1:(grids[1].N), :],
-#            v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
-#            w = uvw[(grids[1].N + grids[2].N + 1):end, :]
-#            grids[1].linear_data[:] .= u[:]
-#            grids[2].linear_data[:] .= v[:]
-#            grids[3].linear_data[:] .= w[:]
-#            linear_to_grid(grids[1])
-#            linear_to_grid(grids[2])
-#            linear_to_grid(grids[3])
-#            nothing
-#        end
-#    end
-#end
-#
-#"""
-#    Concatenate(grids)
-#
-#Creates a function to concatenate the coupled variables to a single vector.
-#
-## Arguments
-#- `grids`: A vector or tuple containing the grid(s).
-#
-## Returns
-#- A list of concatenated coupled variables.
-#"""
-#function Concatenate(grids)
-#    dim = length(grids)
-#    if dim == 1
-#        return u -> 
-#            # make u linear
-#            #u = grid_to_linear(grids[1], u)
-#            #grids[1].grid_data[:] .= u[:]
-#            #grid_to_linear(grids[1])
-#            grids[1].linear_data
-#    elseif dim == 2
-#        #return uv -> let u = uv[1], v = uv[2]
-#        return uv -> 
-#            #grids[1].grid_data[:] .= u[:]
-#            #grids[2].grid_data[:] .= v[:]
-#            #grid_to_linear(grids[1])
-#            #grid_to_linear(grids[2])
-#            vcat(grids[1].linear_data, grids[2].linear_data)
-#    end
-#end
 
 # Applies the right hand side of the CNODE, force F. This is for the not closed problem.
 # TODO: make the shape more consistent, such that we can use the same layer for with and without NN
@@ -166,9 +92,24 @@ function Force_layer(F, grids, NN_closure = nothing)
         end
     else
         if dim == 1
-            return u -> let u = u
-                throw(NotImplementedError("NN_closure not implemented for 1D problems"))
-            end
+            return Chain(
+                # Get the data
+                u -> begin
+                    assign_grid_data(grids, u = u)
+                    println("Grid type: ", typeof(grids[1].grid_data))
+                    grids[1].grid_data
+                end,
+                # Compute force + closure 
+                SkipConnection(
+                    NN_closure,
+                    (f_NN, u) -> F[1](grids[1].grid_data) .+ f_NN[1]
+                    ; name = "Closure"),
+                # make linear view
+                F -> begin
+                    println("F type: ", typeof(F))
+                    reshape(view(F, :, :), grids[1].N, :)
+                end
+            )
         elseif dim == 2
             return Chain(
                 # Get the data
@@ -203,30 +144,30 @@ function Force_layer(F, grids, NN_closure = nothing)
     end
 end
 
-## Applies the right hand side of the CNODE, by summing force F and closure NN
-#function Closure(F, NN_closure, grids)
-#    dim = length(F)
-#    if dim == 1
-#        return SkipConnection(NN_closure,
-#            (f_NN, u) -> (F[1](grids[1].grid_data) .+ f_NN[1],)
-#            ; name="Closure")
-#    elseif dim == 2
-#        return SkipConnection(
-#            NN_closure,
-#            (f_NN, uv) -> (F[1](grids[1].grid_data, grids[2].grid_data) .+ f_NN[1], F[2](grids[1].grid_data, grids[2].grid_data) .+ f_NN[2])
-#            ; name="Closure")
-#    else
-#        error("ERROR: Unsupported number of dimensions: $dim")
-#    end
-#end
 
 function assign_grid_data(grids; u = nothing, v = nothing, w = nothing)
     for (i, data) in enumerate([u, v, w])
         if data !== nothing && size(grids[i].linear_data)[end] == size(data)[end]
-            grids[i].linear_data[:] .= data[:]
+#            grids[i].linear_data[:] .= data[:]
+            grids[i].linear_data = data
         elseif data !== nothing
             println("Size of input does not match size of grid data -> reshaping to handle data of shape $(size(data))")
             data_from_linear(grids[i], data)
         end
     end
 end
+
+import ChainRulesCore: rrule, NoTangent
+function ChainRulesCore.rrule(::typeof(assign_grid_data), grids::Any, u::Any, v::Any, w::Any)
+    y = assign_grid_data(grids; u=u, v=v, w=w)
+    function assign_grid_data_pullback(ȳ)
+        println("bbbbbbbbbbbbbbbbbbbb")
+        println("bbbbbbbbbbbbbbbbbbbb")
+        return NoTangent(), ones(length(y))
+    end
+    println("AAAAAAAAAAAAAAAAAAAaa")
+    println("AAAAAAAAAAAAAAAAAAAaa")
+    println("AAAAAAAAAAAAAAAAAAAaa")
+    return y, assign_grid_data_pullback
+end
+
