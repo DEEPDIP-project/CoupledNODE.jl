@@ -9,6 +9,8 @@ if CUDA.functional()
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
+using ShiftedArrays
+
 
 # # Burgers equations
 # In this example, we will solve the Burgers equation in using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
@@ -20,15 +22,11 @@ end
 # where $u(x,t)$ is the velocity of the fluid, $\nu$ is the viscosity coefficient, and $(x,y)$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in one spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
-# So the first step is to define the grid that we are going to use.
-# We define DNS and a LES grids.
-import CoupledNODE: Grid
+# So the first step is to define the DNS and a LES that we are going to use.
 nux_dns = 1024
-dux_dns = 2π / nux_dns
-grid_u_dns = Grid(dim = 1, dx = dux_dns, nx = nux_dns)
+dux_dns = MY_TYPE(2π / nux_dns)
 nux_les = 32
-dux_les = 2π / nux_les
-grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
+dux_les = MY_TYPE(2π / nux_les)
 
 # However a central method is not  a good discretization for
 # dealing with shocks. Jameson proposes the following scheme instead:
@@ -50,9 +48,9 @@ grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 force_params = (ν,) #packed into a tuple for the rhs constructor
 
 # Now we can create the right-hand side of the NODE
-import CoupledNODE: create_burgers_rhs
-F_dns = create_burgers_rhs((grid_u_dns,), force_params)
-F_les = create_burgers_rhs((grid_u_les,), force_params)
+include("./../../src/Burgers.jl")
+F_dns = create_burgers_rhs(dux_dns, force_params)
+F_les = create_burgers_rhs(dux_les, force_params)
 
 # ### Initial conditions
 # For the initial conditions, we use the following random Fourier series:
@@ -77,18 +75,24 @@ F_les = create_burgers_rhs((grid_u_les,), force_params)
 # Since the same Fourier basis can be reused multiple times, we write a
 # function that creates multiple initial condition samples in one go. Each
 # discrete $u_0$ vector is stored as a column in the resulting matrix.
-import CoupledNODE: generate_initial_conditions
-u0_dns = generate_initial_conditions(grid_u_dns.nx, 3);
+nsim = 3
+u0_dns = generate_initial_conditions(
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> MY_TYPE((1 + abs(k))^(-6 / 5)));
+include("./../../src/grid.jl")
+grid_u_dns = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u0_dns)
 
 # ### Filter
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-using SparseArrays, Plots
-import CoupledNODE: create_filter_matrix
-ΔΦ = 5 * grid_u_les.dx
-Φ = create_filter_matrix((grid_u_les,), (grid_u_dns,), ΔΦ, "gaussian")
+ΔΦ = 5 * dux_les
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "gaussian", MY_TYPE)
 heatmap(Φ; yflip = true, xmirror = true, title = "Filter matrix")
-## Apply the filter to the initial condition
+# Apply the filter to the initial condition
 u0_les = Φ * u0_dns
+# and Finally create the grid
+grid_u_les = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_les, nx = nux_les, nsim = nsim, grid_data = u0_les)
+
 
 # Let's visualize the initial conditions
 using Plots
@@ -111,10 +115,10 @@ plot(xles2[1:(end - 1)], diff(u0_les2, dims = 1), layout = (3, 1), size = (800, 
 plot!(xdns2[1:(end - 1)], diff(u0_dns2, dims = 1), linetype = :steppre, label = "DNS")
 
 # Create the right-hand side of the NODE
-import CoupledNODE: create_f_CNODE
+include("./../../src/NODE.jl")
 f_dns = create_f_CNODE((F_dns,), (grid_u_dns,); is_closed = false);
 f_les = create_f_CNODE((F_les,), (grid_u_les,); is_closed = false);
-import Random, LuxCUDA, Lux
+import Random, Lux
 Random.seed!(123)
 rng = Random.default_rng()
 θ_dns, st_dns = Lux.setup(rng, f_dns);
@@ -179,25 +183,18 @@ else
     gif(anim, "examples/plots/03.01_Burgers.gif", fps = 10)
 end
 
+
+
+
 # ## A-priori fitting
 # Generate data
 nsamples = 500
 nsamples = 50
-# since there are some ill initial conditions, we generate the data in batches and concatenate them
-all_u_dns = zeros(size(u_dns)[1], nsamples, size(u_dns)[3])
-batch_size = 10
-n_batches = Int(nsamples / batch_size)
-for i in 1:n_batches
-    good = 0
-    all_u_dns_batch = zeros(size(u_dns)[1], batch_size, size(u_dns)[3])
-    while good < size(u_dns)[3]
-        println("Generating batch $(i) (size: $(good) < $(size(u_dns)[3]))")
-        all_u0_dns = generate_initial_conditions(grid_u_dns.nx, batch_size)
-        all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
-        good = size(all_u_dns_batch)[3]
-    end
-    all_u_dns[:, ((i - 1) * batch_size + 1):(i * batch_size), :] = all_u_dns_batch
-end
+nsamples = 5
+all_u0_dns = generate_initial_conditions(
+    nux_dns, nsamples, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
+
 
 # ### Data filtering 
 all_F_dns = F_dns(reshape(
@@ -233,26 +230,58 @@ plot!(grid_u_les.x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
 
 # Now create the the Neural Network
 using NNlib: gelu
-import CoupledNODE: create_fno_model
-ch_fno = [1, 5, 5, 5, 5];
+include("./../../src/FNO.jl")
+ch_fno = [1, 2, 3, 4, 5];
 kmax_fno = [16, 16, 16, 8];
 σ_fno = [gelu, gelu, gelu, identity];
-NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);
+NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les, (u -> unsqueeze(u,1),),)
+
 
 # Use it to create the CNODE
+include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE((F_les,), (grid_u_les,), (NN_u,); is_closed = true);
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
 f_CNODE(all_u_les_flat, θ, st);
+Zygote.refresh()
+gradient(θ -> sum(abs2, f_CNODE(all_u_les_flat, θ, st)[1] - target_F_flat), θ);
+
+
+
+#grid_u_dns.linear_data
+#grid_u_dns.grid_data
+#grid_u_dns.grid_data[:] .= ones(size(grid_u_dns.grid_data))[:]
+#u2_dns = copy(u0_dns)
+#grid_u_dns = make_grid(
+#    dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u2_dns)
+#
+#function copier!(x, y)
+#    x .= y
+#    return x
+#end
+#
+#function zcopier(y)
+#    x = Zygote.Buffer(y)
+#    copier!(x,y)
+#    return copy(x)
+#end
+
+copier!(grid_u_dns.grid_data, ones(size(grid_u_dns.grid_data)))
+copier!(grid_u_dns.linear_data, ones(size(grid_u_dns.linear_data)))
+grid_u_dns.linear_data =zcopier(zeros(size(grid_u_dns.linear_data)))
+
+using ChainRulesCore
+
 
 # A priori fitting
-import CoupledNODE: create_randloss_derivative
+include("./../../src/loss_priori.jl")
 myloss = create_randloss_derivative(all_u_les_flat,
     target_F_flat,
     f_CNODE,
     st;
-    n_use = 1024,
+    #n_use = 1024,
+    n_use = 64,
     λ = 0,
     λ_c = 0);
 
@@ -287,6 +316,16 @@ pinit = result_neuralode.u;
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # (Notice that the block above can be repeated to continue training)
 
+# [!] Problems due to mutating operations, but they should not come from the circshift in BUrgers. Maybe they come from Tullio? let's try with a different NN to see if it is that
+i
+i
+i
+i
+i
+i
+i
+i
+i
 # Compute the error in estimating the force
 error_les = sum(abs, f_les(all_u_les_flat, θ_les, st_les)[1] - target_F_flat) /
             sum(abs, target_F_flat)

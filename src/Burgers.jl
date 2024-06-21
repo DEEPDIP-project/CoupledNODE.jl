@@ -51,10 +51,10 @@ end
 # ### Filter
 using SparseArrays, Plots
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-function create_filter_matrix(dx_dns, nx_dns, dx_les, nx_les, ΔΦ, kernel_type)
+function create_filter_matrix(dx_dns, nx_dns, dx_les, nx_les, ΔΦ, kernel_type, MY_TYPE=Float64)
     ## Filter kernels
-    gaussian(Δ, x) = sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2)
-    top_hat(Δ, x) = (abs(x) ≤ Δ / 2) / Δ
+    gaussian(Δ, x) = MY_TYPE(sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2))
+    top_hat(Δ, x) = MY_TYPE((abs(x) ≤ Δ / 2) / Δ)
 
     ## Choose kernel
     kernel = kernel_type == "gaussian" ? gaussian : top_hat
@@ -112,12 +112,14 @@ function create_burgers_rhs(dx, force_params)
     Δx = dx
 
     function Force(u, args...)
-        # circshift handles periodic boundary conditions
-        u₊ = ShiftedArrays.circshift(u, -1)
-        μ₊ = @. ν + Δx * abs(u + u₊) / 4 - Δx * (u₊ - u) / 12
-        ϕ₊ = @. (u^2 + u * u₊ + u₊^2) / 6 - μ₊ * (u₊ - u) / Δx
-        ϕ₋ = ShiftedArrays.circshift(ϕ₊, 1)
-        return @. -(ϕ₊ - ϕ₋) / Δx
+        Zygote.ignore() do
+            # circshift handles periodic boundary conditions
+            u₊ = ShiftedArrays.circshift(u, -1)
+            μ₊ = @. ν + Δx * abs(u + u₊) / 4 - Δx * (u₊ - u) / 12
+            ϕ₊ = @. (u^2 + u * u₊ + u₊^2) / 6 - μ₊ * (u₊ - u) / Δx
+            ϕ₋ = ShiftedArrays.circshift(ϕ₊, 1)
+            @. -(ϕ₊ - ϕ₋) / Δx
+        end
     end
     return Force
 end
