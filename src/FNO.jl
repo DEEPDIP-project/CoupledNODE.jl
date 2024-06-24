@@ -64,7 +64,7 @@ function Lux.initialparameters(rng::AbstractRNG,
         # ( cout, cin, (1,)*mydims...)
         #spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin ,ntuple(d -> 1, mydims)...),
         # ( cout, cin)
-        spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin ),
+        spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin),
         # the extra dimension of size 2 is for real and imaginary part
         spectral_weights = init_weight(rng, cout, kgrid..., cin, 2)
     )
@@ -80,9 +80,7 @@ function Lux.initialstates(rng::AbstractRNG, (; Nxyz, kmax, cin)::FourierLayer)
         nkeep = ntuple(d -> kmax + 1, mydims),
         last_dim = mydims + 3,
         # pad with a 0 on the left and a N-k-1 on the right for each dimension
-        pad = ntuple(d -> d % 2 == 0 ? Nxyz[1] - kmax - 1 : 0, mydims * 2)
-         
-    )
+        pad = ntuple(d -> d % 2 == 0 ? Nxyz[1] - kmax - 1 : 0, mydims * 2))
 end
 function Lux.parameterlength((; Nxyz, kmax, cin, cout)::FourierLayer)
     cout * cin + (kmax + 1)^length(Nxyz) * 2 * cout * cin
@@ -103,8 +101,7 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     R = selectdim(R, length(size(R)), 1) .+ im .* selectdim(R, length(size(R)), 2)
 
     ## Spatial part (applied point-wise)
-    y = zeros(eltype(x), cout, size(x)[2:end]...)
-    @tullio y[i, j, k] = x[n, j, k] * W[i, n]
+    @tullio y[i, j, k] := x[n, j, k] * W[i, n]
 
     # Spectral part (applied mode-wise)
     #
@@ -115,8 +112,7 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     # - chop off high wavenumbers
     z = z[:, state.ikeep..., :]
     # - multiply with weights mode-wise
-    t = zeros(eltype(z), cout, size(z)[2:end]...)
-    @tullio t[i, j, k] = z[n, j, k] * R[i, j, n]
+    @tullio t[i, j, k] := z[n, j, k] * R[i, j, n]
     z = t
     # - pad with zeros to restore original shape
     z = Lux.pad_zeros(z, state.pad; dims = dim_to_fft)
