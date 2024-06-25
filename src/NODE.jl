@@ -4,23 +4,12 @@ import RecursiveArrayTools: ArrayPartition
 include("./../src/grid.jl")
 
 """
-    create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
-        post_force = identity, is_closed = false)
-
 Create a CoupledNODE (CNODE) function that represents a system of coupled differential equations.
-
-# Arguments
-- `forces`: A vector or tuple of functions representing the forces in the system.
-- `grids`: A vector or tuple of grids representing the variables in the system.
-- `NNs`: (optional) A vector or tuple of neural networks representing the closure terms in the system. Default is `nothing`.
-- `pre_force`: (optional) A function to be applied before the force layer. Default is `identity`.
-- `post_force`: (optional) A function to be applied after the force layer. Default is `identity`.
-- `is_closed`: (optional) A boolean indicating whether the CNODE is closed. Default is `false`.
 
 # Returns
 A Chain object representing the consecutive set of operations taking place in the CNODE.
 """
-function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
+function create_f_CNODE(forces, grids = nothing, NNs = nothing; pre_force = identity,
         post_force = identity, is_closed = false)
     # Get the number of equations from the number of grids passed
     dim = length(forces)
@@ -31,11 +20,15 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     if !is_closed && !isnothing(NNs)
         @warn("WARNING: NNs were provided while indicating that the CNODE is not closed")
     end
+    # TODO: remove this warning when updating the code to not pass grids
+    if grids !== nothing
+        @warn("WARNING: grids are not used in the current implementation, so you can remove them")
+    end
 
     # Define the force layer
     if !is_closed
         # If the CNODE is not closed, the force layer is the last layer
-        apply_force = Force_layer(forces, grids)
+        apply_force = Force_layer(forces)
     else
         # Define the NN term that concatenates the output of the NNs
         if dim == 1
@@ -57,7 +50,7 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
         else
             error("ERROR: Unsupported number of dimensions: $dim")
         end
-        apply_force = Force_layer(forces, grids, NN_closure)
+        apply_force = Force_layer(forces, NN_closure)
     end
 
     return Chain(
@@ -67,7 +60,7 @@ end
 
 # Applies the right hand side of the CNODE, force F. This is for the not closed problem.
 # TODO: make the shape more consistent, such that we can use the same layer for with and without NN
-function Force_layer(F, grids, NN_closure = nothing)
+function Force_layer(F, NN_closure = nothing)
     dim = length(F)
     if NN_closure === nothing
         if dim == 1
