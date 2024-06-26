@@ -140,26 +140,29 @@ function project(u, params)
     cat(dux, duy; dims = 3)
 end
 
-#########################################
-#----------------------------------------
+##########################################
+############  Utils ######################
+##########################################
 # For plotting, the spatial vorticity can be useful. It is given by
-#
 # $$
 # \omega = -\frac{\partial u_x}{\partial y} + \frac{\partial u_y}{\partial x},
 # $$
-#
 # which becomes
-#
 # $$
 # \hat{\omega} = 2 \pi \mathrm{i} k \times u = - 2 \pi \mathrm{i} k_y u_x + 2 \pi \mathrm{i} k_x u_y
 # $$
-#
 # in spectral space.
-
 function vorticity(u, params)
     ∂x = 2.0f0π * im * params.k
     ∂y = 2.0f0π * im * reshape(params.k, 1, :)
     ux, uy = eachslice(u; dims = 3)
     ω = @. -∂y * ux + ∂x * uy
     real.(ifft(ω))
+end
+# Function to chop off frequencies and multiply with scaling factor
+function spectral_cutoff(u, K)
+    scaling_factor = (2K)^2 / (size(u, 1) * size(u, 2))
+    result = [u[1:K, 1:K, :] u[1:K, (end - K + 1):end, :]
+              u[(end - K + 1):end, 1:K, :] u[(end - K + 1):end, (end - K + 1):end, :]]
+    return scaling_factor * result
 end
