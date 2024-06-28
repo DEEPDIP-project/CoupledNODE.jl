@@ -1,6 +1,11 @@
 # # Exploration of SciML (2/2)
 # This notebook is the continuation of the previous exploration. Here, we will try to :
-# 2. Use a neural closure term to learn the parameters using a priori fitting.
+# **Use a neural closure term to learn the parameters using a priori fitting.**
+# We will explore different implementations of the same problem in the SciML ecosystem:
+# a. **NeuraODE + CoupleNODE**: Our implementation to build a coupled problem and solve it using [NeuralODE](https://docs.sciml.ai/DiffEqFlux/stable/layers/NeuralDELayers/#DiffEqFlux.NeuralODE).
+# b. **ODEProblem + CoupleNODE**: Same as the previous example but using the emblematic implementation of SciML (ODEProblem) instead of NeuralODE.
+# c. **[SplitODE]**(https://docs.sciml.ai/DiffEqDocs/stable/types/split_ode_types/)
+# d. 
 # We will benchmark some of the key parts and compare the obtained results.
 
 # ## Helper functions
@@ -177,6 +182,7 @@ opt_prob_neuralODE = Optimization.OptimizationProblem(
 neuralODE_problem = NeuralODE(
     f_CNODE, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 @time neuralODE_sol = Array(neuralODE_problem(uv0, θ, st)[1]);
+# `45.172009 seconds (3.28 M allocations: 317.659 GiB, 14.78% gc time, 0.83% compilation time)`
 u_neural_ODE, v_neural_ODE = reshape_ODESolution(neuralODE_sol, grid_GS);
 
 # ### b. ODEProblem
@@ -204,8 +210,8 @@ ODE_problem = ODEProblem(rhs_ode_problem, uv0, trange);
 u_ODE, v_ODE = reshape_ODESolution(Array(ODE_sol), grid_GS);
 
 # ### c. [SplitODE](https://docs.sciml.ai/DiffEqDocs/stable/types/split_ode_types/)
-# `SplitODEProblem` considers a problem with two functions $f_1$ and $f_2$
-# We are going to redefine the forces split in two functions
+# `SplitODEProblem` considers a problem with two functions $f_1$ and $f_2$, and it has been used by Hugo Melchers in his Master thesis: [Neural closure models](https://github.com/HugoMelchers/neural-closure-models/blob/main/src/training/models/split_neural_odes.jl).
+# We are going to redefine the forces split in two functions:
 # $\begin{equation} \frac{du}{dt} f_1(u,p,t) + f_2(u,p,t) \end{equation}$
 # We are going to abstract:
 # - $f_1$: known part of the equation.
@@ -244,7 +250,7 @@ force_u, force_v = reshape_ODESolution(forces_target, grid_GS);
 forces_target_grid = permutedims(
     cat(force_u[:, :, :, 1], force_v[:, :, :, 1], dims = 4), [4, 1, 2, 3]);
 
-# NOTE: we cannot use `create_randloss_derivative` because when getting a prediction form the model we fetch the data via `Array(f(u)[1])` but with all ODESolutions we do it as `Array(f(u))`. This is because NeuralODE returns a tuple while other solvers return ODESolutions directly. See [this comment of C. Rackauckas](https://discourse.julialang.org/t/neural-ode-in-diffeqflux-that-is-not-a-time-series/22395/7): "Neural ODE returns the array and not the DESolution because of the constraints on it’s AD"
+# NOTE: we cannot use `create_randloss_derivative` because when getting a prediction form the model we fetch the data via `Array(f(u)[1])` but with all ODESolutions we do it as `Array(f(u))`. This is because NeuralODE returns a tuple while other solvers return ODESolutions directly. See [this comment of C. Rackauckas](https://discourse.julialang.org/t/neural-ode-in-diffeqflux-that-is-not-a-time-series/22395/7): "Neural ODE returns the array and not the ODESolution because of the constraints on it’s AD"
 function split_loss(θ)
     pred = rhs_split(uv_data_grid, θ, 0)
     return sum(abs2, pred .- forces_target_grid) / sum(abs2, forces_target_grid), nothing
@@ -275,7 +281,7 @@ rbf(x) = exp.(-(x .^ 2))
 const U = Lux.Chain(Lux.Dense(2, 5, rbf), Lux.Dense(5, 5, rbf), Lux.Dense(5, 5, rbf),
     Lux.Dense(5, 2))
 
-U(u0, p_mp, _st)[1]
+#U(u0, p_mp, _st)[1]
 #Get the initial parameters and state variables of the model
 p_mp, st_mp = Lux.setup(rng, U)
 const _st = st_mp
@@ -305,6 +311,7 @@ function loss_mp(θ)
     X̂ = predict(θ)
     mean(abs2, forces_target_grid .- X̂)
 end
+# I think there is a problem here, X̂ is the solution (u,v) not the forces.
 
 # training
 optf = Optimization.OptimizationFunction((x, p) -> loss_mp(x), adtype)
