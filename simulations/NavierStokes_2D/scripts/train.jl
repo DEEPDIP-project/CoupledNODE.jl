@@ -118,16 +118,7 @@ end
 # (for DtO we need single_timestep=true, for derivative fitting we need single_timestep=false)
 #_closure = create_cnn_model(r_cnn, ch_cnn, σ_cnn, b_cnn; single_timestep=true)
 #_closure = create_fno_model(kmax_fno, ch_fno, σ_fno; single_timestep=true)
-include("./../../../src/FNO.jl")
-#first_layer = (
-#    u -> begin
-#        # extract the two fields
-#        vx, vy = eachslice(u; dims = 3)
-#        # and stack them in the channel dimension
-#        permutedims(cat(vx, vy; dims = 4), (1, 2, 4, 3))
-#        println(size(p))
-#    end,
-#)
+include("./../../../src/NS_FNO.jl")
 NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, (les_size, les_size));
 
 
@@ -141,6 +132,8 @@ _closure = create_f_CNODE((F_les,),nothing, (NN_u,); only_closure = true)
 θ, st = Lux.setup(rng, _closure)
 
 les_data = reshape(simulation_data.v, les_size, les_size, 2, :)
+# put ch first
+les_data = permutedims(les_data, (3, 1, 2, 4))
 _closure(les_data, θ, st)
 ## and the NeuralODE problem
 #dt = 2f-4
