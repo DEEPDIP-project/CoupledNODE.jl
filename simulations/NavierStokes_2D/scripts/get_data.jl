@@ -56,7 +56,7 @@ params_dns = create_params(dns_size; nu)
 Random.seed!(myseed)
 
 ## Initial conditions
-nsamp = 50
+nsamp = 5
 u0_dns = random_field(params_dns, nsamp = nsamp)
 # and we make sure that the initial condition is divergence free
 maximum(abs, params_dns.k .* u0_dns[:, :, 1, :] .+ params_dns.k' .* u0_dns[:, :, 2, :])
@@ -142,6 +142,11 @@ for (idx, (t, u)) in enumerate(zip(sol.t, sol.u))
 end
 if plotting
     gif(anim)
+end
+
+filtered_u = []
+for i in simulation_data.u
+    push!(filtered_u, spectral_cutoff(i, simulation_data.params_les.K))
 end
 
 # Save all the simulation data

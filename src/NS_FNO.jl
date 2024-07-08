@@ -101,7 +101,7 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     R = selectdim(R, length(size(R)), 1) .+ im .* selectdim(R, length(size(R)), 2)
 
     ## Spatial part (applied point-wise)
-    @tullio y[i, j, k] := x[n, j, k] * W[i, n]
+    @tullio y[cout, i, j, batch] := x[ci, i, j, batch] * W[cout, ci]
 
     # Spectral part (applied mode-wise)
     #
@@ -112,12 +112,12 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     # - chop off high wavenumbers
     z = z[:, state.ikeep..., :]
     # - multiply with weights mode-wise
-    @tullio t[i, j, k] := z[n, j, k] * R[i, j, n]
+    @tullio t[cout, i, j, batch] := z[cin, i, j, batch] * R[cout, i, j, cin]
     z = t
     # - pad with zeros to restore original shape
     z = Lux.pad_zeros(z, state.pad; dims = dim_to_fft)
     # - go back to real valued spatial representation
-    z = real.(fft(z, dim_to_fft))
+    z = fft(z, dim_to_fft)
 
     # Outer layer: Activation over combined spatial and spectral parts
     # Note: Even though high wavenumbers are chopped off in `z` and may
@@ -126,7 +126,7 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     # sequence of Fourier layers. In this case, the `y`s are the only place
     # where information contained in high input wavenumbers survive in a
     # Fourier layer.
-    v = σ.(y .+ z)
+    v = σ.(real.(y .+ z))
 
     # Fourier layer does not modify state
     v, state
