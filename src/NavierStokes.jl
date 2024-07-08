@@ -242,3 +242,4 @@ function spectral_cutoff(u, K)
 
     return scaling_factor * result
 end
+

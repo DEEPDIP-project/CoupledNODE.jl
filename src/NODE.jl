@@ -10,7 +10,7 @@ Create a CoupledNODE (CNODE) function that represents a system of coupled differ
 A Chain object representing the consecutive set of operations taking place in the CNODE.
 """
 function create_f_CNODE(forces, grids = nothing, NNs = nothing; pre_force = identity,
-        post_force = identity, is_closed = false)
+        post_force = identity, is_closed = false, only_closure = false)
     # Get the number of equations from the number of grids passed
     dim = length(forces)
 
@@ -25,9 +25,22 @@ function create_f_CNODE(forces, grids = nothing, NNs = nothing; pre_force = iden
         @warn("WARNING: grids are not used in the current implementation, so you can remove them")
     end
 
+    if only_closure
+        if dim > 1
+            error("ERROR: only_closure is only supported for 1D problems")
+        end
+        if is_closed
+            error("ERROR: only_closure is not supported for closed CNODEs")
+        end
+        if length(NNs) != 1
+            error("ERROR: only_closure is only supported for a single NN")
+        end
+        println("Creating a CNODE with only the closure term")
+        return Chain(NNs[1])
+    end
+
     # Define the force layer
     if !is_closed
-        # If the CNODE is not closed, the force layer is the last layer
         apply_force = Force_layer(forces)
     else
         # Define the NN term that concatenates the output of the NNs
