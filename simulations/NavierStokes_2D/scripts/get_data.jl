@@ -37,7 +37,7 @@ nu = 5.0f-4
 #dns_size = 128
 les_size = 32
 dns_size = 64
-myseed = 1234
+myseed = 2406
 data_name = get_data_name(nu, les_size, dns_size, myseed)
 # If the data already exists, we stop here
 if isfile("./simulations/NavierStokes_2D/data/$(data_name).jld2")
@@ -56,7 +56,7 @@ params_dns = create_params(dns_size; nu)
 Random.seed!(myseed)
 
 ## Initial conditions
-nsamp = 5
+nsamp = 60
 u0_dns = random_field(params_dns, nsamp = nsamp)
 # and we make sure that the initial condition is divergence free
 maximum(abs, params_dns.k .* u0_dns[:, :, 1, :] .+ params_dns.k' .* u0_dns[:, :, 2, :])
@@ -144,10 +144,6 @@ if plotting
     gif(anim)
 end
 
-filtered_u = []
-for i in simulation_data.u
-    push!(filtered_u, spectral_cutoff(i, simulation_data.params_les.K))
-end
 
 # Save all the simulation data
 save("./simulations/NavierStokes_2D/data/$(data_name).jld2",
