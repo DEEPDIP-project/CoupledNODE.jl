@@ -50,7 +50,10 @@ les_size = 64
 dns_size = 128
 les_size = 32
 dns_size = 64
+params_les = create_params(les_size; nu)
+params_dns = create_params(dns_size; nu)
 dataseed = 123
+dataseed = 2406
 data_name = get_data_name(nu, les_size, dns_size, dataseed)
 # If they are there load them
 if isfile("./simulations/NavierStokes_2D/data/$(data_name).jld2")
@@ -96,7 +99,7 @@ model_name = generate_FNO_name(ch_fno, kmax_fno, σ_fno)
 # Then decide which type of loss function you want between:
 # 1) Random derivative (a priori) loss function
 # for which we specify how many points to use per epoch
-nuse = 50
+nuse = 64
 loss_name = "lossPrior-nu$(nuse)"
 ## 2) Random trajectory (a posteriori) loss function (DtO)
 ## for which we need to specify how many steps to unroll per epoch
@@ -119,7 +122,17 @@ end
 #_closure = create_cnn_model(r_cnn, ch_cnn, σ_cnn, b_cnn; single_timestep=true)
 #_closure = create_fno_model(kmax_fno, ch_fno, σ_fno; single_timestep=true)
 include("./../../../src/NS_FNO.jl")
-NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, (les_size, les_size));
+# Define input channels that do spectral->real
+input_channels = (
+    u ->real.(ifft(Array(u), (2, 3))), 
+        # notice that the first dimension is the channel, so FT happens on (2,3)
+        # also, I have to make u into an array cause fft does not work on views
+)
+# And the output channels that do real->spectral
+output_channels = (
+    u -> fft(u, (2, 3)),
+)
+NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, (params_les.N, params_les.N), input_channels = input_channels, output_channels = output_channels) 
 
 
 # Create that cache which is used to compute the right hand side of the Navier-Stokes
@@ -131,10 +144,16 @@ _closure = create_f_CNODE((F_les,),nothing, (NN_u,); only_closure = true)
 # with its parametes
 θ, st = Lux.setup(rng, _closure)
 
-les_data = reshape(simulation_data.v, les_size, les_size, 2, :)
+# Merge sample and time dimension for a priori fitting
+les_data = reshape(simulation_data.v, params_les.N, params_les.N, 2, :)
+commutator = reshape(simulation_data.c, params_les.N, params_les.N, 2, :)
 # put ch first
 les_data = permutedims(les_data, (3, 1, 2, 4))
-_closure(les_data, θ, st)
+commutator = permutedims(commutator, (3, 1, 2, 4))
+# test closure
+x =_closure(les_data, θ, st);
+
+
 ## and the NeuralODE problem
 #dt = 2f-4
 #tspan = (0.0f0, dt*nunroll)
@@ -143,16 +162,10 @@ _closure(les_data, θ, st)
 # Define the loss function
 #randloss = create_randloss_derivative(_model, st, simulation_data.v; nuse=nuse)
 include("./../../../src/loss_priori.jl")
-# to define the a priori loss function I need to batch the data 
-u = simulation_data.u
-u[1]
-
-pp = spectral_cutoff(u[1], simulation_data.params_les.K)
-_model(pp, θ, st)
 myloss = create_randloss_derivative(
-    simulation_data.v,
-    simulation_data.c,
-    _model,
+    les_data,
+    commutator,
+    _closure,
     st;
     n_use = nuse,
     λ = 0,
@@ -186,18 +199,27 @@ callback(pinit, myloss(pinit)...)
 # Select the autodifferentiation type
 adtype = Optimization.AutoZygote()
 # We transform the NeuralODE into an optimization problem
-optf = Optimization.OptimizationFunction((x, p) -> randloss(x), adtype);
+optf = Optimization.OptimizationFunction((x, p) -> myloss(x), adtype);
 optprob = Optimization.OptimizationProblem(optf, pinit);
 # And train using Adam + clipping
-ClipAdam = OptimiserChain(Adam(1.0f-2), ClipGrad(1));
+ClipAdam = OptimiserChain(Adam(1.0f-1), ClipGrad(1));
+algo = ClipAdam
+using OptimizationCMAEvolutionStrategy, Statistics
+algo = CMAEvolutionStrategyOpt();
+import OptimizationOptimJL: Optim
+algo = Optim.LBFGS();
 # ** train loop
-result_neuralode = Optimization.solve(optprob,
-    ClipAdam;
+result_neuralode = Optimization.solve(
+    optprob,
+    #ClipAdam;
+    algo,
     callback = callback,
-    maxiters = 10)
+    maxiters = 100)
 
 # You can continue the training from here
-pinit = result_neuralode.u
+pinit = result_neuralode.u;
+θ = pinit;
+optprob = Optimization.OptimizationProblem(optf, pinit);
 
 # Save the results in the TrainedClosure struct
 save("trained_models/$(model_name)_$(loss_name)_$(data_name).jld2", "data", TrainedNODE(result_neuralode.u, _closure, lhist, model_name, loss_name))

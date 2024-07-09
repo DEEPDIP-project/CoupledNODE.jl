@@ -196,7 +196,7 @@ function F_NS(u, params, cache)
     @. cache.F .= q - params.prefactor_F * u + params.f
     cache.F
 end
-
+# this is the advantage of the spectral space representation. The projection    
 function project(u, params, cache)
     ux, uy = eachslice(u; dims = 3)
     @views begin
