@@ -1,6 +1,11 @@
 # Exploration of SciML (2/2)
 This notebook is the continuation of the previous exploration. Here, we will try to :
-2. Use a neural closure term to learn the parameters using a priori fitting.
+**Use a neural closure term to learn the parameters using a priori fitting.**
+We will explore different implementations of the same problem in the SciML ecosystem:
+a. **NeuraODE + CoupleNODE**: Our implementation to build a coupled problem and solve it using [NeuralODE](https://docs.sciml.ai/DiffEqFlux/stable/layers/NeuralDELayers/#DiffEqFlux.NeuralODE).
+b. **ODEProblem + CoupleNODE**: Same as the previous example but using the emblematic implementation of SciML (ODEProblem) instead of NeuralODE.
+c. **[SplitODE]**(https://docs.sciml.ai/DiffEqDocs/stable/types/split_ode_types/)
+d.
 We will benchmark some of the key parts and compare the obtained results.
 
 ## Helper functions
@@ -8,8 +13,8 @@ We will benchmark some of the key parts and compare the obtained results.
 
 ```julia
 function reshape_ODESolution(ODE_sol, grid)
-    u = reshape(ODE_sol[1:(grid.N), :, :], grid.nx, grid.ny, size(ODE_sol, 2),:)
-    v = reshape(ODE_sol[(grid_GS.N + 1):end, :, :], grid.nx, grid.ny, size(ODE_sol, 2),:)
+    u = reshape(ODE_sol[1:(grid.N), :, :], grid.nx, grid.ny, size(ODE_sol, 2), :)
+    v = reshape(ODE_sol[(grid_GS.N + 1):end, :, :], grid.nx, grid.ny, size(ODE_sol, 2), :)
     return u, v
 end
 ```
@@ -60,7 +65,8 @@ U₀ = 0.5    # initial concentration of u
 V₀ = 0.25   # initial concentration of v
 ε_u = 0.05  # magnitude of the perturbation on u
 ε_v = 0.1   # magnitude of the perturbation on v
-u_initial, v_initial = initial_condition(grid_GS, grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 20);
+u_initial, v_initial = initial_condition(
+    grid_GS, grid_GS, U₀, V₀, ε_u, ε_v, nsimulations = 20);
 ```
 
 We define the initial condition as a flattened concatenated array
@@ -129,7 +135,8 @@ dt, saveat = (1 / (4 * max(D_u, D_v)), 10);
 Get the **exact solution**: target data that is going to be used to train the neural network.
 
 ```julia
-exact_sol_problem = NeuralODE(f_burnout, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+exact_sol_problem = NeuralODE(
+    f_burnout, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 exact_sol = Array(exact_sol_problem(uv0, θ_0, st_0)[1]);
 ```
 
@@ -239,7 +246,8 @@ import OptimizationOptimisers: Optimization, OptimiserChain, Adam
 adtype = Optimization.AutoZygote();
 train_algo = OptimiserChain(Adam(1.0e-3));
 opt_f_neuralODE = Optimization.OptimizationFunction((x, p) -> neuralODE_loss(x), adtype);
-opt_prob_neuralODE = Optimization.OptimizationProblem(opt_f_neuralODE, ComponentArrays.ComponentArray(θ););
+opt_prob_neuralODE = Optimization.OptimizationProblem(
+    opt_f_neuralODE, ComponentArrays.ComponentArray(θ););
 ```
 
 training
@@ -249,14 +257,21 @@ import CoupledNODE: callback
 result_opt_neuralode = Optimization.solve(opt_prob_neuralODE, train_algo;
     callback = callback, maxiters = 1000);
 θ = result_opt_neuralode.u;
-opt_prob_neuralODE = Optimization.OptimizationProblem(opt_f_neuralODE, ComponentArrays.ComponentArray(θ););
+opt_prob_neuralODE = Optimization.OptimizationProblem(
+    opt_f_neuralODE, ComponentArrays.ComponentArray(θ););
 ```
 
 get solution
 
 ```julia
-neuralODE_problem = NeuralODE(f_CNODE, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
+neuralODE_problem = NeuralODE(
+    f_CNODE, trange, solver_algo, adaptive = false, dt = dt, saveat = saveat);
 @time neuralODE_sol = Array(neuralODE_problem(uv0, θ, st)[1]);
+```
+
+`45.172009 seconds (3.28 M allocations: 317.659 GiB, 14.78% gc time, 0.83% compilation time)`
+
+```julia
 u_neural_ODE, v_neural_ODE = reshape_ODESolution(neuralODE_sol, grid_GS);
 ```
 
@@ -266,7 +281,7 @@ written in the way that is valid for defining an `ODEProblem`.
 
 ```julia
 θ_ODE, st_ODE = Lux.setup(rng, f_CNODE);
-function rhs_ode_problem(u,p,t)
+function rhs_ode_problem(u, p, t)
     f_CNODE(u, θ_ODE, st_ODE)[1]
 end
 ```
@@ -274,10 +289,13 @@ end
 define the optimization problem and train
 
 ```julia
-opt_prob_ODE = Optimization.OptimizationProblem(opt_f_neuralODE, ComponentArrays.ComponentArray(θ_ODE););
-result_opt_ode = Optimization.solve(opt_prob_ODE, train_algo; callback = callback, maxiters = 1000);
+opt_prob_ODE = Optimization.OptimizationProblem(
+    opt_f_neuralODE, ComponentArrays.ComponentArray(θ_ODE););
+result_opt_ode = Optimization.solve(
+    opt_prob_ODE, train_algo; callback = callback, maxiters = 1000);
 θ_ODE = result_opt_ode.u;
-opt_prob_ODE = Optimization.OptimizationProblem(opt_f_neuralODE, ComponentArrays.ComponentArray(θ_ODE););
+opt_prob_ODE = Optimization.OptimizationProblem(
+    opt_f_neuralODE, ComponentArrays.ComponentArray(θ_ODE););
 ```
 
 then create the problem and solve it:
@@ -295,8 +313,8 @@ u_ODE, v_ODE = reshape_ODESolution(Array(ODE_sol), grid_GS);
 ```
 
 ### c. [SplitODE](https://docs.sciml.ai/DiffEqDocs/stable/types/split_ode_types/)
-`SplitODEProblem` considers a problem with two functions $f_1$ and $f_2$
-We are going to redefine the forces split in two functions
+`SplitODEProblem` considers a problem with two functions $f_1$ and $f_2$, and it has been used by Hugo Melchers in his Master thesis: [Neural closure models](https://github.com/HugoMelchers/neural-closure-models/blob/main/src/training/models/split_neural_odes.jl).
+We are going to redefine the forces split in two functions:
 $\begin{equation} \frac{du}{dt} f_1(u,p,t) + f_2(u,p,t) \end{equation}$
 We are going to abstract:
 - $f_1$: known part of the equation.
@@ -304,7 +322,7 @@ We are going to abstract:
 We define the forces out-of-place because for the loss is easier if we can get the prediction (force).
 
 ```julia
-function f1(u,p,t)
+function f1(u, p, t)
     u_gs = @view u[1, :, :, :]
     v_gs = @view u[2, :, :, :]
     du_gs = F_u_open(u_gs, v_gs)
@@ -312,7 +330,7 @@ function f1(u,p,t)
     return permutedims(cat(du_gs, dv_gs, dims = 4), [4, 1, 2, 3])
 end
 
-function f2(u,p,t)
+function f2(u, p, t)
     u_gs = @view u[1, :, :, :]
     v_gs = @view u[2, :, :, :]
     du_gs = NN_u((u_gs, v_gs), p.θ_u, st_u)[1]
@@ -320,8 +338,8 @@ function f2(u,p,t)
     return permutedims(cat(du_gs, dv_gs, dims = 4), [4, 1, 2, 3])
 end
 
-function rhs_split(u,p,t)
-    f1(u,p,t) + f2(u,p,t)
+function rhs_split(u, p, t)
+    f1(u, p, t) + f2(u, p, t)
 end
 ```
 
@@ -337,13 +355,14 @@ we are going to reshape the inputs and labels to make it consistent with this ne
 
 ```julia
 u0 = permutedims(cat(u_initial, v_initial, dims = 4), [4, 1, 2, 3]); # 2x64x64x20 n_vars x nx x ny x n_samples
-uv_data_grid = permutedims(cat(u_exact_sol, v_exact_sol, dims=5), [5, 1, 2, 3, 4]);
-uv_data_grid = reshape(uv_data_grid, size(uv_data_grid)[1:3]...,:);
+uv_data_grid = permutedims(cat(u_exact_sol, v_exact_sol, dims = 5), [5, 1, 2, 3, 4]);
+uv_data_grid = reshape(uv_data_grid, size(uv_data_grid)[1:3]..., :);
 force_u, force_v = reshape_ODESolution(forces_target, grid_GS);
-forces_target_grid = permutedims(cat(force_u[:,:,:,1], force_v[:,:,:,1], dims=4), [4, 1, 2, 3]);
+forces_target_grid = permutedims(
+    cat(force_u[:, :, :, 1], force_v[:, :, :, 1], dims = 4), [4, 1, 2, 3]);
 ```
 
-NOTE: we cannot use `create_randloss_derivative` because when getting a prediction form the model we fetch the data via `Array(f(u)[1])` but with all ODESolutions we do it as `Array(f(u))`. This is because NeuralODE returns a tuple while other solvers return ODESolutions directly. See [this comment of C. Rackauckas](https://discourse.julialang.org/t/neural-ode-in-diffeqflux-that-is-not-a-time-series/22395/7): "Neural ODE returns the array and not the DESolution because of the constraints on it’s AD"
+NOTE: we cannot use `create_randloss_derivative` because when getting a prediction form the model we fetch the data via `Array(f(u)[1])` but with all ODESolutions we do it as `Array(f(u))`. This is because NeuralODE returns a tuple while other solvers return ODESolutions directly. See [this comment of C. Rackauckas](https://discourse.julialang.org/t/neural-ode-in-diffeqflux-that-is-not-a-time-series/22395/7): "Neural ODE returns the array and not the ODESolution because of the constraints on it’s AD"
 
 ```julia
 function split_loss(θ)
@@ -359,7 +378,8 @@ training
 
 ```julia
 import CoupledNODE: callback
-result_opt_split = Optimization.solve(opt_prob_split, train_algo; callback = callback, maxiters = 200);
+result_opt_split = Optimization.solve(
+    opt_prob_split, train_algo; callback = callback, maxiters = 200);
 p_split = result_opt_split.u;
 opt_prob_split = Optimization.OptimizationProblem(opt_f_split, p_split);
 ```
@@ -369,7 +389,8 @@ _Note:_ This model takes very long to train because we are using all the data in
 ```julia
 using DifferentialEquations: SplitODEProblem, solve
 split_problem = SplitODEProblem(f1, f2, u0, trange);
-@time split_sol = solve(split_problem, solver_algo, p=p_split, adaptive = false, dt = dt, saveat = saveat, progress = true);
+@time split_sol = solve(split_problem, solver_algo, p = p_split, adaptive = false,
+    dt = dt, saveat = saveat, progress = true);
 ```
 
 `57.961440 seconds (5.72 M allocations: 336.088 GiB, 12.60% gc time, 1.39% compilation time)`
@@ -379,7 +400,70 @@ u_split = Array(split_sol)[1, :, :, :, :];
 v_split = Array(split_sol)[2, :, :, :, :];
 ```
 
-### c. NeuralPDE.jl [NNODE](https://docs.sciml.ai/NeuralPDE/stable/manual/ode/#ODE-Specialized-Physics-Informed-Neural-Network-(PINN)-Solver)
+### d. ODEProblem following [Missing Physics showcase](https://docs.sciml.ai/Overview/stable/showcase/missing_physics/)
+
+```julia
+#Multilayer FeedForward
+rbf(x) = exp.(-(x .^ 2))
+const U = Lux.Chain(Lux.Dense(2, 5, rbf), Lux.Dense(5, 5, rbf), Lux.Dense(5, 5, rbf),
+    Lux.Dense(5, 2))
+
+#U(u0, p_mp, _st)[1]
+#Get the initial parameters and state variables of the model
+p_mp, st_mp = Lux.setup(rng, U)
+const _st = st_mp
+```
+
+UDE: universal differential equation : `u' = known(u) + NN(u)` in our case `F_u_open` and `G_v_open` contain part of the known physics.
+The NNs should approximate the rest.
+
+```julia
+function ude!(du, u, p, t)
+    u_gs = @view u[1, :, :, :]
+    v_gs = @view u[2, :, :, :]
+    du_gs = @view du[1, :, :, :]
+    dv_gs = @view du[2, :, :, :]
+    u_nn = U(u, p, _st)[1]
+    du_gs .= F_u_open(u_gs, v_gs) + u_nn[1, :, :, :]
+    dv_gs .= G_v_open(u_gs, v_gs) + u_nn[2, :, :, :]
+end
+
+prob_nn = ODEProblem(ude!, u0, trange, p_mp)
+```
+
+Trainin loop
+
+```julia
+using SciMLSensitivity: QuadratureAdjoint, ReverseDiffVJP
+function predict(θ, X = u0, T = trange)
+    _prob = remake(prob_nn, u0 = X, tspan = (T[1], T[end]), p = θ)
+    Array(solve(_prob, solver_algo, saveat = saveat, dt = dt,
+        sensealg = QuadratureAdjoint(autojacvec = ReverseDiffVJP(true))))
+end
+
+function loss_mp(θ)
+    X̂ = predict(θ)
+    mean(abs2, forces_target_grid .- X̂)
+end
+```
+
+I think there is a problem here, X̂ is the solution (u,v) not the forces.
+
+training
+
+```julia
+optf = Optimization.OptimizationFunction((x, p) -> loss_mp(x), adtype)
+optprob = Optimization.OptimizationProblem(
+    optf, ComponentArrays.ComponentVector{Float64}(p_mp))
+res1 = Optimization.solve(optprob, train_algo, callback = callback, maxiters = 100)
+
+p_trained = res1.u
+sol_mp = predict(p_trained, u0, trange)
+u_mp = @view sol_mp[1, :, :, :]
+v_mp = @view sol_mp[2, :, :, :]
+```
+
+### e. NeuralPDE.jl [NNODE](https://docs.sciml.ai/NeuralPDE/stable/manual/ode/#ODE-Specialized-Physics-Informed-Neural-Network-(PINN)-Solver)
 [NNODE](https://docs.sciml.ai/NeuralPDE/stable/tutorials/ode/) is a specific implementation for PINNs such that for an ODE problem:
 \begin{equation} \frac{du}{dt}=f(u,p,t) \end{equation}
 They consider that the solution of the ODE $u \approx NN$ and thus:
@@ -389,12 +473,14 @@ to find a NN that the parameters $f$ and $k$ to fit the GS Model.
 We define the force out-of-place because NNODE only supports this type
 
 ```julia
-function GS(u,p,t)
+function GS(u, p, t)
     u_gs = @view u[1, :, :, :]
     v_gs = @view u[2, :, :, :]
     f, k = p #parameters
-    du_gs = D_u * Laplacian(u_gs, grid_GS.dx, grid_GS.dy) .- u_gs .* v_gs .^ 2 .+ f .* (1.0 .- u_gs)
-    dv_gs = D_v * Laplacian(v_gs, grid_GS.dx, grid_GS.dy) .+ u_gs .* v_gs .^ 2 .- (f + k) .* v_gs
+    du_gs = D_u * Laplacian(u_gs, grid_GS.dx, grid_GS.dy) .- u_gs .* v_gs .^ 2 .+
+            f .* (1.0 .- u_gs)
+    dv_gs = D_v * Laplacian(v_gs, grid_GS.dx, grid_GS.dy) .+ u_gs .* v_gs .^ 2 .-
+            (f + k) .* v_gs
     return permutedims(cat(du_gs, dv_gs, dims = 4), [4, 1, 2, 3])
 end
 
@@ -406,7 +492,7 @@ prob_data = remake(prob, p = true_p);
 sol_data = solve(prob_data, solver_algo, saveat = saveat)
 #t_ = sol_data.t; # timesteps
 u_ = Array(sol_data)
-u_ = reshape(u_, size(u_)[1:3]...,:) # merging last two dimensions: n_simualtions and time
+u_ = reshape(u_, size(u_)[1:3]..., :) # merging last two dimensions: n_simualtions and time
 labels_ = GS(u_, true_p, true_p)
 ```
 
@@ -428,16 +514,21 @@ function additional_loss(phi, θ)
     return sum(abs2, phi(u_, θ) .- labels_) / sum(abs2, labels_)
 end
 
-using NeuralPDE: NNODE, WeightedIntervalTraining, GridTraining
+using NeuralPDE: NNODE, WeightedIntervalTraining
 strategy_1 = WeightedIntervalTraining([0.7, 0.2, 0.1], 65) # last argument is number of intervals I think it has to match loss dimensions.
-strategy_2 = GridTraining([1,dx,dy,dt])
-alg_NNODE = NNODE(NN_PDE, train_algo, ps; strategy=strategy_1,
-    param_estim = true, additional_loss = additional_loss, dt=dt)
-sol = solve(prob, alg_NNODE, verbose = true, abstol = 1e-8, maxiters = 5000, dt=dt, saveat = saveat)
+```
+
+NOTE: tried GridTraining because I saw it in the docs but then found that [is never a good idea to use it](https://github.com/SciML/NeuralPDE.jl/issues/551).
+
+```julia
+alg_NNODE = NNODE(NN_PDE, train_algo, ps; strategy = strategy_1,
+    param_estim = true, additional_loss = additional_loss, dt = dt)
+sol = solve(prob, alg_NNODE, verbose = true, abstol = 1e-8,
+    maxiters = 5000, dt = dt, saveat = saveat)
 #TODO: still not working probably the strategy is not well defined but with the defaults is also a problem.
 ```
 
-### e. NeuralPDE.jl
+### f. NeuralPDE.jl and ModelingToolkit.jl
 
 ```julia
 using NeuralPDE, Flux, ModelingToolkit, DiffEqFlux
@@ -448,7 +539,6 @@ Define the parameters for the problem
 ```julia
 @parameters t x y
 @variables u(..) v(..)
-D = Differential(t)
 Dxx = Differential(x)^2
 Dyy = Differential(y)^2
 ```
@@ -456,42 +546,45 @@ Dyy = Differential(y)^2
 Define the Gray-Scott equations
 
 ```julia
-eqs = [D(u(t,x,y)) ~ Dxx(u(t,x,y)) + Dyy(u(t,x,y)) - u(t,x,y) + u(t,x,y)^2*v(t,x,y),
-    D(v(t,x,y)) ~ Dxx(v(t,x,y)) + Dyy(v(t,x,y)) - u(t,x,y)^2*v(t,x,y)]
+eqs = [
+    D(u(t, x, y)) ~ Dxx(u(t, x, y)) + Dyy(u(t, x, y)) - u(t, x, y) +
+                    u(t, x, y)^2 * v(t, x, y),
+    D(v(t, x, y)) ~ Dxx(v(t, x, y)) + Dyy(v(t, x, y)) - u(t, x, y)^2 * v(t, x, y)]
 ```
 
 Define the domains and boundary conditions
 
 ```julia
-domains = [t ∈ IntervalDomain(0.0,10.0),
-        x ∈ IntervalDomain(0.0,1.0),
-        y ∈ IntervalDomain(0.0,1.0)]
-bcs = [u(0,x,y) ~ cos(pi*x)*cos(pi*y),
-    v(0,x,y) ~ sin(pi*x)*sin(pi*y),
-    u(t,0,y) ~ u(t,1,y),
-    u(t,x,0) ~ u(t,x,1),
-    v(t,0,y) ~ v(t,1,y),
-    v(t,x,0) ~ v(t,x,1)]
+domains = [t ∈ IntervalDomain(trange[1], trange[end]),
+    x ∈ IntervalDomain(0.0, nx),
+    y ∈ IntervalDomain(0.0, ny)]
+bcs = [u(0, x, y) ~ cos(pi * x) * cos(pi * y),
+    v(0, x, y) ~ sin(pi * x) * sin(pi * y),
+    u(t, 0, y) ~ u(t, 1, y),
+    u(t, x, 0) ~ u(t, x, 1),
+    v(t, 0, y) ~ v(t, 1, y),
+    v(t, x, 0) ~ v(t, x, 1)]
 ```
 
 Define the neural networks and the symbolic neural pde
 
 ```julia
-chain = Lux.Chain(Lux.Dense(3,16,Flux.σ), Lux.Dense(16,16,Flux.σ), Lux.Dense(16,2))
-nnpde = PhysicsInformedNN(chain, GridTraining(dt), init_params=Flux.glorot_normal)
+chain = Lux.Chain(Lux.Dense(3, 16, Flux.σ), Lux.Dense(16, 16, Flux.σ), Lux.Dense(16, 2))
+nnpde = PhysicsInformedNN(chain, GridTraining(dt), init_params = Flux.glorot_normal)
 ```
 
 Define the discretization
 
 ```julia
-discretization = NeuralPDE.discretize(nnpde, eqs, bcs, domains, dx=[0.1,0.1,0.1])
+discretization = NeuralPDE.discretize(nnpde, eqs, bcs, domains, dx = [0.1, 0.1, 0.1])
 ```
 
 Define the optimization problem and solve it
 
 ```julia
-prob = GalacticOptim.OptimizationProblem(discretization, u0 = [1.0,1.0], p = nothing, lb = [0.0,0.0], ub = [1.0,1.0])
-result = GalacticOptim.solve(prob, ADAM(0.1); cb = cb, maxiters=4000)
+prob = GalacticOptim.OptimizationProblem(
+    discretization, u0 = [1.0, 1.0], p = nothing, lb = [0.0, 0.0], ub = [1.0, 1.0])
+result = GalacticOptim.solve(prob, ADAM(0.1); cb = cb, maxiters = 4000)
 ```
 
 ## Comparison
@@ -512,9 +605,9 @@ anim = Animation()
 fig = plot(layout = (3, 3), size = (1200, 400))
 @gif for i in 1:1:size(u_neural_ODE, 4)
     p1 = GS_heatmap(u_exact_sol[:, :, 1, i], title = "u")
-    p2 = GS_heatmap(v_exact_sol[:, :, 1, i], title="v", color = :blues)
+    p2 = GS_heatmap(v_exact_sol[:, :, 1, i], title = "v", color = :blues)
     p3 = GS_heatmap(u_neural_ODE[:, :, 1, i], title = "u")
-    p4 = GS_heatmap(v_neural_ODE[:, :, 1, i], title="v", color = :blues)
+    p4 = GS_heatmap(v_neural_ODE[:, :, 1, i], title = "v", color = :blues)
     p5 = GS_heatmap(u_split[:, :, 1, i])
     p6 = GS_heatmap(v_split[:, :, 1, i], color = :blues)
 
@@ -527,7 +620,7 @@ fig = plot(layout = (3, 3), size = (1200, 400))
     t3 = plot(title = "SplitODE", framestyle = :none)
     #t4 = plot(title = "Difference", framestyle = :none)
 
-    fig = plot(t1,p1,p2,t2,p3,p4,t3,p5,p6,
+    fig = plot(t1, p1, p2, t2, p3, p4, t3, p5, p6,
         layout = (3, 3),
         margin = 0mm)
     frame(anim, fig)

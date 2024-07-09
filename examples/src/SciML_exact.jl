@@ -187,6 +187,41 @@ PDE_problem = ODEProblem(rhs_pde!, u0, trange)
 u_PDE = Array(PDE_exact_sol)[1, :, :, :, :];
 v_PDE = Array(PDE_exact_sol)[2, :, :, :, :];
 
+# ### d. ModelingToolkit.jl (WIP)
+# ModelingToolkit.jl is a symbolic modeling framework that can be used to generate the right hand side of the ODEs.
+# We try to adapt the usage instructions of [PDESystem](https://docs.sciml.ai/ModelingToolkit/stable/systems/PDESystem/#PDESystem) to our case.
+using ModelingToolkit
+using ModelingToolkit: t_nounits as t
+@parameters f k D_u D_v x y
+@variables u(t) v(t)
+Dt = Differential(t)
+Dx = Differential(x)
+Dy = Differential(y)
+
+# the following does not work because Laplacian expects `u` to be a matrix and not a `Num`.
+# ```eqs = [
+#    Dt(u) ~ D_u * Laplacian(u, grid_GS.dx, grid_GS.dy) - u * v^2 + f * (1 - u),
+#    Dt(v) ~ D_v * Laplacian(v, grid_GS.dx, grid_GS.dy) + u * v^2 - (f + k) * v 
+# ]```
+eqs = [
+    Dt(u) ~ D_u * (Dx(Dx(u)) + Dy(Dy(u))) - u * v^2 + f * (1 - u),
+    Dt(v) ~ D_v * (Dx(Dx(v)) + Dy(Dy(v))) + u * v^2 - (f + k) * v
+]
+
+# Still do not know how to handle periodic boundary conditions, so we will skip this part for now. (although maybe is already handled by `Laplacian`)
+bcs = []
+domains = [t ∈ (trange[begin], trange[end]),
+    x ∈ (0.0, nx + dx),
+    y ∈ (0.0, ny * dy)]
+
+# We build the `PDESystem(eqs, bcs, domain, ivs, dvs, ps)` I think this is still Work in progress and is not ready.
+#@named pde_system = PDESystem(eqs, bcs, domains, [t,x,y], [u,v], [f,k,D_u,D_v])
+# However, using `ODESystem`, we get an error due to having multiple variables. 
+# I suspect ModelingToolkit identifies `x` and `y` as variables because of the spatial derivatives in the Laplacian.
+@mtkbuild ode_system = ODESystem(eqs, t)
+mtk_problem = ODEProblem(ode_system, [u => u_initial, v => v_initial], trange)
+sol_MTK = solve(mtk_problem, solver_algo, adaptive = false, dt = dt, saveat = saveat)
+
 # ### Comparison
 # #### Results
 # Let's check if there are any differences between the solutions:
