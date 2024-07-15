@@ -128,7 +128,7 @@ function create_spectrum(params; A, σ, s)
            exp(-(kx - s)^2 / 2σ^2 - (ky - s)^2 / 2σ^2 - im * τ * rand(T))
     a
 end
-function random_field(params; A = 1.0f6, σ = 30.0f0, s = 5.0f0, nsamp = 1)
+function random_spectral_field(params; A = 1.0f6, σ = 30.0f0, s = 5.0f0, nsamp = 1)
     batch_u = [begin
                    ux = create_spectrum(params; A, σ, s)
                    uy = create_spectrum(params; A, σ, s)
@@ -242,4 +242,3 @@ function spectral_cutoff(u, K)
 
     return scaling_factor * result
 end
-
