@@ -56,7 +56,7 @@ params_dns = create_params(dns_size; nu)
 Random.seed!(myseed)
 
 ## Initial conditions
-nsamp = 60
+nsamp = 50
 u0_dns = random_field(params_dns, nsamp = nsamp)
 # and we make sure that the initial condition is divergence free
 maximum(abs, params_dns.k .* u0_dns[:, :, 1, :] .+ params_dns.k' .* u0_dns[:, :, 2, :])
@@ -143,7 +143,6 @@ end
 if plotting
     gif(anim)
 end
-
 
 # Save all the simulation data
 save("./simulations/NavierStokes_2D/data/$(data_name).jld2",
