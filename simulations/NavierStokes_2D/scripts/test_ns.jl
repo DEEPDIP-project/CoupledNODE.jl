@@ -1,5 +1,7 @@
 using CairoMakie
 using IncompressibleNavierStokes
+INS = IncompressibleNavierStokes
+
 output = "output/test_F"
 T = Float32
 ArrayType = Array
@@ -11,7 +13,7 @@ setup = Setup(x...; Re, ArrayType);
 ustart = random_field(setup, T(0));
 dt = T(1e-3)
 trange = (T(0), T(1e-3))
-trange = (T(0), T(5))
+trange = (T(0), T(1))
 savevery = 20
 saveat = 20 * dt
 
@@ -52,6 +54,7 @@ div = IncompressibleNavierStokes.divergence(F, setup)
 
 using Zygote
 
+
 out = similar(u0_dns)
 f_c = similar(u0_dns)
 f_c = zeros(size(u0_dns))
@@ -75,22 +78,25 @@ F_syv(u) = begin
     out[:, :, 2] .= F[2]
     out
 end
-F_syv2(u) = begin
-    u = eachslice(u, dims = 3)
-    IncompressibleNavierStokes.apply_bc_u!(u, 0.0f0, setup)
-    F = IncompressibleNavierStokes.momentum(u, nothing, 0.0f0, setup)
-    IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-    div = IncompressibleNavierStokes.divergence(F, setup)
-    div = @. div * setup.grid.Ω
-    p = IncompressibleNavierStokes.poisson(psolver, div)
-    IncompressibleNavierStokes.apply_bc_p!(p, 0.0f0, setup)
-    Gp = IncompressibleNavierStokes.pressuregradient(p, setup)
-    rhs = @. F .- Gp
-    IncompressibleNavierStokes.apply_bc_u!(rhs, 0.0f0, setup)
-    out[:, :, 1] .= rhs[1]
-    out[:, :, 2] .= rhs[2]
-    out
-end
+#F_syv2(u) = begin
+#    u = eachslice(u, dims = 3)
+#    IncompressibleNavierStokes.apply_bc_u!(u, 0.0f0, setup)
+#    F = IncompressibleNavierStokes.momentum(u, nothing, 0.0f0, setup)
+#    IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
+#    div = IncompressibleNavierStokes.divergence(F, setup)
+#    div = @. div * setup.grid.Ω
+#    p = IncompressibleNavierStokes.poisson(psolver, div)
+#    IncompressibleNavierStokes.apply_bc_p!(p, 0.0f0, setup)
+#    Gp = IncompressibleNavierStokes.pressuregradient(p, setup)
+#    rhs = @. F .- Gp
+#    IncompressibleNavierStokes.apply_bc_u!(rhs, 0.0f0, setup)
+#    out[:, :, 1] .= rhs[1]
+#    out[:, :, 2] .= rhs[2]
+#    out
+#end
+
+
+
 
 using Statistics
 a = F_syv(u0_dns);
@@ -175,7 +181,7 @@ dns = NeuralODE(f_dns,
     adaptive = false,
     dt = dt,
     saveat = saveat);
-@time sol = dns(u0_dns, θ_dns, st_dns)[1]
+@time sol = dns(stack(ustart), θ_dns, st_dns)[1]
 # Time to reach t=1:
 # 31.814979 seconds (35.79 M allocations: 58.981 GiB, 2.72% gc time, 15.56% compilation time: 4% of which was recompilation)
 # 24.996927 seconds (35.79 M allocations: 58.981 GiB, 2.99% gc time, 19.44% compilation time: 4% of which was recompilation)
@@ -220,6 +226,53 @@ end
 if plotting
     gif(anim, fps = 15)
 end
+
+
+################# 
+create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
+    u = eachslice(u; dims = ndims(u))
+    u = (u...,)
+    u = INS.apply_bc_u(u, t, setup)
+    F = INS.momentum(u, nothing, t, setup)
+    F = INS.apply_bc_u(F, t, setup; dudt = true)
+    PF = INS.project(F, setup; psolver)
+    stack(PF)
+end
+
+# Setup
+psolver = psolver_spectral(setup);
+
+# SciML-compatible right hand side function
+# Note: Requires `stack(u)` to create one array
+f = create_right_hand_side(setup, psolver)
+f(stack(ustart), nothing, 0.0)
+
+# Solve the ODE using SciML
+prob = ODEProblem(f, stack(ustart), (0.0, 1.0))
+@time sol = solve(
+    prob,
+    Tsit5();
+    # adaptive = false,
+    dt = 1e-3,
+)
+sol.t
+
+# Animate solution
+let
+    (; Iu) = setup.grid
+    i = 1
+    obs = Observable(sol.u[1][Iu[i], i])
+    fig = Plots.heatmap(obs)
+    fig |> display
+    for u in sol.u
+        obs[] = u[Iu[i], i]
+        # fig |> display
+        sleep(0.05)
+    end
+end
+
+
+# ------------------------------------------
 
 # Alternative approach:
 # this is doing an Euler step and then a Poisson step and then does the corrected force
