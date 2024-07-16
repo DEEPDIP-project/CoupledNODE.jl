@@ -104,7 +104,7 @@ dns = NeuralODE(f_dns,
     adaptive = false,
     dt = dt,
     saveat = saveat);
-# sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed dns(stack(ustart), θ_dns, st_dns)[1];
+sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed dns(stack(ustart), θ_dns, st_dns)[1];
 # Alternatively, we can follow this example to get a node using ODEProblem and in-place updates
 # https://docs.sciml.ai/SciMLSensitivity/stable/examples/neural_ode/neural_ode_flux/
 import Random, Lux;
@@ -119,14 +119,19 @@ NN_closure = Parallel(nothing, dummy_NN)
 Fnode = Chain(
             SkipConnection(
             NN_closure,
-            (f_NN, uv) -> F_syv(uv) + f_NN
+            (f_NN, uv) -> begin
+                println(size(F_syv(uv))
+                println(size(stack(f_NN))
+                F_syv(uv) + stack(f_NN)
+                end
             ; name = "Closure"),
         )
 θ_node, st_node = Lux.setup(rng, Fnode);
-dudt(u, θ, t) = st_node(θ)(u) # need to restrcture for backprop!
+dudt(u, θ, t) = Lux.apply(Fnode, u, θ, st_node) # need to restrcture for backprop!
 prob_node = ODEProblem(dudt, stack(ustart), trange)
 
-sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed solve(prob, RK4(), u0 = stack(ustart), p = θ_node, saveat = saveat, dt=dt);
+#sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed solve(prob_node, RK4(), u0 = stack(ustart), p = θ_node, saveat = saveat, dt=dt);
+sol_aa, time_aa, allocation_aa, gc_aa, memory_counters_aa = @timed solve(prob_node, RK4(), u0 = stack(ustart), p = θ_node, saveat = saveat, dt=dt);
 
 
 # Compare the times of the different methods via a bar plot
