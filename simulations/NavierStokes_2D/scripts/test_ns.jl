@@ -2,22 +2,24 @@ using CairoMakie
 using IncompressibleNavierStokes
 INS = IncompressibleNavierStokes
 
-output = "output/test_F"
+# Setup and initial condition
 T = Float32
 ArrayType = Array
 Re = T(1_000)
 n = 256
 lims = T(0), T(1)
-x = LinRange(lims..., n + 1), LinRange(lims..., n + 1)
-setup = Setup(x...; Re, ArrayType);
+x , y = LinRange(lims..., n + 1), LinRange(lims..., n + 1)
+setup = Setup(x, y; Re, ArrayType);
 ustart = random_field(setup, T(0));
+psolver = psolver_spectral(setup);
 dt = T(1e-3)
-trange = (T(0), T(1e-3))
-trange = (T(0), T(1))
+trange = (T(0), T(10))
 savevery = 20
 saveat = 20 * dt
 
-@time state, outputs = solve_unsteady(;
+# Syver's solver 
+# we know that mathematically it is the best one 
+(state, outputs), time_ins, allocation, gc, memory_counters = @timed solve_unsteady(;
     setup,
     ustart,
     tlims = trange,
@@ -30,336 +32,170 @@ saveat = 20 * dt
             displayfig = false
         ),
         anim = animator(; setup, path = "./vorticity.mkv", nupdate = savevery),
-        espec = realtimeplotter(; setup, plot = energy_spectrum_plot, nupdate = 10),
+        #espec = realtimeplotter(; setup, plot = energy_spectrum_plot, nupdate = 10),
         log = timelogger(; nupdate = 100)
     )
 );
-outputs.anim
-
-# Time to reach t=1:
-# 52.651788 seconds (52.93 M allocations: 4.053 GiB, 1.59% gc time, 68.82% compilation time: <1% of which was recompilation)
-# 26.602432 seconds (53.02 M allocations: 4.059 GiB, 2.45% gc time, 85.26% compilation time: <1% of which was recompilation)
-# 27.747093 seconds (53.03 M allocations: 4.060 GiB, 2.50% gc time, 83.14% compilation time: <1% of which was recompilation)
-# Time to reach t=5:
-# 72.089871 seconds (120.69 M allocations: 10.436 GiB, 1.53% gc time, 31.12% compilation time: <1% of which was recompilation)
-
-# This is the force ! [https://github.com/agdestein/IncompressibleNavierStokes.jl/blob/8ae287a20b67b3c808dd36cf257903efb6eedb30/src/operators.jl#L1005]
-# (there is also an in-place version)
-F = IncompressibleNavierStokes.momentum(state.u, nothing, state.t, setup)
-# To this I have to add 
-psolver = IncompressibleNavierStokes.default_psolver(setup)
-p = IncompressibleNavierStokes.pressure(state.u, nothing, state.t, setup; psolver = psolver)
-Gp = IncompressibleNavierStokes.pressuregradient(p, setup)
-div = IncompressibleNavierStokes.divergence(F, setup)
-
-using Zygote
+# TODO: can we store history of u for comparisons? probably not
 
 
-out = similar(u0_dns)
-f_c = similar(u0_dns)
-f_c = zeros(size(u0_dns))
-f_c = @SVector zeros(size(u0_dns))
-tuple(f_c[:, :, 1:2])
-using StaticArrays
-dF = MArray{2, Float32}(f_c)
-uu = eachslice(u0_dns, dims = 3)
-dF .= IncompressibleNavierStokes.momentum(uu, nothing, 0.0f0, setup)
-# ##########
-# [!] YOU Can NOT Zygote.ignore the force, otherwise you can not do a posteriori fitting!
-# ##########
-F_syv(u) = begin
-    u = eachslice(u, dims = 3)
-    IncompressibleNavierStokes.apply_bc_u!(u, 0.0f0, setup)
-    F = IncompressibleNavierStokes.momentum(u, nothing, 0.0f0, setup)
-    IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-    F = IncompressibleNavierStokes.project(F, setup, psolver = psolver)
-    IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-    out[:, :, 1] .= F[1]
-    out[:, :, 2] .= F[2]
-    out
-end
-#F_syv2(u) = begin
-#    u = eachslice(u, dims = 3)
-#    IncompressibleNavierStokes.apply_bc_u!(u, 0.0f0, setup)
-#    F = IncompressibleNavierStokes.momentum(u, nothing, 0.0f0, setup)
-#    IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-#    div = IncompressibleNavierStokes.divergence(F, setup)
-#    div = @. div * setup.grid.Ω
-#    p = IncompressibleNavierStokes.poisson(psolver, div)
-#    IncompressibleNavierStokes.apply_bc_p!(p, 0.0f0, setup)
-#    Gp = IncompressibleNavierStokes.pressuregradient(p, setup)
-#    rhs = @. F .- Gp
-#    IncompressibleNavierStokes.apply_bc_u!(rhs, 0.0f0, setup)
-#    out[:, :, 1] .= rhs[1]
-#    out[:, :, 2] .= rhs[2]
-#    out
-#end
-
-
-
-
-using Statistics
-a = F_syv(u0_dns);
-b = F_syv2(u0_dns);
-a == b
-########################
-########################
-########################
-########################
-
-using ComponentArrays
-using CUDA
-using FFTW
-using LinearAlgebra
-using Optimisers
-using Plots
-using Printf
-using Random
+############# Using SciML
 using DifferentialEquations
-using Zygote
-using JLD2
-using PreallocationTools
-#const ArrayType = Array
-const solver_algo = Tsit5()
-const MY_TYPE = Float32 # use float32 if you plan to use a GPU
-import CUDA # Test if CUDA is running
-if CUDA.functional()
-    CUDA.allowscalar(false)
-    const ArrayType = CuArray
-    import DiffEqGPU: GPUTsit5
-    const solver_algo = GPUTsit5()
+
+# Projected force for SciML, to use in CNODE
+F = similar(stack(ustart))
+cache_F = (F[:,:,1], F[:,:,2])
+cache_div = INS.divergence(ustart,setup)
+cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver)
+cache_out = similar(F)
+create_right_hand_side(setup, psolver, cache_F, cache_div, cache_p, cache_out ) = function right_hand_side(u, p=nothing, t=nothing)
+    u = eachslice(u; dims = 3)
+    INS.apply_bc_u!(u, t, setup)
+    INS.momentum!(cache_F, u, nothing, t, setup)
+    INS.apply_bc_u!(cache_F, t, setup; dudt = true)
+    INS.project!(cache_F, setup; psolver, div=cache_div, p=cache_p)
+    INS.apply_bc_u!(cache_F, t, setup; dudt = true)
+    return stack(cache_F)
 end
-z = CUDA.functional() ? CUDA.zeros : (s...) -> zeros(MY_TYPE, s...)
+# test the forces
+# Note: Requires `stack(u)` to create one array
+F_syv = create_right_hand_side(setup, psolver, cache_F, cache_div, cache_p, cache_out);
+F_syv(stack(ustart), nothing, 0.0f0);
+# * There is also an in-place version
+create_rhs_ip(setup, psolver, cache_F, cache_div, cache_p, cache_out ) = function right_hand_side(du, u, p=nothing, t=nothing)
+    u = eachslice(u; dims = 3)
+    INS.apply_bc_u!(u, t, setup)
+    INS.momentum!(cache_F, u, nothing, t, setup)
+    INS.apply_bc_u!(cache_F, t, setup; dudt = true)
+    INS.project!(cache_F, setup; psolver, div=cache_div, p=cache_p)
+    INS.apply_bc_u!(cache_F, t, setup; dudt = true)
+    du[:,:,1] = cache_F[1]
+    du[:,:,2] = cache_F[2]
+    nothing
+end
+temp = similar(stack(ustart))
+F_ip = create_rhs_ip(setup, psolver, cache_F, cache_div, cache_p, cache_out);
+F_ip(temp, stack(ustart), nothing, 0.0f0)
 
-include("./../../../src/NavierStokes.jl")
 
-# Lux likes to toss random number generators around, for reproducible science
-rng = Random.default_rng()
 
-# This line makes sure that we don't do accidental CPU stuff while things
-# should be on the GPU
-CUDA.allowscalar(false)
-
-## *** Generate the data with the following parameters
-nu = 5.0f-4
-nu = 1.0f0 / Re
-
-myseed = 2406
-plotting = true
-
-# ### Data generation
-#
-# Create some filtered DNS data (one initial condition only)
-params_dns = create_params(129; nu)
-Random.seed!(myseed)
-
-## Initial conditions
-nsamp = 1
-u0_dns = random_spectral_field(params_dns, nsamp = nsamp)
-# and we make sure that the initial condition is divergence free
-maximum(abs, params_dns.k .* u0_dns[:, :, 1, :] .+ params_dns.k' .* u0_dns[:, :, 2, :])
-
-u0_dns = ustart
-u0_dns = permutedims(cat(u0_dns[1], u0_dns[2], dims = 4), (1, 2, 4, 3))
-
-# Create that cache which is used to compute the right hand side of the Navier-Stokes
-cache = create_cache(u0_dns);
-
-## Let's do some time stepping.
-import DiffEqFlux: NeuralODE
-include("./../../../src/NODE.jl")
-#F_dns(u) = Zygote.@ignore project(F_NS(u, params_dns, cache), params_dns, cache)
+# Solve the ODE using ODEProblem
+prob = ODEProblem(F_syv, stack(ustart), trange)
+prob = ODEProblem{true}(F_ip, stack(ustart), trange)
+sol_ode, time_ode, allocation_ode, gc_ode, memory_counters_ode = @timed solve(
+    prob,
+    RK4();
+    dt = dt,
+    saveat = saveat,
+);
+# Or solve the ODE using NeuralODE and CNODE
+# [!] is NODE compatible with the in-place version?
+import DiffEqFlux: NeuralODE;
+include("./../../../src/NODE.jl");
 f_dns = create_f_CNODE((F_syv,); is_closed = false);
-import Random, Lux
-Random.seed!(123)
-rng = Random.default_rng()
+import Random, Lux;
+Random.seed!(123);
+rng = Random.default_rng();
 θ_dns, st_dns = Lux.setup(rng, f_dns);
 # Now we run the DNS and we compute the LES information at every time step
 dns = NeuralODE(f_dns,
     trange,
-    solver_algo,
+    RK4(),
     adaptive = false,
     dt = dt,
     saveat = saveat);
-@time sol = dns(stack(ustart), θ_dns, st_dns)[1]
-# Time to reach t=1:
-# 31.814979 seconds (35.79 M allocations: 58.981 GiB, 2.72% gc time, 15.56% compilation time: 4% of which was recompilation)
-# 24.996927 seconds (35.79 M allocations: 58.981 GiB, 2.99% gc time, 19.44% compilation time: 4% of which was recompilation)
-# 38.798794 seconds (35.86 M allocations: 58.985 GiB, 2.17% gc time, 13.47% compilation time: 4% of which was recompilation)
-# Time to reach t=5:
-# 178.680643 seconds (162.00 M allocations: 241.369 GiB, 2.06% gc time, 0.38% compilation time: 76% of which was recompilation)
-# 172.312957 seconds (162.55 M allocations: 248.847 GiB, 1.38% gc time, 0.32% compilation time)
-# TOOO SLOW !
-
-sol.u[end]
-state.u[1]
-
-z = IncompressibleNavierStokes.apply_bc_u!(state.u, state.t, setup)
-z2 = IncompressibleNavierStokes.apply_bc_u!(
-    (sol.u[end][:, :, 1], sol.u[end][:, :, 2]), state.t, setup)
-
-Plots.heatmap(sol.u[end][:, :, 1])
-Plots.heatmap(state.u[1])
-Plots.heatmap(z[1])
-Plots.heatmap(z2[1])
-
-Plots.heatmap(state.u[1] - sol.u[end][:, :, 1])
-Plots.heatmap(state.u[1] - z[1])
-Plots.heatmap(state.u[1] - z2[1])
-Plots.heatmap(z[1] - sol.u[end][:, :, 1])
-Plots.heatmap(z2[1] - sol.u[end][:, :, 1])
-Plots.heatmap(z2[1] - z[1])
-
-using Plots
-# then we loop to plot and compute LES
-if plotting
-    anim = Animation()
-end
-for (idx, (t, u)) in enumerate(zip(sol.t, sol.u))
-    if plotting #&& (idx % 10 == 0)
-        ω = IncompressibleNavierStokes.vorticity((u[:, :, 1], u[:, :, 2]), setup)
-        title = @sprintf("Vorticity, t = %.3f", t)
-        fig = Plots.heatmap(ω'; xlabel = "x", ylabel = "y", title)
-        frame(anim, fig)
+# sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed dns(stack(ustart), θ_dns, st_dns)[1];
+# Alternatively, we can follow this example to get a node using ODEProblem and in-place updates
+# https://docs.sciml.ai/SciMLSensitivity/stable/examples/neural_ode/neural_ode_flux/
+import Random, Lux;
+Random.seed!(123);
+rng = Random.default_rng();
+dummy_NN = Chain(
+    u -> let ux=u[1], uy=u[2]
+        (ux .*0, uy .*0)
     end
-end
-if plotting
-    gif(anim, fps = 15)
-end
-
-
-################# 
-create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
-    u = eachslice(u; dims = ndims(u))
-    u = (u...,)
-    u = INS.apply_bc_u(u, t, setup)
-    F = INS.momentum(u, nothing, t, setup)
-    F = INS.apply_bc_u(F, t, setup; dudt = true)
-    PF = INS.project(F, setup; psolver)
-    stack(PF)
-end
-
-# Setup
-psolver = psolver_spectral(setup);
-
-# SciML-compatible right hand side function
-# Note: Requires `stack(u)` to create one array
-f = create_right_hand_side(setup, psolver)
-f(stack(ustart), nothing, 0.0)
-
-# Solve the ODE using SciML
-prob = ODEProblem(f, stack(ustart), (0.0, 1.0))
-@time sol = solve(
-    prob,
-    Tsit5();
-    # adaptive = false,
-    dt = 1e-3,
 )
-sol.t
+NN_closure = Parallel(nothing, dummy_NN)
+Fnode = Chain(
+            SkipConnection(
+            NN_closure,
+            (f_NN, uv) -> F_syv(uv) + f_NN
+            ; name = "Closure"),
+        )
+θ_node, st_node = Lux.setup(rng, Fnode);
+dudt(u, θ, t) = st_node(θ)(u) # need to restrcture for backprop!
+prob_node = ODEProblem(dudt, stack(ustart), trange)
 
-# Animate solution
+sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed solve(prob, RK4(), u0 = stack(ustart), p = θ_node, saveat = saveat, dt=dt);
+
+
+# Compare the times of the different methods via a bar plot
+using Plots
+p1=Plots.bar(["INS", "ODE", "CNODE"], [time_ins, time_ode, time_node], xlabel = "Method", ylabel = "Time (s)", title = "Time comparison")
+# Compare the memory allocation
+p2=Plots.bar(["INS", "ODE", "CNODE"], [memory_counters.allocd, memory_counters_ode.allocd, memory_counters_node.allocd], xlabel = "Method", ylabel = "Memory (bytes)", title = "Memory comparison")
+# Compare the number of garbage collections
+p3=Plots.bar(["INS", "ODE", "CNODE"], [gc, gc_ode, gc_node], xlabel = "Method", ylabel = "Number of GC", title = "GC comparison")
+
+Plots.plot(p1, p2, p3, layout=(3,1), size=(600, 800))
+
+
+
+# Plot the final state
+using Plots
+p1=Plots.heatmap(title="u in SciML ODE",sol_ode.u[end][:, :, 1])
+p2=Plots.heatmap(title="u in SciML CNODE",sol_node.u[end][:, :, 1])
+p3=Plots.heatmap(title="u in INS",state.u[1])
+# and compare them
+p4=Plots.heatmap(title="u_INS-u_ODE",state.u[1] - sol_ode.u[end][:, :, 1])
+p5=Plots.heatmap(title="u_INS-u_CNODE",state.u[1] - sol_node.u[end][:, :, 1])
+p6=Plots.heatmap(title="u_CNODE-u_ODE",sol_node.u[end][:, :, 1] - sol_ode.u[end][:, :, 1])
+Plots.plot(p1, p2, p3, p4,p5,p6, layout=(2,3), size=(900,600))
+
+# and plot the vorticty as well
+vins = INS.vorticity((state.u[1], state.u[2]), setup)
+vode = INS.vorticity((sol_ode.u[end][:, :, 1], sol_ode.u[end][:, :, 2]), setup) 
+vnode = INS.vorticity((sol_node.u[end][:, :, 1], sol_node.u[end][:, :, 2]), setup) 
+
+Plots.heatmap(title="vorticity INS-ODE",  - )
+p1=Plots.heatmap(title="vorticity in SciML ODE",vode)
+p2=Plots.heatmap(title="vorticity in SciML CNODE",vnode)
+p3=Plots.heatmap(title="vorticity in INS",vins)
+# and compare them
+p4=Plots.heatmap(title="INS-ODE",vins-vode)
+p5=Plots.heatmap(title="INS-CNODE",vins-vnode)
+p6=Plots.heatmap(title="CNODE-ODE",vode-vnode)
+Plots.plot(p1, p2, p3, p4,p5,p6, layout=(2,3), size=(900,600))
+
+
+
+# Animate solution using Makie
+# ! we can plot either the vorticity or the velocity field, however notice that the vorticity is 'flashing' (unstable)
+using GLMakie
 let
     (; Iu) = setup.grid
     i = 1
-    obs = Observable(sol.u[1][Iu[i], i])
-    fig = Plots.heatmap(obs)
+#    obs = Observable(sol.u[1][Iu[i], i])
+#    ω = IncompressibleNavierStokes.vorticity((u[:, :, 1], u[:, :, 2]), setup)
+    obs = Observable(INS.vorticity((sol_ode.u[1][:, :, 1], sol_ode.u[1][:, :, 2]), setup))
+    fig = GLMakie.heatmap(obs)
     fig |> display
-    for u in sol.u
-        obs[] = u[Iu[i], i]
+    for u in sol_ode.u
+#        obs[] = u[Iu[i], i]
+        obs[] = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
         # fig |> display
         sleep(0.05)
     end
 end
 
-
-# ------------------------------------------
-
-# Alternative approach:
-# this is doing an Euler step and then a Poisson step and then does the corrected force
-# (this is not guaranteed to make sense)
-
-function f2(du, u, p, t)
-    ut = (u[:, :, 1], u[:, :, 2]) #make as view
-    ut = IncompressibleNavierStokes.apply_bc_u!(ut, 0.0f0, setup)
-    # Do a fake time step
-    m = IncompressibleNavierStokes.momentum(ut, nothing, 0.0f0, setup)
-    m = IncompressibleNavierStokes.apply_bc_u!(m, 0.0f0, setup)
-    up = @. ut .+ dt .* m
-    # Solve Poisson equation after the fake time step
-    up = IncompressibleNavierStokes.apply_bc_u!(up, 0.0f0, setup)
-    F = IncompressibleNavierStokes.momentum(up, nothing, 0.0f0, setup)
-    F = IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-    div = IncompressibleNavierStokes.divergence(F, setup)
-    div = @. div * setup.grid.Ω
-    pr = IncompressibleNavierStokes.poisson(psolver, div)
-    pr = IncompressibleNavierStokes.apply_bc_p(pr, 0.0f0, setup)
-    Gp = IncompressibleNavierStokes.pressuregradient(pr, setup)
-    # Correct the force with the pressure gradient
-    rhs = @. m .- Gp
-    rhs = IncompressibleNavierStokes.apply_bc_u!(rhs, 0.0f0, setup)
-    du[:, :, 1] .= rhs[1]
-    du[:, :, 2] .= rhs[2]
+# plots using Plots.jl
+using Plots, Printf
+anim = Animation()
+for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
+    ω = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
+    title = @sprintf("Vorticity, t = %.3f", t)
+    fig = Plots.heatmap(ω'; xlabel = "x", ylabel = "y", title)
+    frame(anim, fig)
 end
+gif(anim, fps = 15)
 
-a = similar(u0_dns)
-f2(a, u0_dns, nothing, 0.0f0)
-q = F_syv(u0_dns)
-Plots.heatmap(a[:, :, 1] - q[:, :, 1])
-Plots.heatmap(a[:, :, 2] - q[:, :, 2])
-
-prob2 = ODEProblem(f2, u0_dns, trange, nothing)
-# We solve using Runge-Kutta 4 to compare with the direct implementation
-@time sol2 = solve(prob2, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
-# Time to reach t=1:
-# 34.558213 seconds (40.45 M allocations: 47.648 GiB, 1.79% gc time, 2.23% compilation time)
-
-if plotting
-    anim = Animation()
-end
-for (idx, (t, u)) in enumerate(zip(sol2.t, sol2.u))
-    if plotting #&& (idx % 10 == 0)
-        ω = IncompressibleNavierStokes.vorticity((u[:, :, 1], u[:, :, 2]), setup)
-        title = @sprintf("Vorticity, t = %.3f", t)
-        #fig = Plots.heatmap(ω'; xlabel = "x", ylabel = "y", title)
-        fig = Plots.heatmap(u[:, :, 1]; xlabel = "x", ylabel = "y", title)
-        frame(anim, fig)
-    end
-end
-if plotting
-    gif(anim, fps = 15)
-end
-
-# [!] the vorticity is flashing, check why
-
-# This formulation attempts to define the problem as a DAE and let SciML handle the time stepping
-# I do not trust this
-function fdae(out, du, u, p, t)
-    u = (u[:, :, 1], u[:, :, 2]) #make as view
-    u = IncompressibleNavierStokes.apply_bc_u!(u, 0.0f0, setup)
-    F = IncompressibleNavierStokes.momentum(u, nothing, 0.0f0, setup)
-    F = IncompressibleNavierStokes.apply_bc_u!(F, 0.0f0, setup)
-    div = IncompressibleNavierStokes.divergence(F, setup)
-    div = @. div * setup.grid.Ω
-    press = IncompressibleNavierStokes.poisson(psolver, div)
-    press = IncompressibleNavierStokes.apply_bc_p(press, 0.0f0, setup)
-    Gp = IncompressibleNavierStokes.pressuregradient(p, setup)
-    rhs = @. F .- Gp
-    rhs = IncompressibleNavierStokes.apply_bc_u!(rhs, 0.0f0, setup)
-    #permutedims(cat(rhs[1], rhs[2], dims=4), (1,2,4,3))
-
-    divu = IncompressibleNavierStokes.divergence(u, setup)
-    divu = @. divu * setup.grid.Ω
-
-    out[1] = rhs[1] - du[1]
-    out[2] = rhs[2] - du[2]
-    out[3] = divu
-end
-
-differential_vars = [true, true, false]
-u0_dns
-u0 = [u0_dns[:, :, 1], u0_dns[:, :, 2], 0]
-q = F_syv(u0_dns)
-du0 = [q[:, :, 1], q[:, :, 2], 0]
-prob = DAEProblem(fdae, du0, u0, trange, differential_vars = differential_vars)
-
-sol3 = solve(prob, Tsit5(), adaptive = false, dt = dt, saveat = saveat)
