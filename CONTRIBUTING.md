@@ -23,3 +23,9 @@ activate . # make sure you are in the CoupleNODE environement
 using JuliaFormatter
 format_file("path/to/file_to_format.jl")
 ```
+
+## Manually create notebooks via `Literate.jl`
+```julia
+using Literate
+Literate.notebook("path_to_file.jl"; execute = autorun_notebooks)
+```
