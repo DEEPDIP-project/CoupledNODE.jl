@@ -35,13 +35,12 @@ saveat = 20 * dt;
             setup, path = "./simulations/NavierStokes_2D/plots/vorticity_INS.mkv",
             nupdate = savevery),
         #espec = realtimeplotter(; setup, plot = energy_spectrum_plot, nupdate = 10),
-        log = INS.timelogger(; nupdate = 100),
-        field = INS.observefield(state; setup, :velocity)
+        field = INS.fieldsaver(; setup, nupdate=1),
+        log = INS.timelogger(; nupdate = 100)
     )
 );
 # Look at the generated animation of the evolution of the vorticity field in time in plots/vorticity_INS.mkv.
 # TODO: can we store history of u for comparisons? probably not
-
 
 # ## SciML
 # ### Projected force for SciML
@@ -167,6 +166,38 @@ p6 = Plots.heatmap(title = "\$\\omega_{CNODE}-\\omega_{ODE}\$",
     vode - vnode, ticks = false, clim = (0, 0.2));
 Plots.plot(p1, p2, p3, p4, p5, p6, layout = (2, 3), size = (900, 600))
 
+# ### Divergence:
+
+# INS
+state.u
+#div_INS = fill!(similar(setup.grid.x[1], setup.grid.N), 0)
+#INS.divergence!(div_INS, state.u, setup)
+div_INS = INS.divergence(state.u, setup)
+maximum(abs.(div_INS))
+
+# SciML
+u_last_ode = (sol_ode.u[end][:, :, 1], sol_ode.u[end][:, :, 2]);
+div_ode = INS.divergence(u_last_ode, setup)
+max_div_ode = maximum(abs.(div_ode))
+div_ode
+
+using Printf
+anim = Animation()
+for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
+    ∇_u = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
+    title = @sprintf("\$\\nabla \\cdot u\$ SciML, t = %.3f s", t)
+    fig = Plots.heatmap(∇_u'; xlabel = "x", ylabel = "y", title, aspect_ratio = :equal, ticks = false, size = (600, 600), clims = (-max_div_ode, max_div_ode))
+    frame(anim, fig)
+end
+gif(anim, "simulations/NavierStokes_2D/plots/divergence_SciML.gif", fps = 15)
+
+# CNODE
+u_last_node = (sol_node.u[end][:, :, 1], sol_node.u[end][:, :, 2]);
+div_node = INS.divergence(u_last_node, setup)
+maximum(abs.(div_node))
+
+# **Conclusion:** While IncompressibleNavierStokes.jl guarantees a $\nabla \cdot u =0$ the other methods do not.
+
 # ### Animations
 # #### Animate solution using `Makie`
 # ! we can plot either the vorticity or the velocity field, however notice that the vorticity is 'flashing' (unstable)
@@ -187,7 +218,6 @@ let
 end
 
 # #### Animate solution using `Plots.jl`
-using Plots, Printf
 function animation_plots(; variable = "vorticity")
     anim = Animation()
     for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
