@@ -27,6 +27,8 @@ if CUDA.functional()
 end
 import FFTW: fft
 import Random: AbstractRNG
+import Flux: unsqueeze
+import Tullio: @tullio
 
 struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
     dim_to_fft::Tuple{Vararg{Int}}
@@ -56,9 +58,15 @@ function Lux.initialparameters(rng::AbstractRNG,
     mydims = length(Nxyz)
     kgrid = ntuple(d -> kmax + 1, mydims)
     (;
-        spatial_weight = init_weight(rng, cout, cin),
-        # the last dimension of size 2 is for real and imaginary part
-        spectral_weights = init_weight(rng, kgrid..., cout, cin, 2)
+        # reshape the spacial weights to 
+        # ( (1,)*mydims..., cout, cin)
+        #spatial_weight = reshape(init_weight(rng, cout, cin) ,ntuple(d -> 1, mydims)..., cout, cin),
+        # ( cout, cin, (1,)*mydims...)
+        #spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin ,ntuple(d -> 1, mydims)...),
+        # ( cout, cin)
+        spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin),
+        # the extra dimension of size 2 is for real and imaginary part
+        spectral_weights = init_weight(rng, cout, kgrid..., cin, 2)
     )
 end
 function Lux.initialstates(rng::AbstractRNG, (; Nxyz, kmax, cin)::FourierLayer)
@@ -72,8 +80,7 @@ function Lux.initialstates(rng::AbstractRNG, (; Nxyz, kmax, cin)::FourierLayer)
         nkeep = ntuple(d -> kmax + 1, mydims),
         last_dim = mydims + 3,
         # pad with a 0 on the left and a N-k-1 on the right for each dimension
-        pad = ntuple(d -> d % 2 == 0 ? Nxyz[1] - kmax - 1 : 0, mydims * 2)
-    )
+        pad = ntuple(d -> d % 2 == 0 ? Nxyz[1] - kmax - 1 : 0, mydims * 2))
 end
 function Lux.parameterlength((; Nxyz, kmax, cin, cout)::FourierLayer)
     cout * cin + (kmax + 1)^length(Nxyz) * 2 * cout * cin
@@ -89,28 +96,24 @@ Lux.statelength(::FourierLayer) = 7 #TODO: make it a function
 function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, state)
     ## Destructure params
     W = params.spatial_weight
-    W = reshape(W, state.placeholder..., cout, cin)
     R = params.spectral_weights
     ## The real and imaginary parts of R are stored in two separate channels
-    R = selectdim(R, state.last_dim, 1) .+ im .* selectdim(R, state.last_dim, 2)
+    R = selectdim(R, length(size(R)), 1) .+ im .* selectdim(R, length(size(R)), 2)
 
     ## Spatial part (applied point-wise)
-    y = reshape(x, Nxyz..., 1, cin, :)
-    # sum over the channel dimension
-    y = sum(W .* y; dims = state.last_dim - 1)
-    y = reshape(y, Nxyz..., cout, :)
+    @tullio y[i, j, k] := x[n, j, k] * W[i, n]
 
     # Spectral part (applied mode-wise)
     #
     # Steps:
     # - go to complex-valued spectral space
     z = fft(x, dim_to_fft)
+    # z is expected to be of size (cin, Nxyz..., 1), where the last 1 comes from the fft algorithm
     # - chop off high wavenumbers
-    z = z[state.ikeep..., :, :]
+    z = z[:, state.ikeep..., :]
     # - multiply with weights mode-wise
-    z = reshape(z, state.nkeep..., 1, cin, :)
-    z = sum(R .* z; dims = state.last_dim - 1)
-    z = reshape(z, state.nkeep..., cout, :)
+    @tullio t[i, j, k] := z[n, j, k] * R[i, j, n]
+    z = t
     # - pad with zeros to restore original shape
     z = Lux.pad_zeros(z, state.pad; dims = dim_to_fft)
     # - go back to real valued spatial representation
@@ -135,23 +138,13 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
     dim = grid.dim
     ch_dim = dim + 1
     if dim == 1
-        dim_to_fft = (1,)
+        dim_to_fft = (2,)
         Nxyz = (grid.nx,)
-        # permutations to toss around the channel dimesion
-        ch_first = (2, 1, 3)
-        ch_back = (2, 1, 3)
     elseif dim == 2
-        dim_to_fft = (1, 2)
+        dim_to_fft = (2, 3)
         Nxyz = (grid.nx, grid.ny)
-        ch_first = (3, 1, 2, 4)
-        ch_back = (2, 3, 1, 4)
-    elseif dim == 3
-        dim_to_fft = (1, 2, 3)
-        Nxyz = (grid.nx, grid.ny, grid.nz)
-        ch_first = (4, 1, 2, 3, 5)
-        ch_back = (2, 3, 4, 1, 5)
     else
-        error("Only 1D, 2D, and 3D grids are supported.")
+        error("Only 1D and 2D grids are supported.")
     end
 
     return Chain(
@@ -160,13 +153,11 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u ->
              dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1];
              σ = σ_fno[i], init_weight = init_weight) for
         i in eachindex(σ_fno))...,
-        # Put the channel dimension in the first position to apply a dense layer
-        u -> permutedims(u, ch_first),
+        # With the channel dimension in the first position, we apply a dense layer
         Dense(ch_fno[end] => 2 * ch_fno[end], gelu),
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
-        u -> permutedims(u, ch_back),
         # drop the channel dimension
-        u -> dropdims(u, dims = ch_dim)
+        u -> dropdims(u, dims = 1)
     )
 end
