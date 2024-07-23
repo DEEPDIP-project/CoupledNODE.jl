@@ -31,7 +31,6 @@ Base.@kwdef mutable struct Grid
     const z::Union{Vector{Float32}, Vector{Float64}, Nothing}
     nsim::Int = 1
     grid_data::Any
-    linear_data::Any
 end
 
 import Base: ==
@@ -49,24 +48,16 @@ function ==(g1::Grid, g2::Grid)
            g1.y == g2.y &&
            g1.z == g2.z &&
            g1.nsim == g2.nsim &&
-           g1.grid_data == g2.grid_data &&
-           g1.linear_data == g2.linear_data
+           g1.grid_data == g2.grid_data
 end
 
 function make_grid(; dim::Int, dtype::DataType, dx::Union{Float32, Float64}, nx::Int,
         dy::Union{Float32, Float64} = 0.0f0, ny::Int = 0,
         dz::Union{Float32, Float64} = 0.0f0, nz::Int = 0,
-        nsim::Int = 1, grid_data = nothing, linear_data = nothing)
+        nsim::Int = 1, grid_data = nothing)
 
-    # Check that only one data source is provided
-    if grid_data === nothing && linear_data === nothing
-        throw(ArgumentError("At least one of grid_data or linear_data must be provided."))
-    elseif grid_data !== nothing && linear_data !== nothing
-        throw(ArgumentError("Only one of grid_data or linear_data can be provided."))
-    end
-    # and check that the data type is the same as the specified data type
-    if (grid_data !== nothing && eltype(grid_data) != dtype) ||
-       (linear_data !== nothing && eltype(linear_data) != dtype)
+    # Check that the data type is the same as the specified data type
+    if (grid_data !== nothing && eltype(grid_data) != dtype)
         throw(ArgumentError("The data type is not the same as the specified data type."))
     end
 
@@ -75,21 +66,6 @@ function make_grid(; dim::Int, dtype::DataType, dx::Union{Float32, Float64}, nx:
     x = collect(0:dx:((nx - 1) * dx))
     y = dy == 0 ? nothing : collect(0:dy:((ny - 1) * dy))
     z = dz == 0 ? nothing : collect(0:dz:((nz - 1) * dz))
-
-    G = Grid(dim, dtype, dx, dy, dz, nx, ny, nz, N, x, y, z, 1, nothing, nothing)
-
-    # Check from which data you have to initialize the grid
-    if linear_data === nothing
-        data_from_grid(G, grid_data)
-    else
-        data_from_linear(G, linear_data)
-    end
-
-    return G
-end
-
-function data_from_grid(G, grid_data)
-    G.grid_data = grid_data
 
     # Extract dimensions from grid_data
     dims = size(grid_data)
@@ -103,40 +79,11 @@ function data_from_grid(G, grid_data)
     ny = ndims > 2 ? dims[2] : 0
     nz = ndims > 3 ? dims[3] : 0
 
-    # Update nsim in G
-    G.nsim = nsim
-
     # Validate dimensions
-    if (nx, ny, nz) != (G.nx, G.ny, G.nz)
-        throw(DimensionMismatch("The grid data dimensions (nx, ny, nz) = ($(nx), $(ny), $(nz)) do not match the expected dimensions (G.nx, G.ny, G.nz) = ($(G.nx), $(G.ny), $(G.nz))"))
+    if nx != size(grid_data)[1] || (ny != 0 && ny != size(grid_data)[2]) ||
+       (nz != 0 && nz != size(grid_data)[3])
+        throw(DimensionMismatch("The grid data dimensions (nx, ny, nz) = ($(nx), $(ny), $(nz)) do not match the expected dimensions ($(size(grid_data)[1:end-1]))"))
     end
 
-    if nz > 0
-        G.linear_data = view(G.grid_data, :, :, :, :)
-        G.linear_data = reshape(G.linear_data, nx * ny * nz, nsim)
-    elseif ny > 0
-        G.linear_data = view(G.grid_data, :, :, :)
-        G.linear_data = reshape(G.linear_data, nx * ny, nsim)
-    else
-        G.linear_data = view(G.grid_data, :, :)
-        G.linear_data = reshape(G.linear_data, nx, nsim)
-    end
-end
-
-function data_from_linear(G, linear_data)
-    G.linear_data = linear_data
-
-    dims = size(linear_data)
-    # Get nsim from the linear data
-    G.nsim = nsim = dims[2]
-    nx, ny, nz = G.nx, G.ny, G.nz
-
-    G.grid_data = view(linear_data, :)
-    if nz > 0
-        G.grid_data = reshape(G.grid_data, nx, ny, nz, nsim)
-    elseif ny > 0
-        G.grid_data = reshape(G.grid_data, nx, ny, nsim)
-    else
-        G.grid_data = reshape(G.grid_data, nx, nsim)
-    end
+    return Grid(dim, dtype, dx, dy, dz, nx, ny, nz, N, x, y, z, nsim, grid_data)
 end

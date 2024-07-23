@@ -1,4 +1,5 @@
 import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool, identity
+import RecursiveArrayTools: ArrayPartition
 #import CoupledNODE: linear_to_grid, grid_to_linear
 include("./../src/grid.jl")
 
@@ -64,170 +65,42 @@ function create_f_CNODE(forces, grids, NNs = nothing; pre_force = identity,
     )
 end
 
-# sciml gets the linear , force gets the grid
-
-#"""
-#    Unpack(grids)
-#
-#Creates a function to unpack the input data from a concatenated list to a tuple.
-#
-## Arguments
-#- `grids`: A vector or tuple containing the grid(s).
-#
-## Returns
-#- A list of the unpacked data (coupled variables)
-#"""
-#function Unpack(grids)
-#    dim = length(grids)
-#    if dim == 1
-#        return u -> let u = u
-#            grids[1].linear_data[:] .= u[:]
-#            linear_to_grid(grids[1])
-#            nothing
-#        end
-#    elseif dim == 2
-#        return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
-#            # reshape u and v on their grid while adding a placeholder dimension for the channels
-#            grids[1].linear_data[:] .= u[:]
-#            grids[2].linear_data[:] .= v[:]
-#            linear_to_grid(grids[1])
-#            linear_to_grid(grids[2])
-#            nothing
-#        end
-#    elseif dim == 3
-#        return uvw -> let u = uvw[1:(grids[1].N), :],
-#            v = uvw[(grids[1].N + 1):(grids[1].N + grids[2].N), :],
-#            w = uvw[(grids[1].N + grids[2].N + 1):end, :]
-#            grids[1].linear_data[:] .= u[:]
-#            grids[2].linear_data[:] .= v[:]
-#            grids[3].linear_data[:] .= w[:]
-#            linear_to_grid(grids[1])
-#            linear_to_grid(grids[2])
-#            linear_to_grid(grids[3])
-#            nothing
-#        end
-#    end
-#end
-#
-#"""
-#    Concatenate(grids)
-#
-#Creates a function to concatenate the coupled variables to a single vector.
-#
-## Arguments
-#- `grids`: A vector or tuple containing the grid(s).
-#
-## Returns
-#- A list of concatenated coupled variables.
-#"""
-#function Concatenate(grids)
-#    dim = length(grids)
-#    if dim == 1
-#        return u -> 
-#            # make u linear
-#            #u = grid_to_linear(grids[1], u)
-#            #grids[1].grid_data[:] .= u[:]
-#            #grid_to_linear(grids[1])
-#            grids[1].linear_data
-#    elseif dim == 2
-#        #return uv -> let u = uv[1], v = uv[2]
-#        return uv -> 
-#            #grids[1].grid_data[:] .= u[:]
-#            #grids[2].grid_data[:] .= v[:]
-#            #grid_to_linear(grids[1])
-#            #grid_to_linear(grids[2])
-#            vcat(grids[1].linear_data, grids[2].linear_data)
-#    end
-#end
-
 # Applies the right hand side of the CNODE, force F. This is for the not closed problem.
 # TODO: make the shape more consistent, such that we can use the same layer for with and without NN
 function Force_layer(F, grids, NN_closure = nothing)
     dim = length(F)
     if NN_closure === nothing
         if dim == 1
-            return u -> let u = u
-                grids[1].linear_data[:] .= u[:]
-                F1 = F[1](grids[1].grid_data)
-                return (reshape(view(F1, :, :), grids[1].N, :),)
-            end
+            return u -> F[1](u)
         elseif dim == 2
-            return uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
-                #grids = assign_grid_data(grids, u, v)
-                assign_grid_data(grids, u, v)
-                F1 = F[1](grids[1].grid_data, grids[2].grid_data)
-                F2 = F[2](grids[1].grid_data, grids[2].grid_data)
-                # make a linear view of Fs and concatenate them
-                vcat(reshape(view(F1, :, :, :), grids[1].N, :),
-                    reshape(view(F2, :, :, :), grids[2].N, :))
+            # It assumes as input an ArrayPartition
+            return uv -> let u = uv.x[1], v = uv.x[2]
+                F1 = F[1](u, v)
+                F2 = F[2](u, v)
+                ArrayPartition(F1, F2)
             end
         else
             error("ERROR: Unsupported number of dimensions: $dim")
         end
     else
         if dim == 1
-            return u -> let u = u
-                throw(NotImplementedError("NN_closure not implemented for 1D problems"))
-            end
+            return Chain(
+            # Compute force + closure 
+                SkipConnection(
+                NN_closure,
+                (f_NN, u) -> F[1](u) + f_NN[1]
+                ; name = "Closure"),
+            )
         elseif dim == 2
             return Chain(
-                # Get the data
-                uv -> let u = uv[1:(grids[1].N), :], v = uv[(grids[1].N + 1):end, :]
-                    assign_grid_data(grids, u, v)
-                    # If you pass a tuple you split the input to the two NNs
-                    # (u, v)
-                    # If you don't want this, just pass an array
-                    #[u, v] # notice that those data are linear
-                    [grids[1].grid_data, grids[2].grid_data]
-                end,
-                # Compute force + closure 
                 SkipConnection(
-                    NN_closure,
-                    (f_NN, uv) -> (F[1](grids[1].grid_data, grids[2].grid_data) .+ f_NN[1],
-                        F[2](grids[1].grid_data, grids[2].grid_data) .+ f_NN[2])
-                    ; name = "Closure"),
-                # make linear view
-                F -> let F1 = F[1], F2 = F[2]
-                    vcat(reshape(view(F1, :, :, :), grids[1].N, :),
-                        reshape(view(F2, :, :, :), grids[2].N, :))
-                end
+                NN_closure,
+                (f_NN, uv) -> ArrayPartition(F[1](uv.x[1], uv.x[2]) .+ f_NN[1],
+                    F[2](uv.x[1], uv.x[2]) .+ f_NN[2])
+                ; name = "Closure"),
             )
-        elseif dim == 3
-            return x -> vcat(
-                F[1](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data),
-                F[2](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data),
-                F[3](grids[1].grid_data, grids[2].grid_data, grids[3].grid_data))
         else
             error("ERROR: Unsupported number of dimensions: $dim")
         end
-    end
-end
-
-## Applies the right hand side of the CNODE, by summing force F and closure NN
-#function Closure(F, NN_closure, grids)
-#    dim = length(F)
-#    if dim == 1
-#        return SkipConnection(NN_closure,
-#            (f_NN, u) -> (F[1](grids[1].grid_data) .+ f_NN[1],)
-#            ; name="Closure")
-#    elseif dim == 2
-#        return SkipConnection(
-#            NN_closure,
-#            (f_NN, uv) -> (F[1](grids[1].grid_data, grids[2].grid_data) .+ f_NN[1], F[2](grids[1].grid_data, grids[2].grid_data) .+ f_NN[2])
-#            ; name="Closure")
-#    else
-#        error("ERROR: Unsupported number of dimensions: $dim")
-#    end
-#end
-
-function assign_grid_data(grids, u, v)
-    if size(grids[1].linear_data)[end] == size(u)[end] &&
-       size(grids[2].linear_data)[end] == size(v)[end]
-        grids[1].linear_data[:] .= u[:]
-        grids[2].linear_data[:] .= v[:]
-    else
-        println("Size of input does not match size of grid data -> reshaping to handle data of shape $(size(u)), $(size(v))")
-        data_from_linear(grids[1], u)
-        data_from_linear(grids[2], v)
     end
 end
