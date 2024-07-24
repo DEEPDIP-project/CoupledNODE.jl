@@ -20,27 +20,29 @@ psolver = INS.psolver_spectral(setup);
 dt = T(1e-3)
 trange = (T(0), T(10))
 savevery = 20
-saveat = 20 * dt;
+saveat = savevery * dt;
 
 # ## IncompressibleNavierStokes.jl solver
 # We know that mathematically it is the best one.
-(state, outputs), time_ins, allocation, gc, memory_counters = @timed INS.solve_unsteady(;
-    setup, ustart, tlims = trange, Δt = dt,
+# First, call to get the plots. 
+# Look at the generated animation of the evolution of the vorticity field in time in plots/vorticity_INS.mkv.
+(state, outputs), time_ins2, allocation2, gc2, memory_counters2 = @timed INS.solve_unsteady(; setup, ustart, tlims = trange, Δt = dt,
     processors = (
         ehist = INS.realtimeplotter(;
             setup, nupdate = 10, displayfig = false,
-            plot = INS.energy_history_plot
-        ),
+            plot = INS.energy_history_plot),
         anim = INS.animator(;
             setup, path = "./simulations/NavierStokes_2D/plots/vorticity_INS.mkv",
             nupdate = savevery),
         #espec = realtimeplotter(; setup, plot = energy_spectrum_plot, nupdate = 10),
-        field = INS.fieldsaver(; setup, nupdate=1),
+        field = INS.fieldsaver(; setup, nupdate = savevery),
         log = INS.timelogger(; nupdate = 100)
     )
 );
-# Look at the generated animation of the evolution of the vorticity field in time in plots/vorticity_INS.mkv.
-# TODO: can we store history of u for comparisons? probably not
+
+# Second, call to time it (without spending time in animations ~ 5% extra)
+_, time_ins, allocation, gc, memory_counters = @timed INS.solve_unsteady(;
+    setup, ustart, tlims = trange, Δt = dt);
 
 # ## SciML
 # ### Projected force for SciML
@@ -169,7 +171,6 @@ Plots.plot(p1, p2, p3, p4, p5, p6, layout = (2, 3), size = (900, 600))
 # ### Divergence:
 
 # INS
-state.u
 #div_INS = fill!(similar(setup.grid.x[1], setup.grid.N), 0)
 #INS.divergence!(div_INS, state.u, setup)
 div_INS = INS.divergence(state.u, setup)
@@ -179,14 +180,14 @@ maximum(abs.(div_INS))
 u_last_ode = (sol_ode.u[end][:, :, 1], sol_ode.u[end][:, :, 2]);
 div_ode = INS.divergence(u_last_ode, setup)
 max_div_ode = maximum(abs.(div_ode))
-div_ode
 
 using Printf
 anim = Animation()
 for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
-    ∇_u = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
+    ∇_u = INS.divergence((u[:, :, 1], u[:, :, 2]), setup)
     title = @sprintf("\$\\nabla \\cdot u\$ SciML, t = %.3f s", t)
-    fig = Plots.heatmap(∇_u'; xlabel = "x", ylabel = "y", title, aspect_ratio = :equal, ticks = false, size = (600, 600), clims = (-max_div_ode, max_div_ode))
+    fig = Plots.heatmap(∇_u'; xlabel = "x", ylabel = "y", title, aspect_ratio = :equal,
+        ticks = false, size = (600, 600), clims = (-max_div_ode, max_div_ode))
     frame(anim, fig)
 end
 gif(anim, "simulations/NavierStokes_2D/plots/divergence_SciML.gif", fps = 15)
@@ -199,13 +200,12 @@ maximum(abs.(div_node))
 # **Conclusion:** While IncompressibleNavierStokes.jl guarantees a $\nabla \cdot u =0$ the other methods do not.
 
 # ### Animations
-# #### Animate solution using `Makie`
+# #### Animate SciML solution using `Makie`
 # ! we can plot either the vorticity or the velocity field, however notice that the vorticity is 'flashing' (unstable)
 let
     (; Iu) = setup.grid
     i = 1
     #obs = Observable(sol.u[1][Iu[i], i])
-    #ω = IncompressibleNavierStokes.vorticity((u[:, :, 1], u[:, :, 2]), setup)
     obs = Observable(INS.vorticity((sol_ode.u[1][:, :, 1], sol_ode.u[1][:, :, 2]), setup))
     fig = GLMakie.heatmap(obs, colorrange = vor_lims)
     fig |> display
@@ -217,7 +217,7 @@ let
     end
 end
 
-# #### Animate solution using `Plots.jl`
+# #### Animate SciML solution using `Plots.jl`
 function animation_plots(; variable = "vorticity")
     anim = Animation()
     for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
@@ -246,21 +246,22 @@ animation_plots(; variable = "vorticity")
 # Velocity animation
 animation_plots(; variable = "velocity")
 
+# #### Animate the difference in solution using `Plots.jl`
+anim = Animation()
+for idx in 1:Int(ceil(trange[end] / saveat))
+    # the ODESolution saves the initial state too
+    error_u = abs.(outputs.field[idx].u[1] - sol_ode.u[idx + 1][:, :, 1])
+    title = @sprintf("\$|u_{INS}-u_{ODE}|\$, t = %.3f s", sol_ode.t[idx])
+    fig = Plots.heatmap(error_u; xlabel = "x", ylabel = "y", title,
+        aspect_ratio = :equal, ticks = false, size = (600, 600))
+    frame(anim, fig)
+end
+gif(anim, "simulations/NavierStokes_2D/plots/u_INS-SciML.gif", fps = 15)
+
 # ### Different initial conditions
 t_range_bench = (T(0), T(1))
 function bench_INS(ustart)
-    INS.solve_unsteady(;
-        setup, ustart, tlims = t_range_bench, Δt = dt,
-        processors = (
-            ehist = INS.realtimeplotter(;
-                setup,
-                plot = INS.energy_history_plot,
-                nupdate = 10,
-                displayfig = false
-            ),
-            log = INS.timelogger(; nupdate = 100)
-        )
-    )
+    INS.solve_unsteady(; setup, ustart, tlims = t_range_bench, Δt = dt)
 end
 
 function bench_ode(u0)
@@ -280,7 +281,7 @@ for _ in samples
     #push!(rel_error, mean(abs.((state.u[1] - sol_ode.u[end][:, :, 1])/state.u[1]))) # zero division
 end
 
-Plots.histogram(total_diff, bins = 20, label = "Total error", 
+Plots.histogram(total_diff, bins = 20, label = "Total error",
     xlabel = "\$\\sum(|u_{INS}-u_{ODE}|)\$")
 Plots.histogram(avg_diff, bins = 20, label = "Mean absolute error",
     xlabel = "\$\\langle |u_{INS}-u_{ODE}|\\rangle \$")
