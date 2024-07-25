@@ -55,54 +55,48 @@ cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver);
 cache_out = similar(F);
 
 # * Right-hand-side out-of-place
-function create_rhs_op(setup, psolver, cache_F, cache_div, cache_p, cache_out)
-    function right_hand_side(u, p = nothing, t = nothing)
-        u = eachslice(u; dims = 3)
-        INS.apply_bc_u!(u, t, setup)
-        INS.momentum!(cache_F, u, nothing, t, setup)
-        INS.apply_bc_u!(cache_F, t, setup; dudt = true)
-        INS.project!(cache_F, setup; psolver, div = cache_div, p = cache_p)
-        INS.apply_bc_u!(cache_F, t, setup; dudt = true)
-        return stack(cache_F)
-    end
+function F_op(u, p=p, t = nothing)
+    u = eachslice(u; dims = 3)
+    INS.apply_bc_u!(u, t, setup)
+    INS.momentum!(p[1], u, nothing, t, setup)
+    INS.apply_bc_u!(p[1], t, setup; dudt = true)
+    INS.project!(p[1], setup; psolver=p[4], div=p[2], p=p[3])
+    INS.apply_bc_u!(p[1], t, setup; dudt = true)
+    return stack(p[1])
 end
 
 # Test the forces
-
-# _Note:_ Requires `stack(u)` to create one array
-F_op = create_rhs_op(setup, psolver, cache_F, cache_div, cache_p, cache_out);
-F_op(stack(ustart), nothing, 0.0f0);
+myfull_cache = (cache_F, cache_div, cache_p, psolver)
+F_op(stack(ustart), myfull_cache, 0.0f0); #Requires `stack(u)` to create one array
 prob_op = ODEProblem(F_op, stack(ustart), trange);
 
 # * Right-hand-side in-place
-function create_rhs_ip(setup, psolver, cache_F, cache_div, cache_p, cache_out)
-    function right_hand_side(du, u, p = nothing, t = nothing)
-        u = eachslice(u; dims = 3)
-        INS.apply_bc_u!(u, t, setup)
-        INS.momentum!(cache_F, u, nothing, t, setup)
-        INS.apply_bc_u!(cache_F, t, setup; dudt = true)
-        INS.project!(cache_F, setup; psolver, div = cache_div, p = cache_p)
-        INS.apply_bc_u!(cache_F, t, setup; dudt = true)
-        du[:, :, 1] = cache_F[1]
-        du[:, :, 2] = cache_F[2]
-        nothing
-    end
+function F_ip(du, u, p, t = nothing)
+    u_view = eachslice(u; dims = 3)
+    INS.apply_bc_u!(u_view, t, setup)
+    INS.momentum!(p[1], u_view, nothing, t, setup)
+    INS.apply_bc_u!(p[1], t, setup; dudt = true)
+    INS.project!(p[1], setup; psolver=p[4], div=p[2], p=p[3])
+    INS.apply_bc_u!(p[1], t, setup; dudt = true)
+    du[:, :, 1] = p[1][1]
+    du[:, :, 2] = p[1][2]
 end
 
 temp = similar(stack(ustart))
-F_ip = create_rhs_ip(setup, psolver, cache_F, cache_div, cache_p, cache_out);
-F_ip(temp, stack(ustart), nothing, 0.0f0)
+F_ip(temp, stack(ustart), myfull_cache, 0.0f0);
 
 # Solve the ODE using `ODEProblem`. We use `RK4` (Runge-Kutta 4th order) because this same method is used in `IncompressibleNavierStokes.jl`.
 prob = ODEProblem{true}(F_ip, stack(ustart), trange);
 sol_ode, time_ode, allocation_ode, gc_ode, memory_counters_ode = @timed solve(
-    prob, RK4(); dt = dt, saveat = saveat);
+    prob, p = myfull_cache, RK4(); dt = dt, saveat = saveat, adaptive=false);
 
 # Test the difference between in-place and out-of-place definitions
-@time sol = solve(prob, RK4(); dt = dt, saveat = saveat);
+@time sol = solve(prob, p = myfull_cache, RK4(); dt = dt, saveat = saveat);
 # In place: `46.664913 seconds (8.02 M allocations: 500.621 MiB, 0.07% gc time)`
-@time sol = solve(prob_op, RK4(); dt = dt, saveat = saveat);
+# `60.610772 seconds (6.84 M allocations: 452.611 MiB, 0.05% gc time)`
+@time sol = solve(prob_op, p = myfull_cache, RK4(); dt = dt, saveat = saveat);
 # Out of place: `53.804647 seconds (8.36 M allocations: 84.888 GiB, 2.96% gc time)`
+# `67.595735 seconds (7.18 M allocations: 85.174 GiB, 2.06% gc time)``
 
 # ## CNODE
 import DiffEqFlux: NeuralODE
@@ -114,9 +108,9 @@ rng = Random.default_rng();
 θ_dns, st_dns = Lux.setup(rng, f_dns);
 
 # Define the problem and solve it
-dns = NeuralODE(f_dns, trange, RK4(), adaptive = false, dt = dt, saveat = saveat);
-sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed dns(
-    stack(ustart), θ_dns, st_dns)[1];
+dns = NeuralODE(f_dns, trange, RK4(), p=myfull_cache, adaptive = false, dt = dt, saveat = saveat);
+p=myfull_cache
+sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed dns(stack(ustart), θ_dns, st_dns)[1];
 
 # ## Comparison
 # Bar plots comparing: time, memory allocation, and number of garbage collections (GC).
@@ -266,7 +260,7 @@ end
 
 function bench_ode(u0)
     prob = ODEProblem{true}(F_ip, stack(u0), t_range_bench)
-    solve(prob, RK4(); dt = dt, saveat = saveat)
+    solve(prob, RK4(); dt = dt, saveat = saveat, adaptive=false)
 end
 
 using Statistics
@@ -285,3 +279,14 @@ Plots.histogram(total_diff, bins = 20, label = "Total error",
     xlabel = "\$\\sum(|u_{INS}-u_{ODE}|)\$")
 Plots.histogram(avg_diff, bins = 20, label = "Mean absolute error",
     xlabel = "\$\\langle |u_{INS}-u_{ODE}|\\rangle \$")
+
+# ## Testing
+dt_1= T(1e-3)
+trange_1 = (T(0), dt_1)
+state_1, outputs_1 = INS.solve_unsteady(; setup, ustart, tlims = trange_1, Δt = dt_1)
+
+prob_1 = ODEProblem{true}(F_ip, stack(ustart), trange_1);
+sol_ode_1 = solve(prob_1, p = myfull_cache, RK4(); dt = dt_1, saveat = dt_1, adaptive=false);
+
+sol_ode_1.u[1] == stack(ustart) #first element is the initial condition
+sol_ode_1.u[end] == state_1.u[1]
