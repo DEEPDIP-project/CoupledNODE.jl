@@ -9,47 +9,51 @@ if CUDA.functional()
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
+using ShiftedArrays
+using RecursiveArrayTools
 
 # # Burgers equations with small scale
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
-# So the first step is to define the grid that we are going to use.
-# We define a DNS and a LES
-import CoupledNODE: Grid
+# We start from the parameters that define DNS and LES
 nux_dns = 1000
-dux_dns = 2π / nux_dns
-grid_u_dns = Grid(dim = 1, dx = dux_dns, nx = nux_dns)
+dux_dns = MY_TYPE(2π / nux_dns)
 nux_les = 40 # This is I in Toby's paper
-dux_les = 2π / nux_les
-grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
+dux_les = MY_TYPE(2π / nux_les)
 
 # Construct the right-hand side of the Burgers equation
 include("./../../src/Burgers.jl")
 ν = 0.001f0
 force_params = (ν,)
-grid_B_dns = (grid_u_dns,)
-grid_B_les = (grid_u_les,)
-F_dns = create_burgers_rhs(grid_B_dns, force_params)
-F_les = create_burgers_rhs(grid_B_les, force_params)
+F_dns = create_burgers_rhs(dux_dns, force_params)
+F_les = create_burgers_rhs(dux_les, force_params)
 
 # and generate some initial conditions
-u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 1, kmax = 4);
+nsim = 1
+u0_dns = generate_initial_conditions(
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> MY_TYPE((1 + abs(k))^(-6 / 5)));
+include("./../../src/grid.jl")
+grid_u_dns = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u0_dns)
 
 # Use a gaussian filter to get the coarse grid
-ΔΦ = 5 * grid_B_les[1].dx
-Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "gaussian")
+ΔΦ = MY_TYPE(5 * dux_les)
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "gaussian", MY_TYPE)
 # or a top hat filter similar to the one used by Toby
-ΔΦ = 3 * grid_B_les[1].dx
-Φ = create_filter_matrix(grid_B_les, grid_B_dns, ΔΦ, "hat")
+ΔΦ = MY_TYPE(3 * dux_les)
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "hat", MY_TYPE)
 # Apply the filter to the initial condition
 u0_les = Φ * u0_dns
+# and Finally create the grid
+grid_u_les = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_les, nx = nux_les, nsim = nsim, grid_data = u0_les)
 
 # ### Subgrid scale (SGS) 
 # The Subgrid scale (SGS) is defined as the difference between the DNS and the reconstructed LES.
 # Let's show an example of the SGS term for the Burgers equation:
 # To get the reconstruction operator I need the small cell volume ω and the large cell volume Ω (nha that is only for average)
-ω = grid_B_dns[1].dx
-Ω = grid_B_les[1].dx
+ω = grid_u_dns.dx
+Ω = grid_u_les.dx
 R = 1 / ω * transpose(Φ) * Ω
 # We construct R as a pseudo-inverse operator via the following
 R = transpose(Φ) * inv(Matrix(Φ * transpose(Φ)))
@@ -59,11 +63,11 @@ sgs = u0_dns - u0_rec
 
 # Let's plot a comparison of the different terms
 using LaTeXStrings
-plot(grid_B_dns[1].x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
+plot(grid_u_dns.x, u0_dns, label = "u", title = "Subgrid scale (SGS)",
     xlabel = "x", ylabel = L"u", legend = :topleft)
-plot!(grid_B_les[1].x, u0_les, seriestype = :stepmid, label = L"\bar{u}=\mathbf{\Phi} u")
-plot!(grid_B_dns[1].x, u0_rec, label = L"\mathbf{R} \bar{u}")
-plot!(grid_B_dns[1].x, sgs, label = "SGS")
+plot!(grid_u_les.x, u0_les, seriestype = :stepmid, label = L"\bar{u}=\mathbf{\Phi} u")
+plot!(grid_u_dns.x, u0_rec, label = L"\mathbf{R} \bar{u}")
+plot!(grid_u_dns.x, sgs, label = "SGS")
 
 # ## Energy
 
@@ -129,15 +133,15 @@ plot!(grid_B_dns[1].x, sgs, label = "SGS")
 # First we have to solve the dynamics
 import DiffEqFlux: NeuralODE
 include("./../../src/NODE.jl")
-f_dns = create_f_CNODE((F_dns,), grid_B_dns; is_closed = false);
-f_les = create_f_CNODE((F_les,), grid_B_les; is_closed = false);
+f_dns = create_f_CNODE((F_dns,), (grid_u_dns,); is_closed = false);
+f_les = create_f_CNODE((F_les,), (grid_u_les,); is_closed = false);
 using Random, LuxCUDA, Lux
 Random.seed!(123)
 rng = Random.default_rng()
 θ_dns, st_dns = Lux.setup(rng, f_dns);
 θ_les, st_les = Lux.setup(rng, f_les);
 t_sim = 40.0f0
-dt_dns = 0.005f0
+dt_dns = 0.003f0
 trange = (0.0f0, t_sim)
 saveat = 0.01f0
 dns = NeuralODE(f_dns,
@@ -157,8 +161,8 @@ u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 u_dns = u_dns[:, 1, :]
 u_filt = Φ * u_dns
 
-E_dns = sum(u_dns .^ 2, dims = 1) * grid_B_dns[1].dx / 2
-E_filt = sum(u_filt .^ 2, dims = 1) * grid_B_les[1].dx / 2
+E_dns = sum(u_dns .^ 2, dims = 1) * grid_u_dns.dx / 2
+E_filt = sum(u_filt .^ 2, dims = 1) * grid_u_les.dx / 2
 
 plot(E_dns[1, :], label = L"E", title = "Energy",
     xlabel = "Time steps", ylabel = "Energy")
@@ -191,13 +195,13 @@ plot(T.prinvars, label = "PCA explained variance")
 test_reduced = predict(T, test_data)
 test_reconstructed = reconstruct(T, test_reduced)
 print("Reconstruction error: ", norm(test_data - test_reconstructed))
-plot(grid_B_dns[1].x, test_data[:, 1], label = "Original")
-plot!(grid_B_dns[1].x, test_reconstructed[:, 1], label = "Reconstructed w PCA")
+plot(grid_u_dns.x, test_data[:, 1], label = "Original")
+plot!(grid_u_dns.x, test_reconstructed[:, 1], label = "Reconstructed w PCA")
 
 # Compare energy predicted with PCA
-E_prime = sum(u_prime .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+E_prime = sum(u_prime .^ 2, dims = 1) * grid_u_dns.dx / 2
 u_pca = predict(T, u_prime)
-E_pca = sum(u_pca .^ 2, dims = 1) * grid_B_dns[1].dx / 2
+E_pca = sum(u_pca .^ 2, dims = 1) * grid_u_dns.dx / 2
 plot(E_prime, E_pca, title = "Energy SGS", legend = false,
     xlabel = L"E'", ylabel = L"\frac{1}{2}s^2")
 finite_inds = isfinite.(E_prime) .& isfinite.(E_pca)
@@ -215,28 +219,46 @@ plot!([0, maximum(E_prime_finite)], [0, maximum(E_prime_finite)], label = "y=x")
 
 # Generate data for the a-priori fitting
 nsamples = 500
-nsamples = 10
-ntimes = size(u_dns)[2]
-all_u_dns = zeros(size(u_dns)[1], nsamples, ntimes)
-batch_size = 10
-n_batches = Int(nsamples / batch_size)
-for i in 1:n_batches
-    good = 0
-    all_u_dns_batch = zeros(size(u_dns)[1], batch_size, ntimes)
-    while good < ntimes
-        println("Generating batch $(i) (size: $(good) < $(ntimes)")
-        all_u0_dns = generate_initial_conditions(grid_B_dns[1].nx, batch_size)
-        all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
-        good = size(all_u_dns_batch)[3]
-    end
-    all_u_dns[:, ((i - 1) * batch_size + 1):(i * batch_size), :] = all_u_dns_batch
-end
+nsamples = 50
+all_u0_dns = generate_initial_conditions(
+    nux_dns, nsamples, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
+
+## ### Data filtering 
+#all_F_dns = F_dns(reshape(
+#    all_u_dns, size(all_u_dns, 1), size(all_u_dns, 2) * size(all_u_dns, 3)));
+#all_F_dns = reshape(all_F_dns, size(all_u_dns));
+## Reshape in and target to have sample and t  in the same dimension (makes sense in a-priori fitting)
+#all_u_dns_flat = reshape(all_u_dns, nux_dns, size(all_u_dns)[2] * size(all_u_dns)[3]);
+#all_F_dns_flat = reshape(all_F_dns, nux_dns, size(all_F_dns)[2] * size(all_F_dns)[3]);
+## Filter
+#all_u_les_flat = Φ * all_u_dns_flat
+#target_F_flat = Φ * all_F_dns_flat
+## Train the PCA for those data
+#T = fit(PCA, all_u_dns_flat; maxoutdim = sgs_size)
+#sgs_size
+#if size(T, 2) != sgs_size
+#    println("Warning: PCA did use fewer components than expected, so I will reduce the dimensionality of the SGS space to $(size(T,2))")
+#    sgs_size = size(T, 2)
+#end
+## Get the sgs
+#target_sgs_flat = predict(T, all_u_dns_flat - R * all_u_les_flat)
+## the target rhs for the sgs is $T * \frac{du'}{dt}$, where $\frac{du'}{dt} = f_{dns} - R f_{les}$
+#target_F_sgs_flat = predict(T, all_F_dns_flat - R * target_F_flat)
+## and get them back to the original shape
+#all_u_les = reshape(all_u_les_flat, nux_les, size(all_u_dns)[2:end]...)
+#target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
+#target_sgs = reshape(target_sgs_flat, sgs_size, size(target_sgs_flat)[2:end]...);
+#target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(target_F_sgs_flat)[2:end]...);
+## concatenate input and target
+#all_in = vcat(all_u_les_flat, target_sgs)
+#target = vcat(target_F_flat, target_F_sgs)
 
 # ### Data filtering 
-all_F_dns = F_dns(reshape(
-    all_u_dns, size(all_u_dns, 1), size(all_u_dns, 2) * size(all_u_dns, 3)));
-all_F_dns = reshape(all_F_dns, size(all_u_dns));
-# Reshape in and target to have sample and t  in the same dimension (makes sense in a-priori fitting)
+all_F_dns = F_dns(all_u_dns)
+# Reshape in and target to have sample and t  in the same dimension 
+# This makes sense in a-priori fitting, where random samples are selected
+# but also to obtain the PCA
 all_u_dns_flat = reshape(all_u_dns, nux_dns, size(all_u_dns)[2] * size(all_u_dns)[3]);
 all_F_dns_flat = reshape(all_F_dns, nux_dns, size(all_F_dns)[2] * size(all_F_dns)[3]);
 # Filter
@@ -244,7 +266,6 @@ all_u_les_flat = Φ * all_u_dns_flat
 target_F_flat = Φ * all_F_dns_flat
 # Train the PCA for those data
 T = fit(PCA, all_u_dns_flat; maxoutdim = sgs_size)
-sgs_size
 if size(T, 2) != sgs_size
     println("Warning: PCA did use fewer components than expected, so I will reduce the dimensionality of the SGS space to $(size(T,2))")
     sgs_size = size(T, 2)
@@ -255,67 +276,72 @@ target_sgs_flat = predict(T, all_u_dns_flat - R * all_u_les_flat)
 target_F_sgs_flat = predict(T, all_F_dns_flat - R * target_F_flat)
 # and get them back to the original shape
 all_u_les = reshape(all_u_les_flat, nux_les, size(all_u_dns)[2:end]...)
-target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...);
-target_sgs = reshape(target_sgs_flat, sgs_size, size(target_sgs_flat)[2:end]...);
-target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(target_F_sgs_flat)[2:end]...);
+target_F = reshape(target_F_flat, nux_les, size(all_F_dns)[2:end]...)
+target_sgs = reshape(target_sgs_flat, sgs_size, size(all_F_dns)[2:end]...)
+target_F_sgs = reshape(target_F_sgs_flat, sgs_size, size(all_F_dns)[2:end]...)
 # concatenate input and target
-all_in = vcat(all_u_les_flat, target_sgs)
-target = vcat(target_F_flat, target_F_sgs)
+# [!] you have to concatenate them as vector, otherwise as tuple they will be splitted by the Parallel layer
+all_in = ArrayPartition(all_u_les_flat, target_sgs_flat)
+target = ArrayPartition(target_F_flat, target_F_sgs_flat)
 
 # Pack the grids 
-dux_s = 2π / sgs_size
-grid_s = Grid(dim = 1, dx = 2π / sgs_size, nx = sgs_size)
+dux_s = MY_TYPE(2π / sgs_size)
+grid_s = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_s, nx = sgs_size,
+    nsim = size(target_F_sgs)[1], grid_data = target_sgs)
 grids = (grid_u_les, grid_s)
 
 # Now create the the Neural Network
 using NNlib: gelu
 include("./../../src/FNO.jl")
 ch_fno = [2, 5, 5, 5, 1];
-kmax_fno = [16, 16, 16, 8];
+kmax_fno_u = [16, 16, 16, 8];
+kmax_fno_s = [6, 6, 6, 6];
 σ_fno = [gelu, gelu, gelu, identity];
 
 first_layer_u = (
-    x -> let u = x[1], s = x[2]
+    uv -> let u = uv.x[1], s = uv.x[2]
         # make a tuple to use Parallel
         (u, s)
     end,
     Parallel(nothing, NoOpLayer(), Dense(grids[2].N => grids[1].N)),
-    x -> let u = x[1], s = x[2]
+    uv -> let u = uv[1], s = uv[2]
         # concatenate the input
-        cat(u, s; dims = 3)
+        permutedims(cat(u, s; dims = 3), (3, 1, 2))
     end
 )
-NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grids[1], first_layer_u);
+NN_u = create_fno_model(kmax_fno_u, ch_fno, σ_fno, grids[1], first_layer_u);
 first_layer_s = (
-    x -> let u = x[1], s = x[2]
+    uv -> let u = uv.x[1], s = uv.x[2]
         (u, s)
     end,
     Parallel(nothing, Dense(grids[1].N => grids[2].N), NoOpLayer()),
-    x -> let u = x[1], s = x[2]
-        cat(u, s; dims = 3)
+    uv -> let u = uv[1], s = uv[2]
+        permutedims(cat(u, s; dims = 3), (3, 1, 2))
     end
 )
-NN_sgs = create_fno_model(kmax_fno, ch_fno, σ_fno, grids[2], first_layer_s);
+NN_sgs = create_fno_model(kmax_fno_s, ch_fno, σ_fno, grids[2], first_layer_s);
 
 # pack the NNs
 NNs = (NN_u, NN_sgs);
-
-# if it works, then the unclosed cnode and the les should have the same result
 
 # Use it to create the cnode
 include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE(
     (F_les, (u, v) -> v .* 0), grids, NNs; is_closed = true)
+#f_CNODE = create_f_CNODE(
+#    (F_les, (u, v) -> v .* 0), grids; is_closed = false)
 θ, st = Lux.setup(rng, f_CNODE);
 
 # Trigger compilation and test the force
-f_CNODE(all_in, θ, st)[1]
+x = f_CNODE(all_in, θ, st)[1]
 
 include("./../../src/loss_priori.jl")
 myloss = create_randloss_derivative(all_in,
     target,
     f_CNODE,
     st;
+    dim = 2,
     n_use = 64,
     λ = 0,
     λ_c = 0);
@@ -365,7 +391,9 @@ tr = NeuralODE(f_CNODE,
     dt = dt,
     saveat = saveat_shock);
 # Initial condition
-u0_dns = generate_initial_conditions(grid_B_dns[1].nx, 3);
+nsim = 3
+u0_dns = generate_initial_conditions(
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> MY_TYPE((1 + abs(k))^(-6 / 5)));
 u0_les = Φ * u0_dns
 s0 = predict(T, u0_dns - R * u0_les)
 # DNS
@@ -373,9 +401,12 @@ u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1])
 # LES
 u_les = Array(les(u0_les, θ_les, st_les)[1])
 # Trained-SGS
-u_tr = Array(tr(vcat(u0_les, s0), θ, st)[1]);
-u_trained = u_tr[1:(grids[1].N), :, :]
-s_trained = u_tr[(grids[1].N + 1):end, :, :]
+us0 = ArrayPartition(u0_les, s0)
+u_nn = tr(us0, θ, st)[1]
+u_tr = [u_nn.u[i].x[1] for i in 1:length(u_nn)]
+u_tr = cat(u_tr..., dims = 3)
+s_tr = [u_nn.u[i].x[2] for i in 1:length(u_nn)]
+s_tr = cat(s_tr..., dims = 3)
 
 # Plots
 using Plots
@@ -385,15 +416,15 @@ fig = plot(layout = (3, 1), size = (800, 300))
     p1 = plot(grid_u_dns.x, u_dns[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "dns")
     plot!(grid_u_les.x, u_les[:, 1, i], linetype = :steppre, label = "les")
-    plot!(grid_u_les.x, u_trained[:, 1, i], linetype = :steppre, label = "trained")
+    plot!(grid_u_les.x, u_tr[:, 1, i], linetype = :steppre, label = "trained")
     p2 = plot(grid_u_dns.x, u_dns[:, 2, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_les[:, 2, i], linetype = :steppre, legend = false)
-    plot!(grid_u_les.x, u_trained[:, 2, i], linetype = :steppre, legend = false)
+    plot!(grid_u_les.x, u_tr[:, 2, i], linetype = :steppre, legend = false)
     p3 = plot(grid_u_dns.x, u_dns[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_les[:, 3, i], linetype = :steppre, legend = false)
-    plot!(grid_u_les.x, u_trained[:, 3, i], linetype = :steppre, legend = false)
+    plot!(grid_u_les.x, u_tr[:, 3, i], linetype = :steppre, legend = false)
     title = "time: $(round((i - 1) * saveat_shock, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)

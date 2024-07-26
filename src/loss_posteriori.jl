@@ -21,7 +21,7 @@ Auxiliary function to solve the NeuralODE. Returns the prediction and the target
 """
 function predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
     sol = Array(training_CNODE(uv0, θ, st)[1])
-    return sol[:, :, 1:nunroll], tg[:, :, 1:nunroll]
+    return sol, tg
 end
 
 """
@@ -108,17 +108,17 @@ function loss_MulDtO_oneset(trajectory,
     starting_points = [i == 0 ? 1 : i * (nunroll + 1 - noverlaps)
                        for i in 0:(nintervals - 1)]
     # Take all the time intervals and concatenate them in the batch dimension
+    # [!] notice that this shuffles the datasamples, so along the new dimension 2 we will group by starting point 
     list_tr = cat([trajectory[:, :, i:(i + nunroll)]
                    for i in starting_points]...,
         dims = 2)
     # Get all the initial conditions 
-    list_starts = cat([trajectory[:, :, i] for i in starting_points]...,
-        dims = 2)
+    list_starts = list_tr[:, :, 1]
     # Use the differentiable solver to get the predictions
     pred, target = predict_u_CNODE(list_starts, θ, st, nunroll, training_CNODE, list_tr)
     # the loss is the sum of the differences between the real trajectory and the predicted one
-    loss = sum(abs2, target[:, :, 2:nunroll] .- pred[:, :, 2:nunroll]) ./
-           sum(abs2, target[:, :, 2:nunroll])
+    #loss = sum(abs2, (target[:,:,2:end] .- pred[:,:,2:end] ) ./ (target[:,:,2:end].+1e-5))
+    loss = sum(abs2, target[:, :, 2:end] .- pred[:, :, 2:end])
 
     if λ_c > 0 && size(list_tr, 3) == nunroll + 1
         # //TODO check if the continuity term is correct
@@ -131,14 +131,13 @@ function loss_MulDtO_oneset(trajectory,
         # (which is already part of the loss function)
         pred_start = pred[:, :, 2:(1 + noverlaps)]
         continuity = 0
-        # loop over all the samples, which have been concatenated in dim 2
+        # loop over all the datasamples, which have been concatenated in dim 2
         for s in 1:nsamples
-            # each sample contains nintervals, we need to shift the index by
-            s_shift = (s - 1) * nintervals
-            # loop over all the intervals for the sample (excluding the last one)
-            for i in 1:(nintervals - 1)
-                continuity += sum(abs,
-                    pred_end[:, s_shift + i] .- pred_start[:, s_shift + i + 1])
+            for x in 1:(nintervals - 1)
+                # each sample contains nintervals, so we need to shift the index like this
+                ini_id = s + (x - 1) * nsamples
+                end_id = s + (x - 1) * nsamples + nsamples
+                continuity += sum(abs, pred_end[:, ini_id, :] .- pred_start[:, end_id, :])
             end
         end
     else

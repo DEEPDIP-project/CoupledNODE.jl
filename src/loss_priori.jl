@@ -25,9 +25,16 @@ Random a priori loss function. Use this function to train the closure term to re
 # Returns:
 - `total_loss`: Mean squared error loss.
 """
-function mean_squared_error(f, st, x, y, θ, λ, λ_c)
+function mean_squared_error(f, st, x, y, θ, λ, λ_c; dim = 1)
     prediction = Array(f(x, θ, st)[1])
-    total_loss = sum(abs2, prediction - y) / sum(abs2, y)
+    total_loss = 0
+    if dim > 1
+        for i in 1:length(x)
+            total_loss += sum(abs2, prediction[i] - y[i])
+        end
+    else
+        total_loss = sum(abs2, prediction - y)
+    end
     # add regularization term
     if λ > 0
         normterm = norm(θ, 1)
@@ -61,19 +68,32 @@ This is done because using the entire dataset at each iteration would be too exp
 # Returns
 A function that computes the mean squared error loss and takes as input the model parameters.
 """
-function create_randloss_derivative(input_data,
-        F_target,
-        f,
-        st;
-        n_use = size(input_data, 2),
-        λ = 0,
-        λ_c = 0)
-    d = ndims(input_data)
-    n_samples = size(input_data, d)
-    function randloss(θ)
-        i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
-        x_use = Zygote.@ignore ArrayType(selectdim(input_data, d, i))
-        y_use = Zygote.@ignore ArrayType(selectdim(F_target, d, i))
-        mean_squared_error(f, st, x_use, y_use, θ, λ, λ_c)
+function create_randloss_derivative(
+        input_data, F_target, f, st; dim = 1, n_use = 64, λ = 0, λ_c = 0)
+    if dim == 1
+        sd = length(size(input_data))
+        n_samples = size(input_data)[end]
+        return θ -> begin
+            i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
+            x_use = Zygote.@ignore selectdim(input_data, sd, i)
+            y_use = Zygote.@ignore selectdim(F_target, sd, i)
+            mean_squared_error(f, st, x_use, y_use, θ, λ, λ_c)
+        end
+    elseif dim == 2
+        x1, x2 = input_data.x
+        y1, y2 = F_target.x
+        sd = length(size(x1))
+        n_samples = size(x1)[end]
+        return θ -> begin
+            i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
+            x1_use = Zygote.@ignore selectdim(x1, sd, i)
+            x2_use = Zygote.@ignore selectdim(x2, sd, i)
+            y1_use = Zygote.@ignore selectdim(y1, sd, i)
+            y2_use = Zygote.@ignore selectdim(y2, sd, i)
+            mean_squared_error(f, st, ArrayPartition(x1_use, x2_use),
+                ArrayPartition(y1_use, y2_use), θ, λ, λ_c, dim = dim)
+        end
+    else
+        error("ERROR: Unsupported number of dimensions: $dim")
     end
 end

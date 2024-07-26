@@ -9,6 +9,7 @@ if CUDA.functional()
     import DiffEqGPU: GPUTsit5
     const solver_algo = GPUTsit5()
 end
+using ShiftedArrays
 
 # # Burgers equations
 # In this example, we will solve the Burgers equation in using the Neural ODEs framework. The Burgers equation is a fundamental equation in fluid dynamics and is given by:
@@ -20,15 +21,11 @@ end
 # where $u(x,t)$ is the velocity of the fluid, $\nu$ is the viscosity coefficient, and $(x,y)$ and $t$ are the spatial and temporal coordinates, respectively. The equation is a non-linear partial differential equation that describes the evolution of a fluid flow in one spatial dimensions. The equation is named after Johannes Martinus Burgers, who introduced it in 1948 as a simplified model for turbulence.
 
 # We start by defining the right-hand side of the Burgers equation. We will use the finite difference method to compute the spatial derivatives. 
-# So the first step is to define the grid that we are going to use.
-# We define DNS and a LES grids.
-import CoupledNODE: Grid
+# So the first step is to define the DNS and a LES that we are going to use.
 nux_dns = 1024
-dux_dns = 2π / nux_dns
-grid_u_dns = Grid(dim = 1, dx = dux_dns, nx = nux_dns)
+dux_dns = MY_TYPE(2π / nux_dns)
 nux_les = 32
-dux_les = 2π / nux_les
-grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
+dux_les = MY_TYPE(2π / nux_les)
 
 # However a central method is not  a good discretization for
 # dealing with shocks. Jameson proposes the following scheme instead:
@@ -50,9 +47,9 @@ grid_u_les = Grid(dim = 1, dx = dux_les, nx = nux_les)
 force_params = (ν,) #packed into a tuple for the rhs constructor
 
 # Now we can create the right-hand side of the NODE
-import CoupledNODE: create_burgers_rhs
-F_dns = create_burgers_rhs((grid_u_dns,), force_params)
-F_les = create_burgers_rhs((grid_u_les,), force_params)
+include("./../../src/Burgers.jl")
+F_dns = create_burgers_rhs(dux_dns, force_params)
+F_les = create_burgers_rhs(dux_les, force_params)
 
 # ### Initial conditions
 # For the initial conditions, we use the following random Fourier series:
@@ -77,18 +74,23 @@ F_les = create_burgers_rhs((grid_u_les,), force_params)
 # Since the same Fourier basis can be reused multiple times, we write a
 # function that creates multiple initial condition samples in one go. Each
 # discrete $u_0$ vector is stored as a column in the resulting matrix.
-import CoupledNODE: generate_initial_conditions
-u0_dns = generate_initial_conditions(grid_u_dns.nx, 3);
+nsim = 3
+u0_dns = generate_initial_conditions(
+    nux_dns, nsim, MY_TYPE, kmax = 4, decay = k -> MY_TYPE((1 + abs(k))^(-6 / 5)));
+include("./../../src/grid.jl")
+grid_u_dns = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_dns, nx = nux_dns, nsim = nsim, grid_data = u0_dns)
 
 # ### Filter
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-using SparseArrays, Plots
-import CoupledNODE: create_filter_matrix
-ΔΦ = 5 * grid_u_les.dx
-Φ = create_filter_matrix((grid_u_les,), (grid_u_dns,), ΔΦ, "gaussian")
+ΔΦ = 5 * dux_les
+Φ = create_filter_matrix(dux_dns, nux_dns, dux_les, nux_les, ΔΦ, "gaussian", MY_TYPE)
 heatmap(Φ; yflip = true, xmirror = true, title = "Filter matrix")
-## Apply the filter to the initial condition
+# Apply the filter to the initial condition
 u0_les = Φ * u0_dns
+# and Finally create the grid
+grid_u_les = make_grid(
+    dim = 1, dtype = MY_TYPE, dx = dux_les, nx = nux_les, nsim = nsim, grid_data = u0_les)
 
 # Let's visualize the initial conditions
 using Plots
@@ -111,10 +113,10 @@ plot(xles2[1:(end - 1)], diff(u0_les2, dims = 1), layout = (3, 1), size = (800, 
 plot!(xdns2[1:(end - 1)], diff(u0_dns2, dims = 1), linetype = :steppre, label = "DNS")
 
 # Create the right-hand side of the NODE
-import CoupledNODE: create_f_CNODE
+include("./../../src/NODE.jl")
 f_dns = create_f_CNODE((F_dns,), (grid_u_dns,); is_closed = false);
 f_les = create_f_CNODE((F_les,), (grid_u_les,); is_closed = false);
-import Random, LuxCUDA, Lux
+import Random, Lux
 Random.seed!(123)
 rng = Random.default_rng()
 θ_dns, st_dns = Lux.setup(rng, f_dns);
@@ -139,19 +141,19 @@ t_shock = 10.0f0
 dt_dns = 0.001f0
 dt_les = dt_dns
 trange_burn = (0.0f0, t_shock)
-saveat_shock = 0.01f0
+saveat_dns = 0.001f0
 dns = NeuralODE(f_dns,
     trange_burn,
     solver_algo,
     adaptive = false,
     dt = dt_dns,
-    saveat = saveat_shock);
+    saveat = saveat_dns);
 les = NeuralODE(f_les,
     trange_burn,
     solver_algo,
     adaptive = false,
     dt = dt_les,
-    saveat = saveat_shock);
+    saveat = saveat_dns);
 u_dns = Array(dns(u0_dns, θ_dns, st_dns)[1]);
 u_les = Array(les(u0_les, θ_les, st_les)[1]);
 
@@ -159,7 +161,7 @@ u_les = Array(les(u0_les, θ_les, st_les)[1]);
 using Plots
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
-@gif for i in 1:2:size(u_dns, 3)
+@gif for i in 1:50:size(u_dns, 3)
     p1 = plot(grid_u_dns.x, u_dns[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
     plot!(grid_u_les.x, u_les[:, 1, i], linetype = :steppre, label = "LES")
@@ -169,7 +171,7 @@ fig = plot(layout = (3, 1), size = (800, 300))
     p3 = plot(grid_u_dns.x, u_dns[:, 3, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_les[:, 3, i], linetype = :steppre, legend = false)
-    title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
+    title = "Time: $(round((i - 1) * saveat_dns, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
 end
@@ -183,21 +185,9 @@ end
 # Generate data
 nsamples = 500
 nsamples = 50
-# since there are some ill initial conditions, we generate the data in batches and concatenate them
-all_u_dns = zeros(size(u_dns)[1], nsamples, size(u_dns)[3])
-batch_size = 10
-n_batches = Int(nsamples / batch_size)
-for i in 1:n_batches
-    good = 0
-    all_u_dns_batch = zeros(size(u_dns)[1], batch_size, size(u_dns)[3])
-    while good < size(u_dns)[3]
-        println("Generating batch $(i) (size: $(good) < $(size(u_dns)[3]))")
-        all_u0_dns = generate_initial_conditions(grid_u_dns.nx, batch_size)
-        all_u_dns_batch = Array(dns(all_u0_dns, θ_dns, st_dns)[1])
-        good = size(all_u_dns_batch)[3]
-    end
-    all_u_dns[:, ((i - 1) * batch_size + 1):(i * batch_size), :] = all_u_dns_batch
-end
+all_u0_dns = generate_initial_conditions(
+    nux_dns, nsamples, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
+all_u_dns = Array(dns(all_u0_dns, θ_dns, st_dns)[1]);
 
 # ### Data filtering 
 all_F_dns = F_dns(reshape(
@@ -233,13 +223,17 @@ plot!(grid_u_les.x, target_F[:, i, 1] - F_les(all_u_les[:, i, :])[:, 1],
 
 # Now create the the Neural Network
 using NNlib: gelu
-import CoupledNODE: create_fno_model
-ch_fno = [1, 5, 5, 5, 5];
-kmax_fno = [16, 16, 16, 8];
-σ_fno = [gelu, gelu, gelu, identity];
-NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);
+include("./../../src/FNO.jl")
+ch_fno = [1, 12, 12, 12, 12, 12];
+kmax_fno = [16, 16, 16, 16, 16];
+σ_fno = [gelu, gelu, gelu, gelu, identity];
+ch_fno = [1, 3, 3, 3];
+kmax_fno = [8, 8, 8];
+σ_fno = [gelu, gelu, identity];
+NN_u = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les, (u -> unsqueeze(u, 1),))
 
 # Use it to create the CNODE
+include("./../../src/NODE.jl")
 f_CNODE = create_f_CNODE((F_les,), (grid_u_les,), (NN_u,); is_closed = true);
 θ, st = Lux.setup(rng, f_CNODE);
 
@@ -247,7 +241,7 @@ f_CNODE = create_f_CNODE((F_les,), (grid_u_les,), (NN_u,); is_closed = true);
 f_CNODE(all_u_les_flat, θ, st);
 
 # A priori fitting
-import CoupledNODE: create_randloss_derivative
+include("./../../src/loss_priori.jl")
 myloss = create_randloss_derivative(all_u_les_flat,
     target_F_flat,
     f_CNODE,
@@ -281,7 +275,7 @@ Lux.trainmode
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
-    maxiters = 300);
+    maxiters = 1000);
 pinit = result_neuralode.u;
 θ = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
@@ -305,14 +299,15 @@ trained_les = NeuralODE(f_CNODE,
     solver_algo,
     adaptive = false,
     dt = dt_les,
-    saveat = saveat_shock);
+    saveat = saveat_dns);
 # Repeat this until not instable
 u_dns_test = zeros(size(u_dns));
 u_les_test = zeros(size(u_les));
 u_trained_test = zeros(size(u_les));
 # generate M new samples
 M = 3
-u0_test = generate_initial_conditions(grid_u_dns.nx, 10);
+u0_test = generate_initial_conditions(
+    nux_dns, M, MY_TYPE, kmax = 4, decay = k -> Float32((1 + abs(k))^(-6 / 5)));
 #test the dns 
 u_dns_test = Array(dns(u0_test, θ_dns, st_dns)[1]);
 #test the les
@@ -330,7 +325,7 @@ u_dns_test_filtered = reshape(
 # Plot and compare the solutions
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
-@gif for i in 1:2:size(u_trained_test, 3)
+@gif for i in 1:10:size(u_trained_test, 3)
     p1 = plot(grid_u_dns.x, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
     plot!(grid_u_les.x, u_dns_test_filtered[:, 1, i],
@@ -349,7 +344,7 @@ fig = plot(layout = (3, 1), size = (800, 300))
         grid_u_les.x, u_dns_test_filtered[:, 3, i], linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_les_test[:, 3, i], linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
-    title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
+    title = "Time: $(round((i - 1) * saveat_dns, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
 end
@@ -364,19 +359,19 @@ end
 
 # ### A-posteriori fitting
 # First reset the NN
-NN_u_pos = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les);
+NN_u_pos = create_fno_model(kmax_fno, ch_fno, σ_fno, grid_u_les, (u -> unsqueeze(u, 1),))
 f_CNODE_pos = create_f_CNODE(
     (F_les,), (grid_u_les,), (NN_u_pos,); is_closed = true)
 θ_pos, st_pos = Lux.setup(rng, f_CNODE_pos);
 f_CNODE_pos(all_u_les_flat, θ_pos, st_pos);
 
-nunroll = 20
+nunroll = 10
 nintervals = 5
 noverlaps = 1
-nsamples = 3;
+nsamples = 2;
 dt_train = dt_les;
-saveat_train = saveat_shock
-t_train_range = (0.0, saveat_train * nunroll)
+saveat_train = saveat_dns
+t_train_range = (0.0f0, saveat_train * nunroll)
 training_CNODE = NeuralODE(f_CNODE_pos,
     t_train_range,
     Tsit5(),
@@ -385,7 +380,7 @@ training_CNODE = NeuralODE(f_CNODE_pos,
     saveat = saveat_train);
 
 # Define the loss
-import CoupledNODE: create_randloss_MulDtO
+include("./../../src/loss_posteriori.jl")
 myloss = create_randloss_MulDtO(all_u_les,
     training_CNODE,
     st_pos,
@@ -408,7 +403,7 @@ Lux.trainmode
 result_neuralode = Optimization.solve(optprob,
     algo;
     callback = callback,
-    maxiters = 50);
+    maxiters = 100);
 pinit = result_neuralode.u;
 θ_pos = pinit;
 optprob = Optimization.OptimizationProblem(optf, pinit);
@@ -429,7 +424,7 @@ u_posteriori_test = Array(trained_les(u0_test_les, θ_pos, st_pos)[1]);
 # Plot
 anim = Animation()
 fig = plot(layout = (3, 1), size = (800, 300))
-@gif for i in 1:2:size(u_trained_test, 3)
+@gif for i in 1:10:size(u_posteriori_test, 3)
     p1 = plot(grid_u_dns.x, u_dns_test[:, 1, i], xlabel = "x", ylabel = "u",
         linetype = :steppre, label = "DNS")
     plot!(grid_u_les.x, u_les_test[:, 1, i], linetype = :steppre, label = "LES")
@@ -446,7 +441,7 @@ fig = plot(layout = (3, 1), size = (800, 300))
     plot!(grid_u_les.x, u_les_test[:, 3, i], linetype = :steppre, legend = false)
     #plot!(grid_u_les.x, u_trained_test[:, 3, i], linetype = :steppre, legend = false)
     plot!(grid_u_les.x, u_posteriori_test[:, 3, i], linetype = :steppre, legend = false)
-    title = "Time: $(round((i - 1) * saveat_shock, digits = 2))"
+    title = "Time: $(round((i - 1) * saveat_dns, digits = 2))"
     fig = plot(p1, p2, p3, layout = (3, 1), title = title)
     frame(anim, fig)
 end
