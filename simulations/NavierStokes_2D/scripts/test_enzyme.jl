@@ -10,7 +10,6 @@ function trueODEfunc(du, u, p, t)
     true_A = [-0.1 2.0; -2.0 -0.1]
     du .= ((u .^ 3)'true_A)'
 end
-#const t = Array(range(tspan[1], tspan[2], length = datasize))
 t = Array(range(tspan[1], tspan[2], length = datasize))
 typeof(t)
 prob0 = ODEProblem(trueODEfunc, u0, tspan)
@@ -47,9 +46,7 @@ function loss_n_ode(θ::Vector{Float64})
     pred = Array(solve(myprob, RK4(), u0 = u0, p = θ, saveat=t, verbose=false))
     return sum(abs2, ode_data - pred), pred
 end
-function loss_mock(θ::Vector{Float64})
-    return 0.0, ode_data.+1 
-end
+
 
 function lop(θ::Vector{Float64}, u0::Vector{Float64}, tspan::Vector{Float64}, t::Vector{Float64})
     myprob = ODEProblem{true}(dudt, u0, tspan, θ)
