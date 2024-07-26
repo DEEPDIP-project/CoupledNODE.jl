@@ -56,7 +56,7 @@ cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver)
 cache_out = similar(F)
 Ω = setup.grid.Ω
 
-# [!] I have marked the poisson solver as inactive
+# [!] I have marked the poisson solver as inactive, because the Fourier transform is not supported by Enzyme.
 using Enzyme
 EnzymeRules.inactive(::typeof(IncompressibleNavierStokes.poisson!), args...) = nothing
 
