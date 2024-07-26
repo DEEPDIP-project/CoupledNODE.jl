@@ -285,8 +285,28 @@ dt_1= T(1e-3)
 trange_1 = (T(0), dt_1)
 state_1, outputs_1 = INS.solve_unsteady(; setup, ustart, tlims = trange_1, Δt = dt_1)
 
+import DifferentialEquations: Tsit5
 prob_1 = ODEProblem{true}(F_ip, stack(ustart), trange_1);
-sol_ode_1 = solve(prob_1, p = myfull_cache, RK4(); dt = dt_1, saveat = dt_1, adaptive=false);
+sol_ode_1 = solve(prob_1, p = myfull_cache, Tsit5(); dt = dt_1, saveat = dt_1, adaptive=false);
 
 sol_ode_1.u[1] == stack(ustart) #first element is the initial condition
-sol_ode_1.u[end] == state_1.u[1]
+size(sol_ode_1.u[end][:, :, 1])
+size(state_1.u[1])
+
+# the difference between the solutions is not zero but is very little:
+sol_ode_1.u[end][:, :, 1] == state_1.u[1]
+maximum(abs.(sol_ode_1.u[end][:, :, 1] - state_1.u[1]))
+
+# Let's check the divergence
+#INS
+div_INS_1 = INS.divergence(state_1.u, setup)
+maximum(abs.(div_INS_1)) 
+#this is supprigingly larger than expected with dt=1e-3, but is again almost zero if the time step is reduced to 1e-4
+
+#SciML
+u_last_ode_1 = (sol_ode_1.u[end][:, :, 1], sol_ode_1.u[end][:, :, 2]);
+div_ode_1 = INS.divergence(u_last_ode_1, setup)
+max_div_ode_1 = maximum(abs.(div_ode_1))
+# The divergence of SciML solutin is large no matter: 
+# - how big the time step is. Tried (1e-3, 1e-4, 1e-5, 1e-6) and got the same value, being even larger for 1e-2.
+# - the solver used. Tried RK4 and Tsit5 and got the same value.
