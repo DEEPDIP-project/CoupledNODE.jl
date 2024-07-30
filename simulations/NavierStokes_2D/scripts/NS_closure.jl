@@ -10,6 +10,7 @@ T = Float32
 ArrayType = Array
 Re = T(1_000)
 n = 256
+n = 128
 lims = T(0), T(1)
 x , y = LinRange(lims..., n + 1), LinRange(lims..., n + 1)
 setup = Setup(x, y; Re, ArrayType);
@@ -27,7 +28,7 @@ cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver)
 
 
 dt = T(1e-3)
-trange = (T(0), T(1))
+trange = [T(0), T(0.1)]
 savevery = 20
 saveat = 20 * dt
 
@@ -64,7 +65,6 @@ cache_div = INS.divergence(ustart,setup)
 cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver)
 cache_out = similar(F)
 Ω = setup.grid.Ω
-
 
 # We need to modify the solver in place in order to pass everything to Enzyme
 using SparseArrays, LinearAlgebra
@@ -169,49 +169,122 @@ function my_cache_psolver(::Array, setup)
     end
     return ftemp, ptemp, fact, viewrange, Ip
 end
-function my_psolve!(p, f, ftemp, ptemp, fact, viewrange, Ip)
+# get the cache for the poisson solver
+cache_ftemp, cache_ptemp, fact, cache_viewrange, cache_Ip = my_cache_psolver(setup.grid.x[1], setup)
+# make fact into a global constant since it is a sparse array that it is complicated to express in Enzyme
+global fact 
+# Instead the other two can not be made global otherwise they break the stride
+#global viewrange = cache_viewrange
+#global Ip = cache_Ip
+
+# This is the function that solves the Poisson equation
+# notice that it is using the global constant fact
+function my_psolve!(p, f, ftemp, ptemp, viewrange, Ip)
     copyto!(view(ftemp, viewrange), view(view(f, Ip), :))
     #ftemp[viewrange] .= vec(f[Ip])
     ptemp .= fact \ ftemp
     copyto!(view(view(p, Ip), :), eltype(p).(view(ptemp, viewrange)))
-    p
+    nothing
 end
-# get the cache for the poisson solver
-cache_ftemp, cache_ptemp, cache_fact, cache_viewrange, cache_Ip = my_cache_psolver(setup.grid.x[1], setup)
 
+
+# Requirements for Enzyme autodiff
+# (1) you need to be able to do similar
+# (2) SciML wants only some specific structure [https://docs.sciml.ai/SciMLStructures/stable/interface/]
+# so it is not possible to solve (1) by defining a struct with its similar method like this
+#struct MyCache
+#    f::Tuple{Matrix{Float32}, Matrix{Float32}}
+#    div::Matrix{Float32}
+#    p::Matrix{Float32}
+#    ftemp::Vector{Float32}
+#    ptemp::Vector{Float32}
+#    viewrange::UnitRange{Int64}
+#    Ip::CartesianIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}}
+#    θ::Any
+#end
+#function Base.similar(x::MyCache)
+#    MyCache(
+#        (similar(x.f[1]),similar(x.f[2])),
+#        similar(x.div),
+#        similar(x.p),
+#        similar(x.ftemp),
+#        similar(x.ptemp),
+#        x.viewrange,
+#        x.Ip,
+#        x.θ
+#    )
+#end
+# Instead, we can use ArrayPartition and overwrite the similar method in Base.jl 
+using RecursiveArrayTools
+function Base.similar(x::Tuple{Matrix{Float32}, Matrix{Float32}})
+    (similar(x[1]),similar(x[2]))
+end
+function Base.similar(x::UnitRange{Int64})
+    x
+end
+function Base.similar(x::CartesianIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}})
+    x
+end
+# we also have to overwrite Base.zero
+function Base.zero(x::Tuple{Matrix{Float32}, Matrix{Float32}})
+    (zero(x[1]), zero(x[2]))
+end
+function Base.zero(x::UnitRange{Int64})
+    x
+end
+function Base.zero(x::CartesianIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}})
+    x
+end
+# Unfortunately it does not even work for ArrayPartition!
+# let's try with a ComponentArray, for which we define the similar method
+function Base.similar(x::Tuple{Tuple{Matrix{Float32}, Matrix{Float32}}, Matrix{Float32}, Matrix{Float32}, Vector{Float32}, Vector{Float32}, UnitRange{Int64}, CartesianIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}}, Float64})
+    ComponentArray((similar(x[1]), similar(x[2]), similar(x[3]), similar(x[4]), similar(x[5]), x[6], x[7], x[8]))
+end
+function Base.zero(x::Tuple{Tuple{Matrix{Float32}, Matrix{Float32}}, Matrix{Float32}, Matrix{Float32}, Vector{Float32}, Vector{Float32}, UnitRange{Int64}, CartesianIndices{2, Tuple{UnitRange{Int64}, UnitRange{Int64}}}, Float64})
+    ComponentArray((zero(x[1]), zero(x[2]), zero(x[3]), zero(x[4]), zero(x[5]), x[6], x[7], x[8]))
+end
+ 
+
+
+
+# **********************8
 # * Force in place
 F_ip(du, u, p, t)= begin
     u_view = eachslice(u; dims = 3)
     IncompressibleNavierStokes.apply_bc_u!(u_view, t, setup)
-    IncompressibleNavierStokes.momentum!(p[1], u_view, nothing, t, setup)
-    IncompressibleNavierStokes.apply_bc_u!(p[1], t, setup; dudt = true)
+    IncompressibleNavierStokes.momentum!(p.x[1], u_view, nothing, t, setup)
+    IncompressibleNavierStokes.apply_bc_u!(p.x[1], t, setup; dudt = true)
     #########
-    T = eltype(u_view[1])
-    IncompressibleNavierStokes.divergence!(p[2], p[1], setup)
-    @. p[2] *= Ω
+    IncompressibleNavierStokes.divergence!(p.x[2], p.x[1], setup)
+    @. p.x[2] *= Ω
     # Solve the Poisson equation
-    #IncompressibleNavierStokes.poisson!(p[4], p[3], p[2])
-    my_psolve!(p[3], p[2], p[4], p[5], p[6], p[7], p[8])
-    IncompressibleNavierStokes.apply_bc_p!(p[3], T(0), setup)
+    my_psolve!(p.x[3], p.x[2], p.x[4], p.x[5], p.x[6], p.x[7])
+    IncompressibleNavierStokes.apply_bc_p!(p.x[3], T(0), setup)
     # Apply pressure correction term
-    IncompressibleNavierStokes.applypressure!(p[1], p[3], setup)
+    IncompressibleNavierStokes.applypressure!(p.x[1], p.x[3], setup)
     #########
-    #IncompressibleNavierStokes.project!(p[1], setup; psolver=p[4], div=p[2], p=p[3])
-    IncompressibleNavierStokes.apply_bc_u!(p[1], t, setup; dudt = true)
-    du[:,:,1] .= p[1][1]
-    du[:,:,2] .= p[1][2]
+    IncompressibleNavierStokes.apply_bc_u!(p.x[1], t, setup; dudt = true)
+    du[:,:,1] .= p.x[1][1]
+    du[:,:,2] .= p.x[1][2]
     nothing
 end
 temp = similar(stack(ustart))
-myfull_cache = (cache_F,cache_div, cache_p, cache_ftemp, cache_ptemp, cache_fact, cache_viewrange, cache_Ip)
-F_ip(temp, stack(ustart), myfull_cache, 0.0f0);
+# Define the cache for the force as an ArrayPartition
+# this is needed to pass it to SciMLSensitivity and Enzyme  
+# notice that the last place of the cache will be the p_nn ComponentArray
+P = ArrayPartition(cache_F,cache_div, cache_p, cache_ftemp, cache_ptemp, cache_viewrange, cache_Ip, 0.0)
+F_ip(temp, stack(ustart), P, 0.0f0);
 
+P = ComponentArray((cache_F,cache_div, cache_p, cache_ftemp, cache_ptemp, cache_viewrange, cache_Ip, 0.0))
+typeof(ComponentArray((cache_F,cache_div, cache_p, cache_ftemp, cache_ptemp, cache_viewrange, cache_Ip, 0.0)))
+P[end]
+o = similar(P)
 
 # Solve the ODE using ODEProblem
-prob = ODEProblem{true}(F_ip, stack(ustart), trange, p=myfull_cache)
+prob = ODEProblem{true}(F_ip, stack(ustart), trange, p=P)
 sol_ode, time_ode, allocation_ode, gc_ode, memory_counters_ode = @timed solve(
     prob,
-    p = myfull_cache,
+    p = P,
     RK4();
     dt = dt,
     saveat = saveat,
@@ -227,22 +300,28 @@ dummy_NN = Lux.Chain(
     Lux.Scale((1,1)),
 )
 θ_node, st_node = Lux.setup(rng, dummy_NN)
-θ_node
 using ComponentArrays
-Lux.apply(dummy_NN, stack(ustart), ComponentArray(θ_node), st_node)[1]
+θ_node = ComponentArray(θ_node)
+# Test with a useless NN
+θ_node.weight = [0.0f0;;]
+θ_node.bias= [0.0f0;;]
+Lux.apply(dummy_NN, stack(ustart), θ_node, st_node)[1];
 
 # Force+NN in-place version
-dudt_nn(du::Array{Float32}, u::Array{Float32}, P, t::Float32) = begin
-    F_ip(du, u, P[1], t) 
-    gg = Lux.apply(dummy_NN, u, P[2], st_node)[1]
-    @. du .= du .+ gg
+dudt_nn(du::Array{Float32}, u::Array{Float32}, P::ArrayPartition, t::Float32) = begin
+    F_ip(du, u, P, t) 
+    tmp = Lux.apply(dummy_NN, u, P.x[end], st_node)[1]
+    @. du .= du .+ tmp
+    nothing
 end
-P1 = myfull_cache
-dudt_nn(temp, stack(ustart), (P1,ComponentArray(θ_node)), 0.0f0)
-prob_node = ODEProblem{true}(dudt_nn, stack(ustart), trange, p=(P1,ComponentArray(θ_node)))
+#I can use ArrayPartition, but there is no similar  method
+P = ArrayPartition(cache_F,cache_div, cache_p, cache_ftemp, cache_ptemp, cache_viewrange, cache_Ip, θ_node)
+
+dudt_nn(temp, stack(ustart), P, 0.0f0)
+prob_node = ODEProblem{true}(dudt_nn, stack(ustart), trange, p=P)
 
 u0stacked = stack(ustart)
-sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed solve(prob_node, RK4(), u0 = u0stacked, p = (P1,ComponentArray(θ_node)), saveat = saveat, dt=dt);
+sol_node, time_node, allocation_node, gc_node, memory_counters_node = @timed solve(prob_node, RK4(), u0 = u0stacked, p = P, saveat = saveat, dt=dt);
 
 
 
@@ -272,9 +351,9 @@ Plots.plot(p1, p2, p3, p4,p5,p6, layout=(2,3), size=(900,600))
 
 
 # Compute the divergence of the final state
-div_INS = INS.divergence(state.u, setup)
-div_ode = INS.divergence((sol_ode.u[end][:,:,1],sol_ode.u[end][:,:,2]), setup)
-div_node = INS.divergence((sol_node.u[end][:,:,1],sol_node.u[end][:,:,2]), setup)
+div_INS = INS.divergence(state.u, setup);
+div_ode = INS.divergence((sol_ode.u[end][:,:,1],sol_ode.u[end][:,:,2]), setup);
+div_node = INS.divergence((sol_node.u[end][:,:,1],sol_node.u[end][:,:,2]), setup);
 p1 = Plots.heatmap(title="div_INS",div_INS)
 p2 = Plots.heatmap(title="div_ODE",div_ode)
 p3 = Plots.heatmap(title="div_NODE",div_node)
@@ -286,29 +365,75 @@ using Enzyme
 using ComponentArrays
 using SciMLSensitivity
 
-pinit = ComponentArray(θ_node)
-ode_data = Array(sol_ode)
 
-
-# First test Enzyme for a one step a priori loss
+# First test Enzyme for something that does not make sense bu it has the structure of a priori loss
 U = stack(state.u) 
-function fen(θ, u0, P1, temp)
-    return sum(U .- dudt_nn(temp, u0, (P1,θ), 0.0f0))
+function fen(u0, p, temp, U)
+    # Compute the force in-place
+    dudt_nn(temp, u0, p, 0.0f0)
+    return sum(U .- temp)
 end
-# Some tests of Enzyme
-dtheta = Enzyme.make_zero(pinit)
-u0stacked = stack(ustart)
-du = Enzyme.make_zero(u0stacked)
-P1
-dual_P1 = Enzyme.make_zero(P1)
-dual_temp = Enzyme.make_zero(temp)
+u0stacked = stack(ustart);
+du = Enzyme.make_zero(u0stacked);
+dU = Enzyme.make_zero(U);
+dP = Enzyme.make_zero(P);
+dtemp = Enzyme.make_zero(temp);
+pino = similar(P)
 # Compute the autodiff using Enzyme
-Enzyme.autodiff(Enzyme.Reverse, fen, Active, Duplicated(pinit, dtheta), Duplicated(u0stacked, du), Duplicated(P1, dual_P1), Duplicated(temp, dual_temp))
-dtheta
+Enzyme.autodiff(Enzyme.Reverse, fen, Active, Duplicated(u0stacked, du), Duplicated(P, dP), Duplicated(temp, dtemp), Duplicated(U, dU))
+# the gradient that we need is only the following
+dP.x[end]
 # this shows us that Enzyme can differentiate our force. But what about SciML solvers?
+
+
+
+# Define a posteriori loss function that calls the ODE solver
+# First, make a shorter run
+trange = [T(0), T(2*dt)]
+saveat = dt
+prob = ODEProblem{true}(F_ip, u0stacked, trange, p=P)
+ode_data = Array(solve(prob, RK4(), u0 = u0stacked, p = P, saveat = saveat, dt=dt))
+# the loss has to be in place 
+function loss(l::Vector{Float32},θ::ArrayPartition, u0::Array{Float32}, tspan::Vector{Float32}, t::Float32)
+    myprob = ODEProblem{true}(dudt_nn, u0, tspan)
+    pred = Array(solve(myprob, RK4(), u0 = u0, p = θ, saveat=t, verbose=false))
+    l .= Float32(sum(abs2, ode_data - pred))
+    nothing
+end
+l=[0.0f0]
+loss(l,P, u0stacked,trange, saveat)
+l
+
+
+# Test if the loss can be autodiffed
+# [!] dl is called the 'seed' and it has to be marked to be one for correct gradient
+l = [0.0f0]
+dl = Enzyme.make_zero(l) .+1
+dP = Enzyme.make_zero(P)
+Enzyme.autodiff(Enzyme.Reverse, loss, Duplicated(l, dl), Duplicated(P, dP), Duplicated(u0stacked, du) , Const(trange), Const(saveat))
+dP.x[end]
 show(err)
 
+
+
 ##33 from here  [..]
+##33 from here  [..]
+##33 from here  [..]
+
+
+
+function loss_gradient(G, θ::ComponentVector{Float32}, P1_u0_tspan_t_dP1_du0::Any) 
+    P1, u0, tspan, t, dP1, du0 = P1_u0_tspan_t_dP1_du0
+    # Reset gradient to zero
+    Enzyme.make_zero!(G)
+    # And remember to pass the seed to the loss funciton with the dual part set to 1
+    Enzyme.autodiff(Enzyme.Reverse, lip, Duplicated([0.0f0], [1.0f0]), Duplicated(θ, G), DuplicatedNoNeed(u0, du0) , Const(tspan), Const(t))
+    nothing
+end
+
+G = copy(dp)
+oo = my_G(G,p_nn, [u0, tspan, t, du0])
+
 
 # Then I can test Enzyme for a posteriori loss 
 # pre-allcoate
@@ -328,8 +453,6 @@ myloss(pinit, u0stacked, P1)
 Enzyme.autodiff(Enzyme.Reverse, myloss, Active, Duplicated(pinit, dtheta), Duplicated(u0stacked, du), Duplicated(P1, dual_P1))
 show(err)
 
-
-#the function (loss) in enzyme needs to take the initial condition as an argument and it has to be dual in order to store the gradient
 
 using SciMLSensitivity
 using Optimization, OptimizationOptimisers, Optimisers
