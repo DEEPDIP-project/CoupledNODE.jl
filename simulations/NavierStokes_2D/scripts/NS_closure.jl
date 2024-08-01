@@ -4,10 +4,10 @@ using IncompressibleNavierStokes
 INS = IncompressibleNavierStokes
 
 
-#test componentarrays separating fx and fy 
-#retest abstractarray
+# [!] Do NOT use typing with Enzyme!
 
-
+le mypbc non gli piaccion a enzyme perche mischiano l activity allora levale
+puoi provare a imparare div=0 usando come target le simulazioni con INS
 
 # Setup and initial condition
 T = Float32
@@ -17,11 +17,12 @@ Re = T(1_000)
 n = 256
 n = 128
 n = 64
+#n = 32
 #n = 16
 #n = 8
 lims = T(0), T(1)
 x , y = LinRange(lims..., n + 1), LinRange(lims..., n + 1)
-setup = Setup(x, y; Re, ArrayType);
+const setup = Setup(x, y; Re, ArrayType);
 ustart = random_field(setup, T(0));
 psolver = psolver_spectral(setup);
 # [!] can not use spectral solver with Enzyme
@@ -71,7 +72,6 @@ F = similar(stack(ustart))
 cache_F = (F[:,:,1], F[:,:,2])
 cache_div = INS.divergence(ustart,setup)
 cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver)
-cache_out = similar(F)
 Ω = setup.grid.Ω
 
 # We need to modify the solver in place in order to pass everything to Enzyme
@@ -191,7 +191,7 @@ end
 my_psolve! = generate_psolver(cache_viewrange, cache_Ip, fact)
 
 
-##########################3
+##########################
 # There is a problem wiht the boundary conditions on p:
 # INS can be differentiated a priori but not a posteriori
 # my custom implementation down here can be differentiated only a posteriori 
@@ -263,6 +263,107 @@ end
 
 
 
+############# Test a similar thing for the BC on u
+using KernelAbstractions
+function myapply_bc_u!(u, t, setup; kwargs...)
+    (; boundary_conditions) = setup
+    D = length(u)
+    for β = 1:D
+        myapply_bc_u!(boundary_conditions[β][1], u, β, t, setup; isright = false, kwargs...)
+        myapply_bc_u!(boundary_conditions[β][2], u, β, t, setup; isright = true, kwargs...)
+    end
+    u
+end
+function myapply_bc_u!(::PeriodicBC, u, β, t, setup; isright, kwargs...)
+    (; grid, workgroupsize) = setup
+    (; dimension, N) = grid
+    D = dimension()
+    e = Offset{D}()
+    
+    function _bc_a!(u, α, β)
+        for I in CartesianIndices(N)
+            if I[β] == 1
+                u[α][I] = u[α][I + (N[β] - 2) * e(β)]
+            end
+        end
+    end
+    
+    function _bc_b!(u, α, β)
+        for I in CartesianIndices(N)
+            if I[β] == N[β]
+                u[α][I] = u[α][I - (N[β] - 2) * e(β)]
+            end
+        end
+    end
+    
+    for α = 1:D
+        if isright
+            _bc_b!(u, α, β)
+        else
+            _bc_a!(u, α, β)
+        end
+    end
+    u
+end
+
+
+@timed for i in 1:1000
+    A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
+    IncompressibleNavierStokes.apply_bc_u!(A, 0.0f0, setup);
+end
+@timed for i in 1:1000
+    A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
+    myapply_bc_u!(A, 0.0f0, setup);
+end
+
+# Check if the implementation is correct
+for i in 1:1000
+    A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]));
+    A0 = (copy(A[1]), copy(A[2])) ;                  ;
+    B = (copy(A[1]), copy(A[2]))                    ;
+    IncompressibleNavierStokes.apply_bc_u!(A, myzero, setup)  ;
+    myapply_bc_u!(B, myzero, setup);
+    @assert A[1] ≈ B[1]                  
+    @assert A[2] ≈ B[2]
+end
+
+
+
+###########################################
+# **** Test if you can make divergence faster
+function mydivergence!(div, u, setup)
+    (; grid, workgroupsize) = setup
+    (; Δ, N, Ip, Np) = grid
+    D = length(u)
+    e = Offset{D}()
+
+    I0 = first(Ip)
+    I0 -= oneunit(I0)
+
+    @inbounds for idx in CartesianIndices(Np)
+        I = idx + I0
+        d = 0.0
+        for α in 1:D
+            uα = u[α]
+            Δα = Δ[α]
+            Iα = I[α]
+            d += (uα[I] - uα[I - e(α)]) / Δα[Iα]
+        end
+        div[I] = d
+    end
+
+    div
+end
+@timed for i in 1:1000
+    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+    u = random_field(setup, T(0));
+    IncompressibleNavierStokes.divergence!(A, u, setup);
+end
+@timed for i in 1:1000
+    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+    u = random_field(setup, T(0));
+    mydivergence!(A, u, setup);
+end
 
 
 
@@ -309,50 +410,140 @@ import Random, Lux;
 Random.seed!(123);
 rng = Random.default_rng();
 dummy_NN = Lux.Chain(
-    Lux.Scale((1,1)),
+    Lux.ReshapeLayer(((n+2)*(n+2),)),
+    Lux.Dense((n+2)*(n+2)=>(n+2)*(n+2),init_weight = Lux.WeightInitializers.zeros32),
+    Lux.ReshapeLayer(((n+2),(n+2))),
 )
+# Scale can not be differentiated by Enzyme!
+#dummy_NN = Lux.Chain(
+#    Lux.Scale((1,1)),
+#)
 θ_node, st_node = Lux.setup(rng, dummy_NN)
+
 using ComponentArrays
 θ_node = ComponentArray(θ_node)
 # You can set it to 0 like this
 #θ_node.weight = [0.0f0;;]
 #θ_node.bias= [0.0f0;;]
-Lux.apply(dummy_NN, stack(ustart), θ_node, st_node)[1];
-
+Lux.apply(dummy_NN, stack(ustart), θ_node, st_node)[1]
 
 # Define the cache for the force 
 using ComponentArrays
-P = ComponentArray((f=F,div=cache_div, p=cache_p, ft=cache_ftemp, pt=cache_ptemp, θ=θ_node, a_priori=1))
+P = ComponentArray((f=zeros(T, (n+2,n+2,2)),div=zeros(T,(n+2,n+2)), p=zeros(T,(n+2,n+2)), ft=zeros(T,size(cache_ftemp)), pt=zeros(T,size(cache_ptemp)), lux=zeros(T,(n+2,n+2,2)), θ=copy(θ_node), a_priori=1))
 # And gets its type
 TP = typeof(P)
 
 
 # **********************8
 # * Force in place
-F_ip(du::Array{Float32}, u::Array{Float32}, p::TP, t::Float32) = begin
+#function F_ip(du::Array{Float32}, u::Array{Float32}, p::TP, t::Float32)
+function F_ip(du, u, p, t)
+    #u_view = eachslice(u; dims = 3)
+    #F = eachslice(p.f; dims = 3)
+    #if p.a_priori == 1
+    #    myapply_bc_u!(u_view, t, setup)
+    #else
+    #    IncompressibleNavierStokes.apply_bc_u!(u_view, t, setup)
+    #end
+    #IncompressibleNavierStokes.momentum!(F, u_view, nothing, t, setup)
+    #if p.a_priori == 1
+    #    myapply_bc_u!(F, t, setup)
+    #else
+    #    IncompressibleNavierStokes.apply_bc_u!(F, t, setup)
+    #end
+    ##IncompressibleNavierStokes.divergence!(p.div, F, setup)
+    ##@. p.div *= Ω
+    ##my_psolve!(p.p, p.div, p.ft, p.pt)
+    #if p.a_priori == 1
+    #    myapply_bc_p!(p.p, myzero, setup)
+    #else
+    #    IncompressibleNavierStokes.apply_bc_p!(p.p, myzero, setup)
+    #end
+    #IncompressibleNavierStokes.applypressure!(F, p.p, setup)
+    #if p.a_priori == 1
+    #    myapply_bc_u!(F, t, setup)
+    #else
+    #    IncompressibleNavierStokes.apply_bc_u!(F, t, setup)
+    #end
+    #du[:,:,1] .= F[1]
+    #du[:,:,2] .= F[2]
+    #nothing
     u_view = eachslice(u; dims = 3)
     F = eachslice(p.f; dims = 3)
-    IncompressibleNavierStokes.apply_bc_u!(u_view, t, setup)
+    myapply_bc_u!(u_view, t, setup)
     IncompressibleNavierStokes.momentum!(F, u_view, nothing, t, setup)
-    IncompressibleNavierStokes.apply_bc_u!(F, t, setup; dudt = true)
-    #########
+    myapply_bc_u!(F, t, setup)
     IncompressibleNavierStokes.divergence!(p.div, F, setup)
     @. p.div *= Ω
-    # Solve the Poisson equation
     my_psolve!(p.p, p.div, p.ft, p.pt)
-    # There are some problems with the boundary conditions on p so I had to redefine the function for a priori differentiation
-    if p.a_priori == 1
-        myapply_bc_p!(p.p, myzero, setup)
-    else
-        IncompressibleNavierStokes.apply_bc_p!(p.p, myzero, setup)
-    end
-    # Apply pressure correction term
+    myapply_bc_p!(p.p, myzero, setup)
     IncompressibleNavierStokes.applypressure!(F, p.p, setup)
-    #########
-    IncompressibleNavierStokes.apply_bc_u!(F, t, setup; dudt = true)
+    myapply_bc_u!(F, t, setup)
     du[:,:,1] .= F[1]
     du[:,:,2] .= F[2]
     nothing
+    #times = Dict{String, Float64}()
+
+    #u_view = eachslice(u; dims = 3)
+    #F = eachslice(p.f; dims = 3)
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.apply_bc_u!(u_view, t, setup)
+    #println("Time for apply_bc_u! (initial): ", elapsed_time, " seconds")
+    #times["apply_bc_u! (initial)"] = elapsed_time
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.momentum!(F, u_view, nothing, t, setup)
+    #println("Time for momentum!: ", elapsed_time, " seconds")
+    #times["momentum!"] = elapsed_time
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.apply_bc_u!(F, t, setup; dudt = true)
+    #println("Time for apply_bc_u! (dudt): ", elapsed_time, " seconds")
+    #times["apply_bc_u! (dudt)"] = elapsed_time
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.divergence!(p.div, F, setup)
+    #println("Time for divergence!: ", elapsed_time, " seconds")
+    #times["divergence!"] = elapsed_time
+
+    #elapsed_time = @elapsed @. p.div *= Ω
+    #println("Time for scaling p.div: ", elapsed_time, " seconds")
+    #times["scaling p.div"] = elapsed_time
+
+    #elapsed_time = @elapsed my_psolve!(p.p, p.div, p.ft, p.pt)
+    #println("Time for my_psolve!: ", elapsed_time, " seconds")
+    #times["my_psolve!"] = elapsed_time
+
+    #if p.a_priori == 1
+    #    elapsed_time = @elapsed myapply_bc_p!(p.p, myzero, setup)
+    #    println("Time for myapply_bc_p!: ", elapsed_time, " seconds")
+    #    times["myapply_bc_p!"] = elapsed_time
+    #else
+    #    elapsed_time = @elapsed IncompressibleNavierStokes.apply_bc_p!(p.p, myzero, setup)
+    #    println("Time for apply_bc_p!: ", elapsed_time, " seconds")
+    #    times["apply_bc_p!"] = elapsed_time
+    #end
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.applypressure!(F, p.p, setup)
+    #println("Time for applypressure!: ", elapsed_time, " seconds")
+    #times["applypressure!"] = elapsed_time
+
+    #elapsed_time = @elapsed IncompressibleNavierStokes.apply_bc_u!(F, t, setup; dudt = true)
+    #println("Time for apply_bc_u! (final): ", elapsed_time, " seconds")
+    #times["apply_bc_u! (final)"] = elapsed_time
+
+    #elapsed_time = @elapsed begin
+    #    du[:,:,1] .= F[1]
+    #    du[:,:,2] .= F[2]
+    #end
+    #println("Time for updating du: ", elapsed_time, " seconds")
+    #times["updating du"] = elapsed_time
+
+    ## Rank and print the times
+    #sorted_times = sort(collect(times), by = x -> x[2], rev = true)
+    #println("\nRanked execution times:")
+    #for (operation, time) in sorted_times
+    #    println("$operation: $time seconds")
+    #end
+
+    #nothing
 end
 temp = similar(stack(ustart))
 F_ip(temp, stack(ustart), P, 0.0f0)
@@ -371,14 +562,15 @@ sol_ode, time_ode, allocation_ode, gc_ode, memory_counters_ode = @timed solve(
 
 
 # Force+NN in-place version
-dudt_nn(du::Array{Float32}, u::Array{Float32}, P::TP, t::Float32) = begin
+#dudt_nn(du::Array{Float32}, u::Array{Float32}, P::TP, t::Float32) = begin
+dudt_nn(du, u, P, t) = begin
     F_ip(du, u, P, t) 
-    #tmp = Lux.apply(dummy_NN, u, P.x[end], st_node)[1]
-    tmp = Lux.apply(dummy_NN, u, P.θ , st_node)[1]
-    @. du .= du .+ tmp
+    P.lux .= Lux.apply(dummy_NN, u, P.θ , st_node)[1]
+    #@. du += P.lux
+    du .= du .+ P.lux
+    #du .= Lux.apply(dummy_NN, u, P.θ , st_node)[1]
     nothing
 end
-
 
 dudt_nn(temp, stack(ustart), P, 0.0f0)
 prob_node = ODEProblem{true}(dudt_nn, stack(ustart), trange, p=P)
@@ -431,19 +623,20 @@ using SciMLSensitivity
 
 
 # First test Enzyme for something that does not make sense bu it has the structure of a priori loss
-U = stack(state.u) 
-function fen(u0::Array{Float32}, p::TP, temp::Array{Float32})
-    # Compute the force in-place
-    dudt_nn(temp, u0, p, 0.0f0)
-    return sum(U .- temp)
-end
+#U = stack(state.u);
+#function fen(u0::Array{Float32}, p::TP, temp::Array{Float32})
+#    # Compute the force in-place
+#    dudt_nn(temp, u0, p, 0.0f0)
+#    return sum(U .- temp)
+#end
 u0stacked = stack(ustart);
 du = Enzyme.make_zero(u0stacked);
+P = ComponentArray((f=zeros(T, (n+2,n+2,2)),div=zeros(T,(n+2,n+2)), p=zeros(T,(n+2,n+2)), ft=zeros(T,size(cache_ftemp)), pt=zeros(T,size(cache_ptemp)), lux=zeros(T,(n+2,n+2,2)), θ=copy(θ_node), a_priori=0))
 dP = Enzyme.make_zero(P);
 temp = similar(stack(ustart))
 dtemp = Enzyme.make_zero(temp);
 # Compute the autodiff using Enzyme
-@timed Enzyme.autodiff(Enzyme.Reverse, fen, Active, DuplicatedNoNeed(u0stacked, du), DuplicatedNoNeed(P, dP), DuplicatedNoNeed(temp, dtemp))
+#@timed Enzyme.autodiff(Enzyme.Reverse, fen, Active, DuplicatedNoNeed(u0stacked, du), DuplicatedNoNeed(P, dP), DuplicatedNoNeed(temp, dtemp))
 # the gradient that we need is only the following
 dP.θ
 # this shows us that Enzyme can differentiate our force. But what about SciML solvers?
@@ -451,49 +644,68 @@ println("Tested a priori")
 show(err)
 
 
+
 # Define a posteriori loss function that calls the ODE solver
 # First, make a shorter run
-trange = [T(0), T(10*dt)];
+# and remember to set a small dt
+dt = T(1e-4)
+typeof(dt)
+trange = [T(0), T(3*dt)];
 saveat = dt;
 prob = ODEProblem{true}(F_ip, u0stacked, trange, p=P);
 ode_data = Array(solve(prob, RK4(), u0 = u0stacked, p = P, saveat = saveat, dt=dt));
+ode_data += T(0.1)*rand(Float32, size(ode_data))
+
 # the loss has to be in place 
-function loss(l::Vector{Float32},θ::TP, u0::Array{Float32}, tspan::Vector{Float32}, t::Float32)
-    myprob = ODEProblem{true}(dudt_nn, u0, tspan)
-    pred = Array(solve(myprob, RK4(), u0 = u0, p = θ, saveat=t, verbose=false))
-    l .= Float32(sum(abs2, ode_data - pred))
+#function loss(l::Vector{Float64},θ::TP, u0::Array{Float32}, tspan::Vector{Float32}, t::Float32, dt::Float32, pred::Array{Float32})
+#function loss(l::Vector{Float32},P::TP, u0::Array{Float32}, pred::Array{Float32})
+#function loss(l::Vector{Float32},P, u0::Array{Float32}, pred::Array{Float32}, tspan::Vector{Float32}, t::Float32, dt::Float32, target::Array{Float32})
+function loss(l,P, u0, pred, tspan, t, dt, target)
+    myprob = ODEProblem{true}(dudt_nn, u0, tspan, p=P)
+    pred .= Array(solve(myprob, RK4(), u0 = u0, p = P, saveat=t, dt=dt, verbose=false))
+    l .= Float32(sum(abs2, target - pred))
     nothing
 end
-l=[0.0f0];
-loss(l,P, u0stacked,trange, saveat);
+data = copy(ode_data);
+target = copy(ode_data);
+l=[T(0.0)];
+loss(l,P, u0stacked, data, trange, saveat, dt, target);
 l
-
 
 
 # Test if the loss can be autodiffed
 # [!] dl is called the 'seed' and it has to be marked to be one for correct gradient
-l = [0.0f0];
-dl = Enzyme.make_zero(l) .+1;
-P = ComponentArray((f=F,div=cache_div, p=cache_p, ft=cache_ftemp, pt=cache_ptemp, θ=θ_node, a_priori=0));
+l = [T(0.0)];
+dl = Enzyme.make_zero(l) .+T(1);
+P = ComponentArray{Float32}(f=zeros(T, (n+2,n+2,2)),div=zeros(T,(n+2,n+2)), p=zeros(T,(n+2,n+2)), ft=zeros(T,size(cache_ftemp)), pt=zeros(T,size(cache_ptemp)), lux=zeros(T,(n+2,n+2,2)), θ=copy(θ_node), a_priori=0)
 dP = Enzyme.make_zero(P);
 du = Enzyme.make_zero(u0stacked);
-@timed Enzyme.autodiff(Enzyme.Reverse, loss, DuplicatedNoNeed(l, dl), DuplicatedNoNeed(P, dP), DuplicatedNoNeed(u0stacked, du) , Const(trange), Const(saveat))
+dd = Enzyme.make_zero(data);
+dtarg = Enzyme.make_zero(target);
+@timed Enzyme.autodiff(Enzyme.Reverse, loss, DuplicatedNoNeed(l, dl), DuplicatedNoNeed(P, dP), DuplicatedNoNeed(u0stacked, du), DuplicatedNoNeed(data, dd), Const(trange), Const(saveat), Const(dt), DuplicatedNoNeed(target, dtarg))
 dP.θ
     
-    
-    
-    
-extra_par = [u0stacked, trange, saveat, du, dP, P];
+### You can think about reserving a larger stack size for the autodiff using this
+#function with_stacksize(f::F, n) where {F<:Function}
+#    fetch(schedule(Task(f, n)))
+#end
+#with_stacksize(2_000_000_000) do
+#    Enzyme.autodiff(Enzyme.Reverse, loss, DuplicatedNoNeed(l, dl), DuplicatedNoNeed(P, dP), DuplicatedNoNeed(u0stacked, du) , Const(trange), Const(saveat))
+#end
+
+
+println("Now defining the gradient function")
+extra_par = [u0stacked, data, dd, target, dtarg, trange, saveat, dt, du, dP, P];
 Textra = typeof(extra_par);
 Tth = typeof(P.θ);
 #function loss_gradient(G::Tth, θ::Tth, extra_par::Textra) 
 function loss_gradient(G, extra_par) 
-    u0, trange, saveat, du0, dP, P = extra_par
+    u0, data, dd, target, dtarg, trange, saveat, dt, du0, dP, P = extra_par
     # [!] Notice that we are updating P.θ in-place in the loss function
     # Reset gradient to zero
     Enzyme.make_zero!(dP)
     # And remember to pass the seed to the loss funciton with the dual part set to 1
-    Enzyme.autodiff(Enzyme.Reverse, loss, DuplicatedNoNeed([0.0f0], [1.0f0]), DuplicatedNoNeed(P,dP), DuplicatedNoNeed(u0, du0) , Const(trange), Const(saveat))
+    Enzyme.autodiff(Enzyme.Reverse, loss, DuplicatedNoNeed([T(0)], [T(1)]), DuplicatedNoNeed(P,dP), DuplicatedNoNeed(u0, du0), DuplicatedNoNeed(data, dd) , Const(trange), Const(saveat), Const(dt), DuplicatedNoNeed(target, dtarg))
     # The gradient matters only for theta
     G .= dP.θ
     nothing
@@ -508,7 +720,7 @@ oo = loss_gradient(G, extra_par)
 function over_loss(θ, p)
     # Here we are updating P.θ in place
     p.θ .= θ
-    loss(l,p, u0stacked,trange, saveat)
+    loss(l,p, u0stacked, data, trange, saveat, dt, target);
     return l
 end
 callback = function (θ,l; doplot = false)
@@ -520,7 +732,6 @@ callback(P, over_loss(P.θ, P))
 
 using SciMLSensitivity, Optimization, OptimizationOptimisers, Optimisers
 optf = Optimization.OptimizationFunction((p,u)->over_loss(p,u[end]), grad=(G,p,e)->loss_gradient(G,e))
-#optf = Optimization.OptimizationFunction((p,u)->over_loss(p,u[end]), grad=(G,p,e)->println("\n------\nG: ",typeof(G),"\np: ", typeof(p)) )
 optprob = Optimization.OptimizationProblem(optf, P.θ, extra_par)
 
 
