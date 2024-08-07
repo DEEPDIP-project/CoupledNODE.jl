@@ -3,11 +3,13 @@
 # and test if the redefined functions are faster than the original ones
 ##################
 
+run_test = false
 ##################
 #       psolver
 ##################
 # Here I redefine the psolver function in order to compile it with explicit range functions inside
 using SparseArrays, LinearAlgebra
+const myzero = T(0)
 struct Offset{D} end
 @inline (::Offset{D})(α) where {D} = CartesianIndex(ntuple(β -> β == α ? 1 : 0, D))
 function laplacian_mat(setup)
@@ -124,136 +126,149 @@ show(err)
 ##################
 #       PBC
 ##################
-# In general I have noticed that the PBC function show the following:
-#   INS can be differentiated a priori but not a posteriori
-#   my custom implementation down here can be differentiated only a posteriori 
-function myapply_bc_p!(p, t, setup; kwargs...)
-    (; boundary_conditions, grid) = setup
-    (; dimension) = grid
-    D = dimension()
-    for β = 1:D
-        myapply_bc_p!(boundary_conditions[β][1], p, β, t, setup; isright = false)
-        myapply_bc_p!(boundary_conditions[β][2], p, β, t, setup; isright = true)
-    end
-    p
-end
-function myapply_bc_p!(::PeriodicBC, p, β, t, setup; isright, kwargs...)
-    (; grid, workgroupsize) = setup
+# Redefine the apply_bc_p! function in order to comply with Enzyme
+using KernelAbstractions
+using Enzyme
+Enzyme.API.runtimeActivity!(true)
+get_bc_p!(p, setup; kwargs...) = let
+    (; boundary_conditions, grid, workgroupsize) = setup
     (; dimension, N) = grid
     D = dimension()
     e = Offset{D}()
+    B = get_backend(p)
+    for β = 1:D
+        @assert boundary_conditions[β][1] isa PeriodicBC "Only PeriodicBC implemented"
+    end
     
-    function _bc_a!(p, β)
-        for I in CartesianIndices(p)
-            I_β = I[β]
-            if I_β == 1
-                p[I] = p[I + (N[β] - 2) * e(β)]
-            end
+    function bc_p!(p, β; isright)
+        @kernel function _bc_a(p, ::Val{β}) where {β}
+            I = @index(Global, Cartesian)
+            p[I] = p[I+(N[β]-2)*e(β)]
+        end
+        @kernel function _bc_b(p, ::Val{β}) where {β}
+            I = @index(Global, Cartesian)
+            p[I+(N[β]-1)*e(β)] = p[I+e(β)]
+        end
+        ndrange = ntuple(γ -> γ == β ? 1 : N[γ], D)
+        if isright
+            _bc_b(B, workgroupsize)(p, Val(β); ndrange)
+        else
+            _bc_a(B, workgroupsize)(p, Val(β); ndrange)
         end
     end
 
-    function _bc_b!(p, β)
-        for I in CartesianIndices(p)
-            I_β = I[β]
-            if I_β == N[β]
-                p[I] = p[I - (N[β] - 2) * e(β)]
-            end
+    function bc!(p)
+        for β = 1:D
+            bc_p!(p, β; isright = false)
+            bc_p!(p, β; isright = true)
         end
     end
-
-    ndrange = ntuple(γ -> γ == β ? 1 : N[γ], D)
     
-    if isright
-        _bc_b!(p, β)
-    else
-        _bc_a!(p, β)
+end
+
+myapply_bc_p! = get_bc_p!(cache_p, setup) 
+
+if run_test
+    # Speed test
+    @timed for i in 1:10000
+        A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+        IncompressibleNavierStokes.apply_bc_p!(A, 0.0f0, setup);
     end
-    
-    nothing
-end
+    @timed for i in 1:10000
+        A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+        myapply_bc_p!(A);
+    end
 
-# Speed test
-@timed for i in 1:1000
-    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-    IncompressibleNavierStokes.apply_bc_p!(A, 0.0f0, setup);
-end
-@timed for i in 1:1000
-    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-    myapply_bc_p!(A, 0.0f0, setup);
-end
+    # Check if the implementation is correct
+    for i in 1:10000
+        A = rand(Float32,size(cache_p)[1],size(cache_p)[2]) ;
+        A0 = copy(A)                   ;
+        B = copy(A)                    ;
+        IncompressibleNavierStokes.apply_bc_p!(A, T(0), setup)  ;
+        myapply_bc_p!(B);
+        @assert A == B                  
+        @assert A != A0                  
+    end
 
-# Check if the implementation is correct
-for i in 1:1000
-    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]) ;
-    A0 = copy(A)                   ;
-    B = copy(A)                    ;
-    IncompressibleNavierStokes.apply_bc_p!(A, T(0), setup)  ;
-    myapply_bc_p!(B, T(0), setup);
-    @assert A ≈ B                  
+    # Check if it is differentiable
+    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+    dA = Enzyme.make_zero(A);
+    @timed Enzyme.autodiff(Enzyme.Reverse, myapply_bc_p!, Const, DuplicatedNoNeed(A, dA))
 end
 
 
 ############# Test a similar thing for the BC on u
-function myapply_bc_u!(u, t, setup; kwargs...)
-    (; boundary_conditions) = setup
-    D = length(u)
-    for β = 1:D
-        myapply_bc_u!(boundary_conditions[β][1], u, β, t, setup; isright = false, kwargs...)
-        myapply_bc_u!(boundary_conditions[β][2], u, β, t, setup; isright = true, kwargs...)
-    end
-    u
-end
-function myapply_bc_u!(::PeriodicBC, u, β, t, setup; isright, kwargs...)
-    (; grid, workgroupsize) = setup
+get_bc_u!(u, setup; kwargs...) = let
+    (; boundary_conditions, grid, workgroupsize) = setup
     (; dimension, N) = grid
     D = dimension()
     e = Offset{D}()
-    
-    function _bc_a!(u, α, β)
-        for I in CartesianIndices(N)
-            if I[β] == 1
-                u[α][I] = u[α][I + (N[β] - 2) * e(β)]
-            end
-        end
+    B = get_backend(u[1])
+    for β = 1:D
+        @assert boundary_conditions[β][1] isa PeriodicBC "Only PeriodicBC implemented"
     end
-    
-    function _bc_b!(u, α, β)
-        for I in CartesianIndices(N)
-            if I[β] == N[β]
-                u[α][I] = u[α][I - (N[β] - 2) * e(β)]
-            end
-        end
+
+    @kernel function _bc_a!(u, ::Val{α}, ::Val{β}) where {α,β}
+        I = @index(Global, Cartesian)
+        u[α][I] = u[α][I+(N[β]-2)*e(β)]
     end
-    
-    for α = 1:D
+    @kernel function _bc_b!(u, ::Val{α}, ::Val{β}) where {α,β}
+        I = @index(Global, Cartesian)
+        u[α][I+(N[β]-1)*e(β)] = u[α][I+e(β)]
+    end
+
+    function bc_u!(u, β; isright, )
+        ndrange = ntuple(γ -> γ == β ? 1 : N[γ], D)
         if isright
-            _bc_b!(u, α, β)
+            for α = 1:D
+                _bc_b!(B, workgroupsize)(u, Val(α), Val(β); ndrange)
+            end
         else
-            _bc_a!(u, α, β)
+            for α = 1:D
+                _bc_a!(B, workgroupsize)(u, Val(α), Val(β); ndrange)
+            end
+        end
+        
+    end
+
+    function bc(u)
+        for β = 1:D
+            bc_u!(u, β; isright = false)
+            bc_u!(u, β; isright = true)
         end
     end
-    u
 end
 
+myapply_bc_u! = get_bc_u!(cache_F, setup)
 
-@timed for i in 1:1000
+if run_test
+    @timed for i in 1:10000
+        A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
+        IncompressibleNavierStokes.apply_bc_u!(A, 0.0f0, setup);
+    end
+    @timed for i in 1:10000
+        A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
+        myapply_bc_u!(A);
+    end
+
+    # Check if the implementation is correct
+    for i in 1:1000
+        A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]));
+        A0 = (copy(A[1]), copy(A[2])) ;                  ;
+        B = (copy(A[1]), copy(A[2]))                    ;
+        IncompressibleNavierStokes.apply_bc_u!(A, T(0), setup)  ;
+        myapply_bc_u!(B);
+        @assert A[1] == B[1]                  
+        @assert A[2] == B[2]
+        @assert A[1] != A0[1]
+        @assert A[2] != A0[2]
+    end
+
+    # Check if it is differentiable
+
     A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
-    IncompressibleNavierStokes.apply_bc_u!(A, 0.0f0, setup);
-end
-@timed for i in 1:1000
-    A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]))
-    myapply_bc_u!(A, 0.0f0, setup);
-end
-
-# Check if the implementation is correct
-for i in 1:1000
-    A = (rand(Float32,size(cache_p)[1],size(cache_p)[1]),rand(Float32,size(cache_p)[1],size(cache_p)[1]));
-    A0 = (copy(A[1]), copy(A[2])) ;                  ;
-    B = (copy(A[1]), copy(A[2]))                    ;
-    IncompressibleNavierStokes.apply_bc_u!(A, T(0), setup)  ;
-    myapply_bc_u!(B, T(0), setup);
-    @assert A[1] ≈ B[1]                  
-    @assert A[2] ≈ B[2]
+    dA = Enzyme.make_zero(A)
+    @timed Enzyme.autodiff(Enzyme.Reverse, myapply_bc_u!, Const, DuplicatedNoNeed(A, dA))
 end
 
 
@@ -261,7 +276,7 @@ end
 # **** Test if you can make divergence faster
 using KernelAbstractions
 using Enzyme
-function get_divergence!(div, setup)
+get_divergence!(div, setup) = let
     (; grid, workgroupsize) = setup
     (; Δ, Ip, Np) = grid
     D = length(u)
@@ -269,70 +284,75 @@ function get_divergence!(div, setup)
     @kernel function div!(div, u, I0, d, Δ)
         I = @index(Global, Cartesian)
         I = I + I0
-        d[I] *= 0
+#        d[I] .= 0
         for α = 1:D
-            d[I] += (u[α][I] - u[α][I-e(α)]) / Δ[I[α],α]
+            #d[I] += (u[α][I] - u[α][I-e(α)]) / Δ[I[α],α]
+            d[I] += (u[α][I] - u[α][I-e(α)]) / Δ[α][I[α]]
         end
         div[I] = d[I]
     end
     B = get_backend(div)
     I0 = first(Ip)
     I0 -= oneunit(I0)
-    function d!(div, u, d, Δ)
+    function d!(div, u, d)#, Δ)
+        # set the temporary array to zero
+        @. d *= 0
         # It requires Δ to be passed from outside to comply with Enzyme
         div!(B, workgroupsize)(div, u, I0, d, Δ; ndrange = Np)
-        synchronize(B)
         nothing
     end
 end
-A = rand(Float32,size(cache_p)[1],size(cache_p)[2])
-z = Enzyme.make_zero(A)
+F = rand(Float32,size(cache_p)[1],size(cache_p)[2])
+z = Enzyme.make_zero(F)
 u = random_field(setup, T(0))
-my_f = get_divergence!(A, setup)
-(; grid) = setup
-(; Δ, Δu) = grid
-my_f(A, u, z, stack(Δ))
+my_f = get_divergence!(F, setup)
+(; grid, Re) = setup
+(; Δ, Δu, A) = grid
+my_f(F, u, z)#, stack(Δ))
 
-@timed for i in 1:1000
-    A0 = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-    A = copy(A0);
-    u = random_field(setup, T(0));
-    IncompressibleNavierStokes.divergence!(A, u, setup);
-    @assert A != A0
-end
-@timed for i in 1:1000
-    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-    u = random_field(setup, T(0));
-    z = Enzyme.make_zero(A)
-    my_f(A, u, z, stack(Δ));
-end
-# Check if the implementation is correct
-using Statistics
-for i in 1:1000
-    A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-    u = random_field(setup, T(0)) .* rand()
-    A0 = copy(A)                   ;
-    B = copy(A)                    ;
-    IncompressibleNavierStokes.divergence!(A, u, setup)  ;
-    z = Enzyme.make_zero(A)
-    my_f(B, u, z, stack(Δ));
-    @assert A ≈ B                  
-end
+if run_test
+    @timed for i in 1:1000
+        F0 = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+        F = copy(F0);
+        u = random_field(setup, T(0));
+        IncompressibleNavierStokes.divergence!(F, u, setup);
+        @assert F != F0
+    end
+    @timed for i in 1:1000
+        F = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+        u = random_field(setup, T(0));
+        z = Enzyme.make_zero(F)
+        my_f(F, u, z)#, stack(Δ));
+    end
+    # Check if the implementation is correct
+    using Statistics
+    for i in 1:1000
+        F = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+        u = random_field(setup, T(0)) 
+        A0 = copy(F)                   ;
+        B = copy(F)                    ;
+        IncompressibleNavierStokes.divergence!(F, u, setup)  ;
+        z = Enzyme.make_zero(F)
+        my_f(B, u, z)#, stack(Δ));
+        @assert F == B                  
+    end
 
-A = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
-dA = Enzyme.make_zero(A);
-u = random_field(setup, T(0));
-du = Enzyme.make_zero(u);
-d = Enzyme.make_zero(A);
-dd = Enzyme.make_zero(d);
-z = Enzyme.make_zero(A);
-dΔ = Enzyme.make_zero(stack(Δ));
-# Test if it is differentiable
-#@timed Enzyme.autodiff(Enzyme.Reverse, my_f, Const, DuplicatedNoNeed(A, dA), DuplicatedNoNeed(u, du), DuplicatedNoNeed(d, dd), DuplicatedNoNeed(stack(Δ), dΔ))
+    F = rand(Float32,size(cache_p)[1],size(cache_p)[2]);
+    dF = Enzyme.make_zero(F);
+    u = random_field(setup, T(0));
+    du = Enzyme.make_zero(u);
+    d = Enzyme.make_zero(F);
+    dd = Enzyme.make_zero(d);
+    z = Enzyme.make_zero(F);
+    dΔ = Enzyme.make_zero(stack(Δ));
+    # Test if it is differentiable
+    #@timed Enzyme.autodiff(Enzyme.Reverse, my_f, Const, DuplicatedNoNeed(F, dF), DuplicatedNoNeed(u, du), DuplicatedNoNeed(d, dd), DuplicatedNoNeed(stack(Δ), dΔ))
+    @timed Enzyme.autodiff(Enzyme.Reverse, my_f, Const, DuplicatedNoNeed(F, dF), DuplicatedNoNeed(u, du), DuplicatedNoNeed(d, dd))
+end
 
 
 ##### Redefine applypressure!
-function get_applypressure!(u, setup)
+get_applypressure!(u, setup) = let
     (; grid, workgroupsize) = setup
     (; dimension, Δu, Nu, Iu) = grid
     D = dimension()
@@ -349,7 +369,6 @@ function get_applypressure!(u, setup)
             I0 -= oneunit(I0)
             apply!(B, workgroupsize)(u, p, Val(α), I0, Δu; ndrange = Nu[α])
         end
-        synchronize(B)
         nothing
     end
     ap!
@@ -360,53 +379,144 @@ myapplypressure! = get_applypressure!(u, setup)
 myapplypressure!(u, p)#, Δu)
 IncompressibleNavierStokes.applypressure!(u, p, setup)
 
-# Speed test
-@timed for i in 1:1000
-    u = random_field(setup, T(0))
-    p = rand(T,(n+2,n+2))
-    IncompressibleNavierStokes.applypressure!(u, p, setup)
-end
-@timed for i in 1:1000
-    u = random_field(setup, T(0))
-    p = rand(T,(n+2,n+2))
-    myapplypressure!(u, p)#, Δu)
-end
+if run_test
+    # Speed test
+    @timed for i in 1:1000
+        u = random_field(setup, T(0))
+        p = rand(T,(n+2,n+2))
+        IncompressibleNavierStokes.applypressure!(u, p, setup)
+    end
+    @timed for i in 1:1000
+        u = random_field(setup, T(0))
+        p = rand(T,(n+2,n+2))
+        myapplypressure!(u, p)#, Δu)
+    end
 
-# Compare with INS
-for i in 1:1000
+    # Compare with INS
+    for i in 1:1000
+        u = random_field(setup, T(0))
+        p = rand(T,(n+2,n+2))
+        u0 = copy.(u)
+        IncompressibleNavierStokes.applypressure!(u, p, setup)
+        myapplypressure!(u0, p)#, Δu)
+        @assert u == u0
+    end
+
+    # Check if it is differentiable
     u = random_field(setup, T(0))
     p = rand(T,(n+2,n+2))
-    u0 = copy.(u)
-    IncompressibleNavierStokes.applypressure!(u, p, setup)
-    myapplypressure!(u0, p)#, Δu)
-    @assert u == u0
+    du = Enzyme.make_zero(u)
+    dp = Enzyme.make_zero(p)
+    dΔu = Enzyme.make_zero(Δu)
+    @timed Enzyme.autodiff(Enzyme.Reverse, myapplypressure!, Const, DuplicatedNoNeed(u, du), DuplicatedNoNeed(p, dp))
 end
-
-# Check if it is differentiable
-u = random_field(setup, T(0))
-p = rand(T,(n+2,n+2))
-du = Enzyme.make_zero(u)
-dp = Enzyme.make_zero(p)
-dΔu = Enzyme.make_zero(Δu)
-#@timed Enzyme.autodiff(Enzyme.Reverse, myapplypressure!, Const, DuplicatedNoNeed(u, du), DuplicatedNoNeed(p, dp))
 
 
 ##################Vy
 ##################Vy
 ##################Vy
 # And now I redefine the momentum! function
-
-function momentum!(F, u, temp, t, setup)
-    (; grid, closure_model, temperature) = setup
-    (; dimension) = grid
+get_momentum!(F, u, temp, setup) = let
+    (; grid, bodyforce, workgroupsize, Re) = setup
+    (; dimension, Nu, Iu, Δ, Δu, A) = grid
     D = dimension()
-    for α = 1:D
-        F[α] .= 0
+
+    function get_convectiondiffusion!(B)
+        e = Offset{D}()
+        ν = 1 / Re
+        (; Δ, Δu, A) = grid
+        @kernel function cd!(F, u, ::Val{α}, ::Val{βrange}, I0, Δu, Δ, ν, A) where {α,βrange}
+            I = @index(Global, Cartesian)
+            I = I + I0
+            KernelAbstractions.Extras.LoopInfo.@unroll for β in βrange
+                #Δuαβ = α == β ? Δu[:,β] : Δ[:,β]
+                Δuαβ = α == β ? Δu[β] : Δ[β]
+                uαβ1 = (u[α][I-e(β)] + u[α][I]) / 2
+                uαβ2 = (u[α][I] + u[α][I+e(β)]) / 2
+                uβα1 =
+                    A[β][α][2][I[α]-(α==β)] * u[β][I-e(β)] +
+                    A[β][α][1][I[α]+(α!=β)] * u[β][I-e(β)+e(α)]
+                uβα2 = A[β][α][2][I[α]] * u[β][I] + A[β][α][1][I[α]+1] * u[β][I+e(α)]
+                uαuβ1 = uαβ1 * uβα1
+                uαuβ2 = uαβ2 * uβα2
+                #∂βuα1 = (u[α][I] - u[α][I-e(β)]) / (β == α ? Δ[I[β],β] : Δu[I[β]-1,β])
+                #∂βuα2 = (u[α][I+e(β)] - u[α][I]) / (β == α ? Δ[I[β]+1,β] : Δu[I[β],β])
+                ∂βuα1 = (u[α][I] - u[α][I-e(β)]) / (β == α ? Δ[β][I[β]] : Δu[β][I[β]-1])
+                ∂βuα2 = (u[α][I+e(β)] - u[α][I]) / (β == α ? Δ[β][I[β]+1] : Δu[β][I[β]])
+                F[α][I] += (ν * (∂βuα2 - ∂βuα1) - (uαuβ2 - uαuβ1)) / Δuαβ[I[β]]
+            end
+        end
+        function convdiff!(F, u)#, Δ, Δu)#, ν)#, A)
+            for α = 1:D
+                I0 = first(Iu[α])
+                I0 -= oneunit(I0)
+                cd!(B, workgroupsize)(F, u, Val(α), Val(1:D), I0, Δu, Δ, ν, A; ndrange = Nu[α])
+            end
+            nothing
+        end
     end
-    # diffusion!(F, u, setup)
-    # convection!(F, u, setup)
-    convectiondiffusion!(F, u, setup)
-    bodyforce!(F, u, t, setup)
-    isnothing(temp) || gravity!(F, temp, setup)
-    F
+    function get_bodyforce!(F, u, setup)
+        @error "Not implemented"
+    end
+    convectiondiffusion! = get_convectiondiffusion!(get_backend(F[1]))
+    bodyforce! = isnothing(bodyforce) ? (F,u,t)->nothing : get_bodyforce!(F, u, setup)
+    gravity! = isnothing(temp) ? (F,u,t)->nothing : INS.gravity!(F, temp, setup)
+    function momentum!(F, u, t)#, Δ, Δu)#, ν)#, A, t)
+        for α = 1:D
+            F[α] .= 0
+        end
+        convectiondiffusion!(F, u)#, Δ, Δu)#, ν)#, A)
+        bodyforce!(F, u, t)
+        gravity!(F, temp, setup)
+        nothing
+    end
+end
+
+
+(; Δ, Δu, A) = grid
+ν = 1 / Re
+
+u = random_field(setup, T(0))
+F = random_field(setup, T(0))
+my_f = get_momentum!(F, u, nothing, setup)
+sΔ = stack(Δ)
+sΔu = stack(Δu)
+my_f(F, u, T(0))#, sΔ, sΔu)#, ν)#, A, T(0))
+
+if run_test
+    # Check if it is differentiable
+    u = random_field(setup, T(0))
+    F = random_field(setup, T(0))
+    du = Enzyme.make_zero(u)
+    dF = Enzyme.make_zero(F)
+    dΔu = Enzyme.make_zero(Δu)
+    dΔ = Enzyme.make_zero(Δ)
+    dν = Enzyme.make_zero(ν)
+    dA = Enzyme.make_zero(A)
+    dsΔ = Enzyme.make_zero(sΔ)
+    dsΔu = Enzyme.make_zero(sΔu)
+#    @timed Enzyme.autodiff(Enzyme.Reverse, my_f, Const, DuplicatedNoNeed(F, dF), DuplicatedNoNeed(u, du), Const(T(0)), DuplicatedNoNeed(sΔ,dsΔ), DuplicatedNoNeed(sΔu, dsΔu))
+    @timed Enzyme.autodiff(Enzyme.Reverse, my_f, Const, DuplicatedNoNeed(F, dF), DuplicatedNoNeed(u, du), Const(T(0)))
+
+    @timed for i in 1:1000
+        u = random_field(setup, T(0))
+        F = random_field(setup, T(0))
+        IncompressibleNavierStokes.momentum!(F, u, nothing, T(0), setup)
+    end
+    @timed for i in 1:1000
+        u = random_field(setup, T(0))
+        F = random_field(setup, T(0))
+        my_f(F, u, T(0))#, sΔ, sΔu)
+    end
+
+    # Check if the implementation is correct
+    for i in 1:1000
+        u = random_field(setup, T(0))
+        F = random_field(setup, T(0))
+        u0 = copy.(u)
+        F0 = copy.(F)
+        IncompressibleNavierStokes.momentum!(F, u, nothing, T(0), setup)
+        my_f(F0, u, T(0))#, sΔ, sΔu)
+        @assert F == F0
+    end
 end
