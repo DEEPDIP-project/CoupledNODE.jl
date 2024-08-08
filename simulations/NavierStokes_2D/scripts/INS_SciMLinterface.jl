@@ -163,7 +163,6 @@ get_bc_p!(p, setup; kwargs...) = let
             bc_p!(p, β; isright = true)
         end
     end
-    
 end
 
 myapply_bc_p! = get_bc_p!(cache_p, setup) 

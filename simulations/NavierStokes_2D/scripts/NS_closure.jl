@@ -66,7 +66,7 @@ cache_p = INS.pressure(ustart, nothing, 0.0f0, setup; psolver);
 
 
 # Get the cache for the poisson solver
-include("./test_redefinitions_INS.jl");
+include("./INS_SciMLinterface.jl")
 cache_ftemp, cache_ptemp, fact, cache_viewrange, cache_Ip = my_cache_psolver(setup.grid.x[1], setup)
 # and use it to precompile an Enzyme-compatible psolver
 my_psolve! = generate_psolver(cache_viewrange, cache_Ip, fact)
