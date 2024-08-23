@@ -2,20 +2,9 @@
     struct Grid
 
 Object containing the grid information. It can handle 1D, 2D, and 3D grids.
-
-Fields:
-- `dim::Int`: The dimensionality of the grid.
-- `dx::Union{Float32, Float64}`: The grid spacing in the x-direction.
-- `dy::Union{Float32, Float64}`: The grid spacing in the y-direction. Default is 0 for 1D grid.
-- `dz::Union{Float32, Float64}`: The grid spacing in the z-direction. Default is 0 for 1D and 2D grids.
-- `nx::Int`: The number of grid points in the x-direction.
-- `ny::Int`: The number of grid points in the y-direction. Default is 0 for 1D grid.
-- `nz::Int`: The number of grid points in the z-direction. Default is 0 for 1D and 2D grids.
-- `N::Int`: The total number of elements in the grid.
-
-Constructor:
-- `Grid(dim::Int, dx::Union{Float32, Float64}, dy::Union{Float32, Float64} = 0, dz::Union{Float32, Float64} = 0, nx::Int, ny::Int = 0, nz::Int = 0, convert_to_float32::Bool = false)`: Constructs a `Grid` object with the given grid parameters. The `dy`, `dz`, `ny`, and `nz` parameters can be omitted for 1D and 2D grids. 
 """
+#TODO: does not need to store data
+#TODO: can we make this the same struct as 'params' in NavierStokes.jl??
 Base.@kwdef mutable struct Grid
     const dim::Int
     const dtype::DataType = Float32
