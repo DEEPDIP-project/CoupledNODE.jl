@@ -33,7 +33,7 @@ function mean_squared_error(f, st, x, y, θ, λ, λ_c; dim = 1)
             total_loss += sum(abs2, prediction[i] - y[i])
         end
     else
-        total_loss = sum(abs2, prediction - y)
+        total_loss = sum(abs2, prediction - y)/sum(abs2, y)
     end
     # add regularization term
     if λ > 0
@@ -70,10 +70,11 @@ A function that computes the mean squared error loss and takes as input the mode
 """
 function create_randloss_derivative(
         input_data, F_target, f, st; dim = 1, n_use = 64, λ = 0, λ_c = 0)
+    # [!] dim is the number of fields and not the field dimension (e.g is ~[u,v] not ~[ux, uy])
     if dim == 1
         sd = length(size(input_data))
         n_samples = size(input_data)[end]
-        return θ -> begin
+        return θ -> begin          
             i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
             x_use = Zygote.@ignore selectdim(input_data, sd, i)
             y_use = Zygote.@ignore selectdim(F_target, sd, i)

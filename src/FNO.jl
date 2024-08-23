@@ -132,17 +132,15 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-function create_fno_model(kmax_fno, ch_fno, σ_fno, grid, input_channels = (u -> u,);
+function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u -> u,);
         init_weight = Lux.glorot_uniform)
     # from the grids I can get the dimension
-    dim = grid.dim
+    dim = length(Nxyz)
     ch_dim = dim + 1
     if dim == 1
         dim_to_fft = (2,)
-        Nxyz = (grid.nx,)
     elseif dim == 2
         dim_to_fft = (2, 3)
-        Nxyz = (grid.nx, grid.ny)
     else
         error("Only 1D and 2D grids are supported.")
     end
