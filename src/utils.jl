@@ -17,10 +17,10 @@ The callback function is used to observe training progress. It prints the curren
 - `false` if nothing unexpected happened.
 """
 lhist = [] # do not know if defining this outside is correct julia
-callback = function (p, l, pred; do_plot = true)
+callback = function (p, l, pred = nothing; do_plot = true)
     global lhist
     l_l = length(lhist)
-    println("Loss[$(l_l)]: $(l)")
+    @info "Loss[$(l_l)]: $(l)"
     push!(lhist, l)
     if do_plot
         # plot rolling average of loss, every 10 steps

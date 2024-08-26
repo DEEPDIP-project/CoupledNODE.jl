@@ -1,7 +1,5 @@
 import Lux: Chain, SkipConnection, Parallel, Upsample, MeanPool, identity
 import RecursiveArrayTools: ArrayPartition
-#import CoupledNODE: linear_to_grid, grid_to_linear
-include("./../src/grid.jl")
 
 """
 Create a CoupledNODE (CNODE) function that represents a system of coupled differential equations.

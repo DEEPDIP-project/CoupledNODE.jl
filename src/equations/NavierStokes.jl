@@ -1,5 +1,5 @@
 ##########################################
-############  NSParams #####################
+####  Standalone definition ##############
 ##########################################
 mutable struct NSParams
     x::Any
@@ -59,9 +59,7 @@ function create_params(
     NSParams(x, N, K, Kf, k, ky, nu, normk, f, Pxx, Pxy, Pyy, pf, ∂x, ∂y)
 end
 
-##########################################
-############  Data  ######################
-##########################################
+# Data 
 # This is a struct that contains the data of LES and DNS
 struct Data
     t::Array{Float32, 1}
@@ -79,9 +77,7 @@ function get_data_name(nu::Float32, les_size::Int, dns_size::Int, myseed::Int)
     return "DNS_$(dns_size)_LES_$(les_size)_nu_$(nu)_$(myseed)"
 end
 
-##########################################
-############  Cache  #####################
-##########################################
+# Cache
 mutable struct NSCache
     du::Any
     uf::Any
@@ -113,9 +109,7 @@ function create_cache(
     NSCache(du, uf, v, vx, vy, v2, v2_reshaped, qf, q, F, Q)
 end
 
-######################################################
-############  Initial Condition ######################
-######################################################
+# Initial Condition 
 # For the initial conditions, we create a random spectrum with some decay.
 # Note that the initial conditions are projected onto the divergence free
 # space at the end.
@@ -144,9 +138,7 @@ function random_spectral_field(params; A = 1.0f6, σ = 30.0f0, s = 5.0f0, nsamp 
     cat(batch_u..., dims = 4)
 end
 
-##########################################
-############  Force ######################
-##########################################
+# Force
 # The function `Q` computes the quadratic term.
 # The `K - Kf` highest frequencies of `u` are cut-off to prevent aliasing.
 function Q(u, params, cache)
@@ -206,9 +198,7 @@ function project(u, params, cache)
     cache.du
 end
 
-##########################################
-############  Utils ######################
-##########################################
+# Utils
 # For plotting, the spatial vorticity can be useful. It is given by
 # $$
 # \omega = -\frac{\partial u_x}{\partial y} + \frac{\partial u_y}{\partial x},
@@ -242,3 +232,55 @@ function spectral_cutoff(u, K)
 
     return scaling_factor * result
 end
+
+##########################################
+### Via IncompressibleNavierStokes.jl ####
+##########################################
+module NavierStokes
+
+import IncompressibleNavierStokes as INS
+
+"""
+    create_right_hand_side(setup, psolver)
+
+Create right hand side function f(u, p, t) compatible with
+the OrdinaryDiffEq ODE solvers. Note that `u` has to be an array.
+To convert the tuple `u = (ux, uy)` to an array, use `stack(u)`.
+"""
+create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
+    u = eachslice(u; dims = ndims(u))
+    u = (u...,)
+    u = INS.apply_bc_u(u, t, setup)
+    F = INS.momentum(u, nothing, t, setup)
+    F = INS.apply_bc_u(F, t, setup; dudt = true)
+    PF = INS.project(F, setup; psolver)
+    PF = INS.apply_bc_u(PF, t, setup; dudt = true)
+    cat(PF[1], PF[2]; dims = 3)
+end
+
+"""
+    create_right_hand_side_inplace(setup, psolver)
+
+In place version of [`create_right_hand_side`](@ref).
+"""
+function create_right_hand_side_inplace(setup, psolver)
+    (; x, N, dimension) = setup.grid
+    D = dimension()
+    F = ntuple(α -> similar(x[1], N), D)
+    div = similar(x[1], N)
+    p = similar(x[1], N)
+    function right_hand_side!(dudt, u, params, t)
+        u = eachslice(u; dims = ndims(u))
+        INS.apply_bc_u!(u, t, setup)
+        INS.momentum!(F, u, nothing, t, setup)
+        INS.apply_bc_u!(F, t, setup; dudt = true)
+        INS.project!(F, setup; psolver, div, p)
+        INS.apply_bc_u!(F, t, setup; dudt = true)
+        for α in 1:D
+            dudt[ntuple(Returns(:), D)..., α] .= F[α]
+        end
+        dudt
+    end
+end
+
+end #module NavierStokes

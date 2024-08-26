@@ -33,7 +33,7 @@ function mean_squared_error(f, st, x, y, θ, λ, λ_c; dim = 1)
             total_loss += sum(abs2, prediction[i] - y[i])
         end
     else
-        total_loss = sum(abs2, prediction - y)/sum(abs2, y)
+        total_loss = sum(abs2, prediction - y) / sum(abs2, y)
     end
     # add regularization term
     if λ > 0
@@ -74,7 +74,7 @@ function create_randloss_derivative(
     if dim == 1
         sd = length(size(input_data))
         n_samples = size(input_data)[end]
-        return θ -> begin          
+        return θ -> begin
             i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
             x_use = Zygote.@ignore selectdim(input_data, sd, i)
             y_use = Zygote.@ignore selectdim(F_target, sd, i)
