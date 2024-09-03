@@ -239,6 +239,8 @@ end
 module NavierStokes
 
 import IncompressibleNavierStokes as INS
+import Lux
+import NNlib: pad_circular, pad_repeat
 
 """
     create_right_hand_side(setup, psolver)
@@ -255,7 +257,29 @@ create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
     F = INS.apply_bc_u(F, t, setup; dudt = true)
     PF = INS.project(F, setup; psolver)
     PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-    cat(PF[1], PF[2]; dims = 3)
+    INS_to_NN(PF, setup)
+end
+
+"""
+    create_right_hand_side_with_closure(setup, psolver, closure, st)
+
+Create right hand side function f(u, p, t) compatible with
+the OrdinaryDiffEq ODE solvers.
+This formulation was the one proved best in Syver's paper i.e. DCF.
+`u` has to be an array in the NN style e.g. `[n , n, D, batch]`.
+"""
+create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
+        u, p, t)
+    # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
+    u = NN_to_INS(u, setup)
+    u = INS.apply_bc_u(u, t, setup)
+    F = INS.momentum(u, nothing, t, setup)
+    F = F .+
+        NN_to_INS(Lux.apply(closure, INS_to_NN(u, setup), p, st)[1][:, :, :, 1:1], setup)
+    F = INS.apply_bc_u(F, t, setup; dudt = true)
+    PF = INS.project(F, setup; psolver)
+    PF = INS.apply_bc_u(PF, t, setup; dudt = true)
+    INS_to_NN(PF, setup)
 end
 
 """
@@ -280,6 +304,66 @@ function create_right_hand_side_inplace(setup, psolver)
             dudt[ntuple(Returns(:), D)..., α] .= F[α]
         end
         dudt
+    end
+end
+
+"""
+    INS_to_NN(u, setup)
+
+Converts the input velocity field `u` from the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`
+to a format suitable for neural network training `u[n, n, D, batch]`.
+
+# Arguments
+- `u`: Velocity field in INS style.
+- `setup`: IncompressibleNavierStokes.jl setup.
+
+# Returns
+- `u`: Velocity field converted to a tensor format suitable for neural network training.
+"""
+function INS_to_NN(u, setup)
+    (; dimension, Iu) = setup.grid
+    D = dimension()
+    if D == 2
+        u = cat(u[1][Iu[1]], u[2][Iu[2]]; dims = 3) # From tuple to tensor
+        u = reshape(u, size(u)..., 1)
+    elseif D == 3
+        u = cat(u[1][Iu[1]], u[2][Iu[2]], u[3][Iu[3]]; dims = 4)
+        u = reshape(u, size(u)..., 1) # One sample
+    else
+        error("Unsupported dimension: $D. Only 2D and 3D are supported.")
+    end
+end
+
+"""
+    NN_to_INS(u, setup)
+
+Converts the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
+to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
+
+# Arguments
+- `u`: Velocity field in NN style.
+- `setup`: IncompressibleNavierStokes.jl setup.
+
+# Returns
+- `u`: Velocity field converted to IncompressibleNavierStokes.jl style.
+"""
+function NN_to_INS(u, setup)
+    (; grid, boundary_conditions) = setup
+    (; dimension) = grid
+    D = dimension()
+    # Not really sure about the necessity for the distinction. 
+    # We just want a place holder for the boundaries and they will in any case be re-calculated via INS.apply_bc_u!
+    if boundary_conditions[1][1] isa INS.PeriodicBC
+        u = pad_circular(u, 1, dims = collect(1:D))
+    else
+        u = pad_repeat(u, 1, dims = collect(1:D))
+    end
+    if D == 2
+        (u[:, :, 1, 1], u[:, :, 2, 1])
+    elseif D == 3
+        (u[:, :, :, 1, 1], u[:, :, :, 2, 1], u[:, :, :, 3, 1])
+    else
+        error("Unsupported dimension: $D. Only 2D and 3D are supported.")
     end
 end
 

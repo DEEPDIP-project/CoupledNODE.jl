@@ -8,6 +8,7 @@
 import Zygote
 import Random: shuffle
 import LinearAlgebra: norm
+import Lux
 
 """
     mean_squared_error(f, st, x, y, θ, λ)
@@ -98,3 +99,30 @@ function create_randloss_derivative(
         error("ERROR: Unsupported number of dimensions: $dim")
     end
 end
+
+function create_loss_priori(model, ps, st)
+    mseloss = Lux.GenericLossFunction((ŷ, y) -> abs2(ŷ - y); agg = mean)
+    ŷ = model(y, ps, st)
+end
+
+"""
+Wrap loss function `loss(batch, θ)`.
+
+The function `loss` should take inputs like `loss(f, x, y, θ)`.
+"""
+create_loss_priori(loss, f) = (f, θ, st, (x, y)) -> loss(f, θ, st, (x, y))
+#old code
+#create_loss_prior(loss, f) = ((x, y), θ, st) -> loss(f, x, y, θ, st)
+
+"""
+Compute MSE between `f(x, θ, st)` and `y`.
+The MSE is further divided by `normalize(y)`.
+This signature has been chosen for compatibility with Lux.
+"""
+mean_squared_error(f, θ, st, (x, y); normalize = y -> sum(abs2, y), λ = sqrt(1e-8)) = sum(
+    abs2, f(x, θ, st)[1] - y) / normalize(y) + eltype(x)(λ) *
+                                                                                      sum(
+    abs2, θ)
+#old code
+#mean_squared_error(f, x, y, θ, st; normalize = y -> sum(abs2, y), λ = sqrt(eltype(x)(1e-8))) =
+#    sum(abs2, f(x, θ, st)[1] - y) / normalize(y) + λ * sum(abs2, θ)

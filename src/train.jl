@@ -1,4 +1,5 @@
 using SciMLSensitivity
+import Lux
 import Optimization, OptimizationOptimisers
 """
     optimize(θ, loss, ad_type=Optimization.AutoZygote(), alg::AbstractOptimizationAlgorithm=OptimizationOptimisers.Adam(0.1), args...; kwargs...)
@@ -18,7 +19,7 @@ Check the documentation of `Optimization.solve` for more details and optional ar
 The optimized parameters (θ).
 """
 function optimize(θ, loss, ad_type = Optimization.AutoZygote(),
-        alg::AbstractOptimizationAlgorithm = OptimizationOptimisers.Adam(0.1),
+        alg = OptimizationOptimisers.Adam(0.1),
         args...; kwargs...)
     optf = Optimization.OptimizationFunction((x, p) -> loss(x), ad_type)
     optprob = Optimization.OptimizationProblem(optf, θ)
@@ -41,4 +42,19 @@ function train(dataloaders,
     θ = optimize(θ, loss;
         maxiters = niter, progress = true, callback = callback)
     (; optstate, θ, callbackstate)
+end
+
+function train(model, ps, st, train_dataloader, loss;
+        nepochs = 100, ad_type = Optimization.AutoZygote(),
+        alg = OptimizationOptimisers.Adam(0.1), cpu::Bool = false, kwargs...)
+    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
+    tstate = Lux.Training.TrainState(model, ps, st, alg)
+    for epoch in 1:nepochs
+        (x, y) = train_dataloader()
+        x = dev(x)
+        y = dev(y)
+        _, loss, stats, tstate = Lux.Training.single_train_step!(
+            ad_type, loss, (x, y), tstate)
+    end
+    loss, tstate
 end
