@@ -120,6 +120,21 @@ loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
 loss_priori(closure, θ, st, train_data) # check that the loss is working
 
+# this is not correct
+mseloss = Lux.GenericLossFunction((ŷ, y) -> abs2(ŷ - y))
+mseloss(closure, θ, st, train_data)
+another_wrong_loss = Lux.MSELoss()
+another_wrong_loss(closure, θ, st, train_data)
+another_wrong_loss(train_data...)
+
+# let's define a loss that calculates correctly and in the Lux format
+function loss_lux_style(model, ps, st, (x, y))
+    ŷ, st_ = model(x, ps, st)
+    loss = sum(abs2, ŷ .- y) / sum(abs2, y)
+    return loss, st_, (; y_pred = ŷ)
+end
+loss_lux_style(closure, θ, st, train_data)
+
 ## old way of training
 import CoupledNODE: callback
 import Optimization, OptimizationOptimisers
@@ -140,17 +155,15 @@ result_priori = Optimization.solve(
 ## not yet working
 import CoupledNODE: train
 import Optimization, OptimizationOptimisers
+println("training")
 tstate = Lux.Training.TrainState(closure, θ, st, OptimizationOptimisers.Adam(0.1))
-train_data
 _, loss, stats, tstate = Lux.Training.single_train_step!(
-    Optimization.AutoZygote(), loss_priori, train_data, tstate)
+    Optimization.AutoZygote(), loss_lux_style, train_data, tstate)
 
-Lux.Training.compute_gradients(Optimization.AutoZygote(), loss_priori, train_data, tstate)
-
-tstate = train(closure, θ, st, dataloader, loss_priori;
+tstate = train(closure, θ, st, dataloader, loss_lux_style;
     nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true)
-## couldn't figure out what is the problem
+# still a problem with the train function
 
 # * A posteriori dataloader
 # indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 

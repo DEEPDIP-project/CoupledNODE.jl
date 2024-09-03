@@ -111,8 +111,6 @@ Wrap loss function `loss(batch, θ)`.
 The function `loss` should take inputs like `loss(f, x, y, θ)`.
 """
 create_loss_priori(loss, f) = (f, θ, st, (x, y)) -> loss(f, θ, st, (x, y))
-#old code
-#create_loss_prior(loss, f) = ((x, y), θ, st) -> loss(f, x, y, θ, st)
 
 """
 Compute MSE between `f(x, θ, st)` and `y`.
@@ -123,6 +121,3 @@ mean_squared_error(f, θ, st, (x, y); normalize = y -> sum(abs2, y), λ = sqrt(1
     abs2, f(x, θ, st)[1] - y) / normalize(y) + eltype(x)(λ) *
                                                                                       sum(
     abs2, θ)
-#old code
-#mean_squared_error(f, x, y, θ, st; normalize = y -> sum(abs2, y), λ = sqrt(eltype(x)(1e-8))) =
-#    sum(abs2, f(x, θ, st)[1] - y) / normalize(y) + λ * sum(abs2, θ)
