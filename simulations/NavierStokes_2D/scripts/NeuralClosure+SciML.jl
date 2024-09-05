@@ -160,10 +160,10 @@ tstate = Lux.Training.TrainState(closure, θ, st, OptimizationOptimisers.Adam(0.
 _, loss, stats, tstate = Lux.Training.single_train_step!(
     Optimization.AutoZygote(), loss_lux_style, train_data, tstate)
 
-tstate = train(closure, θ, st, dataloader, loss_lux_style;
+train(closure, θ, st, dataloader, loss_lux_style;
     nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true)
-# still a problem with the train function
+
 
 # * A posteriori dataloader
 # indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 
