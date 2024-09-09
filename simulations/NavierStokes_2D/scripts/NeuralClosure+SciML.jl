@@ -164,7 +164,6 @@ train(closure, θ, st, dataloader, loss_lux_style;
     nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true)
 
-
 # * A posteriori dataloader
 # indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 
 # here we do not use io_arrays, those were nice for a priori because had \bar{u}, c.
@@ -307,7 +306,6 @@ function loss_posteriori_lux_style(model, ps, st, (x, y))
     return loss, st_, (; y_pred = ŷ)
 end
 
-
 # train a-posteriori: single data point
 train_data_posteriori = dataloader_luisa()
 optf = Optimization.OptimizationFunction(
@@ -326,9 +324,9 @@ result_posteriori = Optimization.solve(
 
 loss_posteriori_lux_style(closure, θ_posteriori, st, train_data_posteriori)
 
-
 # try with Lux
-tstate = Lux.Training.TrainState(closure, θ_posteriori, st, OptimizationOptimisers.Adam(0.1))
+tstate = Lux.Training.TrainState(
+    closure, θ_posteriori, st, OptimizationOptimisers.Adam(0.1))
 _, loss, stats, tstate = Lux.Training.single_train_step!(
     Optimization.AutoZygote(), loss_lux_style, train_data_posteriori, tstate)
 
