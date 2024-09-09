@@ -49,12 +49,13 @@ function train(model, ps, st, train_dataloader, loss_function;
         alg = OptimizationOptimisers.Adam(0.1), cpu::Bool = false, kwargs...)
     dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
     tstate = Lux.Training.TrainState(model, ps, st, alg)
+    loss::Float32 = 0 #NOP
     for epoch in 1:nepochs
         #(x, y) = train_dataloader()
         #x = dev(x)
         #y = dev(y)
         data = train_dataloader()
-        _, loss, stats, tstate = Lux.Training.single_train_step!(
+        _, loss, _, tstate = Lux.Training.single_train_step!(
             ad_type, loss_function, data, tstate)
     end
     loss, tstate
