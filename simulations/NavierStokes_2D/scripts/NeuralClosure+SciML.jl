@@ -79,20 +79,15 @@ b = io[ig].u[:, :, 1, 2]
 # io[igrid].u[nx, ny, dim as ux:1, time*nsample]
 a == b
 c = io_nc[ig].u[:, :, 1, 2]
-include("../../../src/equations/NavierStokes_utils.jl")
-NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
-INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
+
 include("../../../src/equations/NavierStokes_utils.jl")
 NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
 INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
 
-u0_NN = io[ig].u[:, :, :, 2:2]
-u0_INS = CN_NS.NN_padded_to_INS(u0_NN, setups[ig])
 u0_NN = io[ig].u[:, :, :, 2:2]
 u0_INS = CN_NS.NN_padded_to_INS(u0_NN, setups[ig])
 
 # * Creation of the model: NN closure
-include("../../../src/models/cnn.jl")
 include("../../../src/models/cnn.jl")
 closure, θ, st = cnn(;
     setup = setups[ig],
@@ -135,9 +130,6 @@ loss_priori_lux(closure, θ, st, train_data)
 include("../../../src/utils.jl")
 using Plots: plot!
 #import CoupledNODE: callback
-include("../../../src/utils.jl")
-using Plots: plot!
-#import CoupledNODE: callback
 import Optimization, OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
     (u, p) -> loss_priori(closure, u, st, train_data), # u here is the optimization variable (θ params of NN)
@@ -155,11 +147,8 @@ result_priori = Optimization.solve(
 
 include("../../../src/train.jl")
 #import CoupledNODE: train
-include("../../../src/train.jl")
-#import CoupledNODE: train
 import Optimization, OptimizationOptimisers
 loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
-    nepochs = 10, ad_type = Optimization.AutoZygote(),
     nepochs = 10, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 # the trained parameters are then: 
@@ -237,8 +226,6 @@ size(dataloader_post().u[1][1])
 dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 example2 = dataloader_luisa()
-example2.u
-example2.u
 dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # trick of compatibility: keep always last dimension (time*sample)
 
 # Define the loss (a-posteriori)
