@@ -130,7 +130,7 @@ another_wrong_loss(train_data...)
 # let's define a loss that calculates correctly and in the Lux format
 function loss_lux_style(model, ps, st, (x, y))
     ŷ, st_ = model(x, ps, st)
-    loss = sum(abs2, ŷ - y) / sum(abs2, y)
+    loss = sum(abs2, ŷ .- y) / sum(abs2, y)
     return loss, st_, (; y_pred = ŷ)
 end
 loss_lux_style(closure, θ, st, train_data)
