@@ -121,3 +121,9 @@ mean_squared_error(f, θ, st, (x, y); normalize = y -> sum(abs2, y), λ = sqrt(1
     abs2, f(x, θ, st)[1] - y) / normalize(y) + eltype(x)(λ) *
                                                                                       sum(
     abs2, θ)
+
+function loss_priori_lux(model, ps, st, (x, y))
+    y_pred, st_ = model(x, ps, st)
+    loss = sum(abs2, y_pred .- y) / sum(abs2, y)
+    return loss, st_, (; y_pred = y_pred)
+end

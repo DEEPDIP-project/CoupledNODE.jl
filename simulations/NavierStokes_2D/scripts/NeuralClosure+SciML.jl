@@ -114,19 +114,15 @@ train_data = dataloader()
 size(train_data[1]) # bar{u} filtered
 size(train_data[2]) # c commutator error
 
-# * loss a priori
+# * loss a priori (similar to Syver's)
 import CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
 loss_priori(closure, θ, st, train_data) # check that the loss is working
 
 # let's define a loss that calculates correctly and in the Lux format
-function loss_priori_lux_style(model, ps, st, (x, y))
-    ŷ, st_ = model(x, ps, st)
-    loss = sum(abs2, ŷ .- y) / sum(abs2, y)
-    return loss, st_, (; y_pred = ŷ)
-end
-loss_priori_lux_style(closure, θ, st, train_data)
+import CoupledNODE: loss_priori_lux
+loss_priori_lux(closure, θ, st, train_data)
 
 ## old way of training
 import CoupledNODE: callback
@@ -146,15 +142,11 @@ result_priori = Optimization.solve(
 # with this approach, we have the problem that we cannot loop trough the data. 
 
 import CoupledNODE: train
-import Optimization, OptimizationOptimisers
-tstate = Lux.Training.TrainState(closure, θ, st, OptimizationOptimisers.Adam(0.1))
-loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
-    nepochs = 10000, ad_type = Optimization.AutoZygote(),
+loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux;
+    nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 # the trained parameters are then: 
 θ_priori = tstate.parameters
-
-tstate.cache
 
 # * A posteriori dataloader
 # indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 
@@ -251,30 +243,6 @@ dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # trick of compatibility: ke
 # Define the loss (a-posteriori)
 import Zygote
 import DifferentialEquations: ODEProblem, solve, Tsit5
-# option 1
-example = dataloader_post()
-x0 = example.u[1]
-stack(x0)
-y = example.u
-tspan = [example.t[1, 1], example.t[end, 1]]
-dt = example.t[2, 1] - example.t[1, 1]
-saveat_loss = [i * dt for i in 1:length(y)]
-tspan
-prob = ODEProblem(dudt_nn, stack(x0), tspan, θ)
-pred = Array(solve(prob, Tsit5(); u0 = stack(x0), p = θ, dt = dt, adaptive = false))
-pred
-stack(y[2:end])
-stack(y[2:end]) - pred # not possible
-# We would need to handle the data differently in the loss function to be able to compare the results.
-
-# option 2
-tspan = [example2.t[1], example2.t[end]]
-dt = example2.t[2] - example2.t[1]
-prob2 = ODEProblem(dudt_nn2, example2.u[:, :, :, 1], tspan, θ)
-pred = Array(solve(
-    prob2, Tsit5(); u0 = example2.u[:, :, :, 1:1], p = θ, dt = dt, adaptive = false))
-pred[:, :, :, 1, 2:end] - example2.u[:, :, :, 2:end]
-pred[:, :, :, 1, 1] == example2.u[:, :, :, 1] # Sci-ML also keeps the initial condition.
 
 function loss_posteriori(model, p, st, data)
     u, t = data
@@ -288,20 +256,6 @@ function loss_posteriori(model, p, st, data)
     pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
     # remember that the first element of pred is the initial condition (SciML)
     return T(sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y))
-end
-
-# let's define a loss that calculates correctly and in the Lux format
-function loss_posteriori_lux_style(model, ps, st, (u, t))
-    x = u[:, :, :, 1:1]
-    y = u[:, :, :, 2:end] # remember to discard sol at the initial time step
-    #dt = params.Δt
-    dt = t[2] - t[1]
-    #saveat_loss = [i * dt for i in 1:length(y)]
-    tspan = [t[1], t[end]]
-    prob = ODEProblem(dudt_nn2, x, tspan, ps)
-    pred = Array(solve(prob, Tsit5(); u0 = x, p = ps, dt = dt, adaptive = false))
-    # remember that the first element of pred is the initial condition (SciML)
-    return T(sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y)), st, (; y_pred = pred)
 end
 
 # train a-posteriori: single data point
@@ -320,47 +274,15 @@ result_posteriori = Optimization.solve(
 )
 θ_posteriori = result_posteriori.u
 
-# testing the loss function with a single data example
-loss_posteriori_lux_style(closure, θ, st, train_data_posteriori)
+# test package loss
+import CoupledNODE: create_loss_post_lux
+loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
+loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
-# try with Lux
-tstate = Lux.Training.TrainState(
-    closure, θ, st, OptimizationOptimisers.Adam(0.1))
-_, loss, stats, tstate = Lux.Training.single_train_step!(
-    Optimization.AutoZygote(), loss_posteriori_lux_style, train_data_posteriori, tstate)
-
-loss, tstate = train(closure, θ, st, dataloader, loss_lux_style;
+# training
+loss, tstate = train(closure, θ, st, dataloader_luisa, loss_posteriori_lux;
     nepochs = 100, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true)
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 
 # the trained params are now:
 θ_posteriori = tstate.parameters
-
-# A-posteriori training Syver
-θ_posteriori = let
-    setup = setups[ig]
-    psolver = INS.psolver_spectral(setup)
-    loss = NC.create_loss_post(; setup, psolver, model.closure, nupdate = 1)
-    snaps = [(; u = d.data[ig].u, d.t) for d in data]
-    d = NC.create_dataloader_post(snaps; nunroll = 5, rng)
-    θ = copy(model.θ₀)
-    opt = Optimisers.Adam(1.0e-3)
-    optstate = Optimisers.setup(opt, θ)
-    it = 1:5
-    snaps = (; u = data[1].data[ig].u[it], t = data[1].t[it])
-    (; callbackstate, callback) = NC.create_callback(
-        NC.create_relerr_post(;
-            data = snaps,
-            setup,
-            psolver,
-            closure_model = NC.wrappedclosure(model.closure, setup),
-            nupdate = 2
-        );
-        θ,
-        displayref = false,
-        display_each_iteration = true # Set to `true` if using CairoMakie
-    )
-    (; optstate, θ, callbackstate) = NC.train(
-        [d], loss, optstate, θ; niter = 3, ncallback = 1, callbackstate, callback)
-    #keep the best set of parameters
-end

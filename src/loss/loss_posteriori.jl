@@ -1,6 +1,7 @@
 import Zygote
 import Random: shuffle
 import LinearAlgebra: norm
+import DifferentialEquations: ODEProblem, solve, Tsit5
 
 """
     predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
@@ -145,4 +146,20 @@ function loss_MulDtO_oneset(trajectory,
     end
 
     return loss + (continuity * λ_c) + λ_l1 * norm(θ), nothing
+end
+
+function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
+    function loss_function(model, ps, st, (u, t))
+        x = u[:, :, :, 1:1]
+        y = u[:, :, :, 2:end] # remember to discard sol at the initial time step
+        #dt = params.Δt
+        dt = t[2] - t[1]
+        #saveat_loss = [i * dt for i in 1:length(y)]
+        tspan = [t[1], t[end]]
+        prob = ODEProblem(rhs, x, tspan, ps)
+        pred = Array(solve(
+            prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
+        # remember that the first element of pred is the initial condition (SciML)
+        return sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y), st, (; y_pred = pred)
+    end
 end
