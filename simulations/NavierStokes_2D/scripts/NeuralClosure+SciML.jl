@@ -120,20 +120,13 @@ loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
 loss_priori(closure, θ, st, train_data) # check that the loss is working
 
-# this is not correct
-mseloss = Lux.GenericLossFunction((ŷ, y) -> abs2(ŷ - y))
-mseloss(closure, θ, st, train_data)
-another_wrong_loss = Lux.MSELoss()
-another_wrong_loss(closure, θ, st, train_data)
-another_wrong_loss(train_data...)
-
 # let's define a loss that calculates correctly and in the Lux format
-function loss_lux_style(model, ps, st, (x, y))
+function loss_priori_lux_style(model, ps, st, (x, y))
     ŷ, st_ = model(x, ps, st)
     loss = sum(abs2, ŷ .- y) / sum(abs2, y)
     return loss, st_, (; y_pred = ŷ)
 end
-loss_lux_style(closure, θ, st, train_data)
+loss_priori_lux_style(closure, θ, st, train_data)
 
 ## old way of training
 import CoupledNODE: callback
@@ -152,23 +145,22 @@ result_priori = Optimization.solve(
 θ_priori = result_priori.u
 # with this approach, we have the problem that we cannot loop trough the data. 
 
-## not yet working
 import CoupledNODE: train
 import Optimization, OptimizationOptimisers
-println("training")
 tstate = Lux.Training.TrainState(closure, θ, st, OptimizationOptimisers.Adam(0.1))
-_, loss, stats, tstate = Lux.Training.single_train_step!(
-    Optimization.AutoZygote(), loss_lux_style, train_data, tstate)
+loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
+    nepochs = 10000, ad_type = Optimization.AutoZygote(),
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
+# the trained parameters are then: 
+θ_priori = tstate.parameters
 
-train(closure, θ, st, dataloader, loss_lux_style;
-    nepochs = 100, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true)
+tstate.cache
 
 # * A posteriori dataloader
 # indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 
 # here we do not use io_arrays, those were nice for a priori because had \bar{u}, c.
 
-# in this function we cr4eate io_arrays with the following differences:
+# in this function we create io_arrays with the following differences:
 # - we do not need the commutator error c.
 # - we need the time and we keep the initial condition
 # - we do not have the boundary conditions extra elements
@@ -208,7 +200,6 @@ io_post[ig].t[2, :]
 # Let's explore Syver's way of handling the data for a-posteriori fitting
 trajectories = [(; u = d.data[ig].u, d.t) for d in data]
 size(trajectories[3].u) # 101 timesteps each sample.
-size(rand(snaps_out))
 nunroll = 5
 it = 1:nunroll
 snaps = (; u = data[1].data[ig].u[it], t = data[1].t[it])
@@ -300,10 +291,17 @@ function loss_posteriori(model, p, st, data)
 end
 
 # let's define a loss that calculates correctly and in the Lux format
-function loss_posteriori_lux_style(model, ps, st, (x, y))
-    ŷ, st_ = model(x, ps, st)
-    loss = sum(abs2, ŷ - y) / sum(abs2, y)
-    return loss, st_, (; y_pred = ŷ)
+function loss_posteriori_lux_style(model, ps, st, (u, t))
+    x = u[:, :, :, 1:1]
+    y = u[:, :, :, 2:end] # remember to discard sol at the initial time step
+    #dt = params.Δt
+    dt = t[2] - t[1]
+    #saveat_loss = [i * dt for i in 1:length(y)]
+    tspan = [t[1], t[end]]
+    prob = ODEProblem(dudt_nn2, x, tspan, ps)
+    pred = Array(solve(prob, Tsit5(); u0 = x, p = ps, dt = dt, adaptive = false))
+    # remember that the first element of pred is the initial condition (SciML)
+    return T(sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y)), st, (; y_pred = pred)
 end
 
 # train a-posteriori: single data point
@@ -322,16 +320,21 @@ result_posteriori = Optimization.solve(
 )
 θ_posteriori = result_posteriori.u
 
-loss_posteriori_lux_style(closure, θ_posteriori, st, train_data_posteriori)
+# testing the loss function with a single data example
+loss_posteriori_lux_style(closure, θ, st, train_data_posteriori)
 
 # try with Lux
 tstate = Lux.Training.TrainState(
-    closure, θ_posteriori, st, OptimizationOptimisers.Adam(0.1))
+    closure, θ, st, OptimizationOptimisers.Adam(0.1))
 _, loss, stats, tstate = Lux.Training.single_train_step!(
-    Optimization.AutoZygote(), loss_lux_style, train_data_posteriori, tstate)
+    Optimization.AutoZygote(), loss_posteriori_lux_style, train_data_posteriori, tstate)
 
-Lux.Training.compute_gradients(
-    Optimization.AutoZygote(), loss_posteriori, train_data_posteriori, tstate)
+loss, tstate = train(closure, θ, st, dataloader, loss_lux_style;
+    nepochs = 100, ad_type = Optimization.AutoZygote(),
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true)
+
+# the trained params are now:
+θ_posteriori = tstate.parameters
 
 # A-posteriori training Syver
 θ_posteriori = let
