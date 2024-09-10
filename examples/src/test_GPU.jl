@@ -51,8 +51,10 @@ CUDA.memory_status()
 
 using ShiftedArrays
 include("./../../src/derivatives.jl")
-F_u(gu, gv) =  D_u * Laplacian(gu.grid_data, gu.dx, gv.dy) .- gu.grid_data .* gv.grid_data .^ 2 .+
+function F_u(gu, gv)
+    D_u * Laplacian(gu.grid_data, gu.dx, gv.dy) .- gu.grid_data .* gv.grid_data .^ 2 .+
     f .* (1.0f0 .- gu.grid_data)
+end
 
 using Profile
 # Trigger and test if the force keeps the array on the GPU
@@ -70,16 +72,14 @@ CUDA.memory_status()
 @time for i in 1:1000
     ##@profview for i in 1:100
     ##CUDA.@profile for i in 1:100
-    zz = F_u(grid_GS_u.grid_data, grid_GS_v.grid_data);
+    zz = F_u(grid_GS_u.grid_data, grid_GS_v.grid_data)
 end
 @time for i in 1:1000
     ##CUDA.@profile for i in 1:100
     ##@profview for i in 1:100
-    zz = F_u(cugu.grid_data, cugv.grid_data);
+    zz = F_u(cugu.grid_data, cugv.grid_data)
 end
 typeof(zz)
-
-
 
 using Lux
 using LuxCUDA
