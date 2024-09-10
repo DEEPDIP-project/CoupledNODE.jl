@@ -79,15 +79,21 @@ b = io[ig].u[:, :, 1, 2]
 # io[igrid].u[nx, ny, dim as ux:1, time*nsample]
 a == b
 c = io_nc[ig].u[:, :, 1, 2]
-import CoupledNODE: NavierStokes as CN_NS
-CN_NS.NN_to_INS(io_nc[ig].u[:, :, :, 2:2], setups[ig])[1]
-CN_NS.INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
+include("../../../src/equations/NavierStokes_utils.jl")
+NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
+INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
+include("../../../src/equations/NavierStokes_utils.jl")
+NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
+INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
 
-u0_NN = io_nc[ig].u[:, :, :, 2:2]
-u0_INS = CN_NS.NN_to_INS(u0_NN, setups[ig])
+u0_NN = io[ig].u[:, :, :, 2:2]
+u0_INS = CN_NS.NN_padded_to_INS(u0_NN, setups[ig])
+u0_NN = io[ig].u[:, :, :, 2:2]
+u0_INS = CN_NS.NN_padded_to_INS(u0_NN, setups[ig])
 
 # * Creation of the model: NN closure
-import CoupledNODE: cnn
+include("../../../src/models/cnn.jl")
+include("../../../src/models/cnn.jl")
 closure, θ, st = cnn(;
     setup = setups[ig],
     radii = [3, 3],
@@ -115,17 +121,23 @@ size(train_data[1]) # bar{u} filtered
 size(train_data[2]) # c commutator error
 
 # * loss a priori (similar to Syver's)
-import CoupledNODE: create_loss_priori, mean_squared_error
+include("../../../src/loss/loss_priori.jl")
+#import CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
 loss_priori(closure, θ, st, train_data) # check that the loss is working
 
 # let's define a loss that calculates correctly and in the Lux format
-import CoupledNODE: loss_priori_lux
+#import CoupledNODE: loss_priori_lux
 loss_priori_lux(closure, θ, st, train_data)
 
 ## old way of training
-import CoupledNODE: callback
+include("../../../src/utils.jl")
+using Plots: plot!
+#import CoupledNODE: callback
+include("../../../src/utils.jl")
+using Plots: plot!
+#import CoupledNODE: callback
 import Optimization, OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
     (u, p) -> loss_priori(closure, u, st, train_data), # u here is the optimization variable (θ params of NN)
@@ -141,9 +153,14 @@ result_priori = Optimization.solve(
 θ_priori = result_priori.u
 # with this approach, we have the problem that we cannot loop trough the data. 
 
-import CoupledNODE: train
-loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux;
-    nepochs = 100, ad_type = Optimization.AutoZygote(),
+include("../../../src/train.jl")
+#import CoupledNODE: train
+include("../../../src/train.jl")
+#import CoupledNODE: train
+import Optimization, OptimizationOptimisers
+loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
+    nepochs = 10, ad_type = Optimization.AutoZygote(),
+    nepochs = 10, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 # the trained parameters are then: 
 θ_priori = tstate.parameters
@@ -166,13 +183,13 @@ function create_io_arrays_posteriori(data, setups)
         ig, ifil = I.I
         (; dimension, N, Iu) = setups[ig].grid
         D = dimension()
-        u = zeros(T, (N .- 2)..., D, nsample, nt + 1)
+        u = zeros(T, N..., D, nsample, nt + 1)
         t = zeros(T, nsample, nt + 1)
         ifield = ntuple(Returns(:), D)
         for is in 1:nsample, it in 1:(nt + 1), α in 1:D
             copyto!(
                 view(u, ifield..., α, is, it),
-                view(data[is].data[ig, ifil].u[it][α], Iu[α])
+                data[is].data[ig, ifil].u[it][α]
             )
             copyto!(
                 view(t, is, :),
@@ -214,30 +231,14 @@ end
 dataloader_luisa = create_dataloader_post_Luisa(io_post[ig]; nunroll = nunroll, rng)
 dataloader_luisa().u
 dataloader_luisa().t
-
-# option 1: data from Syver, rhs how simone used to define it
-function rhs(setup, psolver, closure, st)
-    function right_hand_side(u, p, t)
-        u = eachslice(u; dims = ndims(u))
-        u = (u...,)
-        u = INS.apply_bc_u(u, t, setup)
-        F = INS.momentum(u, nothing, t, setup)
-        F = F .+ CN_NS.NN_to_INS(
-            Lux.apply(closure, CN_NS.INS_to_NN(u, setup), p, st)[1][:, :, :, 1:1], setup)
-        F = INS.apply_bc_u(F, t, setup; dudt = true)
-        PF = INS.project(F, setup; psolver)
-        PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-        cat(PF[1], PF[2]; dims = 3)
-    end
-end
-dudt_nn = rhs(setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
-# how the rhs could be called:
-dudt_nn(stack(dataloader_post().u[1]), θ, dataloader_post().t[1])
+size(dataloader_post().u[1][1])
 
 # option 2: Luisa's dataloader, io_arrays and rhs
-dudt_nn2 = CN_NS.create_right_hand_side_with_closure(
+dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 example2 = dataloader_luisa()
+example2.u
+example2.u
 dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # trick of compatibility: keep always last dimension (time*sample)
 
 # Define the loss (a-posteriori)
