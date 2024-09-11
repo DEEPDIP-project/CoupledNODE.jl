@@ -81,7 +81,7 @@ function create_right_hand_side_with_closure_minimal_copy(setup, psolver, closur
         # u, u_nopad, u_for_lux and u_INS all refer to the same memory location
         u_nopad = NN_padded_to_NN_nopad(u, setup)
         u_INS = NN_padded_to_INS(u, setup)
-        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
+        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1) # Add dimension for Lux, TODO: can we get rid of it?
 
         INS.apply_bc_u!(u_INS, t, setup)
 
