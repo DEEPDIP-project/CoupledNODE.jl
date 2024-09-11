@@ -222,7 +222,7 @@ dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 example2 = dataloader_luisa()
 example2.u
-dudt_nn2(example2.u[:, :, :, 1:1], θ, example2.t[1]) # trick of compatibility: keep always last dimension (time*sample)
+dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # no tricks needed! 
 
 # Define the loss (a-posteriori)
 import Zygote
@@ -230,7 +230,7 @@ import DifferentialEquations: ODEProblem, solve, Tsit5
 
 function loss_posteriori(model, p, st, data)
     u, t = data
-    x = u[:, :, :, 1:1]
+    x = u[:, :, :, 1]
     y = u[:, :, :, 2:end] # remember to discard sol at the initial time step
     #dt = params.Δt
     dt = t[2] - t[1]
@@ -239,7 +239,7 @@ function loss_posteriori(model, p, st, data)
     prob = ODEProblem(dudt_nn2, x, tspan, p)
     pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
     # remember that the first element of pred is the initial condition (SciML)
-    return T(sum(abs2, y[:, :, :, 1:(size(pred, 5) - 1)] - pred[:, :, :, 1, 2:end]) /
+    return T(sum(abs2, y[:, :, :, 1:(size(pred, 4) - 1)] - pred[:, :, :, 2:end]) /
              sum(abs2, y))
 end
 
@@ -266,7 +266,7 @@ loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # training
 loss, tstate = train(closure, θ, st, dataloader_luisa, loss_posteriori_lux;
-    nepochs = 100, ad_type = Optimization.AutoZygote(),
+    nepochs = 5, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 
 # the trained params are now:

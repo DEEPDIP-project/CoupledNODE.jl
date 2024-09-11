@@ -150,7 +150,7 @@ end
 
 function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
     function loss_function(model, ps, st, (u, t))
-        x = u[:, :, :, 1:1]
+        x = u[:, :, :, 1]
         y = u[:, :, :, 2:end] # remember to discard sol at the initial time step
         #dt = params.Δt
         dt = t[2] - t[1]
@@ -160,6 +160,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
         pred = Array(solve(
             prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
         # remember that the first element of pred is the initial condition (SciML)
-        return sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y), st, (; y_pred = pred)
+        return sum(abs2, y[:, :, :, 1:(size(pred, 4) - 1)] - pred[:, :, :, 2:end]) /
+               sum(abs2, y), st, (; y_pred = pred)
     end
 end

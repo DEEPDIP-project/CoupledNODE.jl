@@ -77,22 +77,23 @@ Right hand side with closure, tries to minimize data copying (more work can be d
 function create_right_hand_side_with_closure_minimal_copy(setup, psolver, closure, st)
     function right_hand_side(u, p, t)
         # TODO: are we allowed to change u itself? if not, do:
-        #u = deepcopy(u)
-        # otherwise u, u_nopad and u_INS all refer to the same memory location
+        u = deepcopy(u)
+        # u, u_nopad, u_for_lux and u_INS all refer to the same memory location
         u_nopad = NN_padded_to_NN_nopad(u, setup)
         u_INS = NN_padded_to_INS(u, setup)
+        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
 
-        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup), u_INS)
+        INS.apply_bc_u!(u_INS, t, setup)
 
         F = INS.momentum(u_INS, nothing, t, setup)
-        u_lux = Lux.apply(closure, u_nopad, p, st)[1]
+        u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
 
         copy_INS_to_INS_inplace!(F, u_INS)
         u_nopad .= u_nopad .+ u_lux
 
-        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup; dudt = true), u_INS)
+        INS.apply_bc_u!(u_INS, t, setup; dudt = true)
         copy_INS_to_INS_inplace!(INS.project(u_INS, setup; psolver), u_INS)
-        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup; dudt = true), u_INS)
+        INS.apply_bc_u(u_INS, t, setup; dudt = true)
         u
     end
 end
@@ -137,9 +138,9 @@ function copy_INS_to_INS_inplace!(u_source, u_dest)
 end
 
 """
-    NN_to_INS(u, setup)
+    NN_padded_to_INS(u, setup)
 
-Converts the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
+Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
 to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
 
 # Arguments
@@ -147,30 +148,72 @@ to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
 - `setup`: IncompressibleNavierStokes.jl setup.
 
 # Returns
-- `u`: Velocity field converted to IncompressibleNavierStokes.jl style.
+- `u`: Velocity field view in IncompressibleNavierStokes.jl style.
 """
-
 function NN_padded_to_INS(u, setup)
-    emptydims = ((:) for _ in 1:(ndims(u) - 2))
-    dimdim = ndims(u) - 1
-    Tuple(@view(u[emptydims..., i, 1]) for i in 1:size(u, dimdim))
+    fulldims = ((:) for _ in 1:(ndims(u) - 1))
+    Tuple(
+        @view(u[fulldims..., i])
+    for i in 1:size(u, ndims(u))
+    )
 end
 
+"""
+    NN_padded_to_INS(u, setup)
+
+Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
+but without boundaries.
+
+# Arguments
+- `u`: Velocity field in NN style.
+- `setup`: IncompressibleNavierStokes.jl setup.
+
+# Returns
+- `u`: Velocity field view without boundaries.
+"""
 function NN_padded_to_NN_nopad(u, setup)
     (; grid, boundary_conditions) = setup
     (; Iu) = grid
 
     # Iu has multiple, but similar entries, but there is only one grid. We choose the first one 
     Iu = Iu[1]
-    dimdiff = ((:) for _ in ndims(u) - ndims(Iu))
+    dimdiff = ((:) for _ in 1:(ndims(u) - ndims(Iu)))
     @view u[Iu, dimdiff...]
 end
 
+"""
+    IO_padded_to_IO_nopad(io, setups)
+
+Creates a view which is similar to the input of the IO arrays, but without boundaries
+
+# Arguments
+- `io`::NamedTuple : tuple with all arrays with boundaries.
+- `setup`:: IncompressibleNavierStokes.jl setup.
+
+# Returns
+- `io`::NamedTuple : tuple with views of all arrays without boundaries.
+"""
 function IO_padded_to_IO_nopad(io, setups)
     [NamedTuple{keys(io[i])}((NN_padded_to_NN_nopad(x, setups[i]) for x in values(io[i])))
      for i in 1:length(io)]
 end
 
+"""
+    assert_pad_nopad_similar(io_pad,io_nopad,setup)
+
+Asserts that the values of padded and non-padded arrays are similar (boundaries excluded of course)
+
+# Arguments
+-`io_pad`: Padded array
+-`io_nopad`: Non-padded array
+-`setup`: IncompressibleNavierStokes.jl setup to determine boundary size
+
+# Returns
+None
+
+# Throws
+- AssertionError
+"""
 function assert_pad_nopad_similar(io_pad, io_nopad, setup)
     @assert io_nopad == NN_padded_to_NN_nopad(io_pad, setup)
 end
