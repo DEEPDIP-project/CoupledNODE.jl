@@ -76,21 +76,24 @@ Right hand side with closure, tries to minimize data copying (more work can be d
 """
 function create_right_hand_side_with_closure_minimal_copy(setup, psolver, closure, st)
     function right_hand_side(u, p, t)
+        # TODO: are we allowed to change u itself? if not, do:
+        #u = deepcopy(u)
+        # otherwise u, u_nopad and u_INS all refer to the same memory location
+        u_nopad = NN_padded_to_NN_nopad(u, setup)
         u_INS = NN_padded_to_INS(u, setup)
-        INS.apply_bc_u!(u_INS, t, setup)
+
+        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup), u_INS)
+
         F = INS.momentum(u_INS, nothing, t, setup)
-        u_nopad = NN_padded_to_NN_nopad(u, setup)
-        u_lux = Lux.apply(closure, u_nopad, p, st)[1][:, :, :, 1:1]
-        u_nopad = NN_padded_to_NN_nopad(u, setup)
-        u_nopad .= u_lux
-        # assert_pad_nopad_similar(u, u_nopad, setup)
+        u_lux = Lux.apply(closure, u_nopad, p, st)[1]
 
-        F = F .+ NN_padded_to_INS(u, setup)
+        copy_INS_to_INS_inplace!(F, u_INS)
+        u_nopad .= u_nopad .+ u_lux
 
-        F = INS.apply_bc_u(F, t, setup; dudt = true)
-        PF = INS.project(F, setup; psolver)
-        PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-        cat(PF[1], PF[2]; dims = 3)
+        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup; dudt = true), u_INS)
+        copy_INS_to_INS_inplace!(INS.project(u_INS, setup; psolver), u_INS)
+        copy_INS_to_INS_inplace!(INS.apply_bc_u(u_INS, t, setup; dudt = true), u_INS)
+        u
     end
 end
 
@@ -107,7 +110,7 @@ to a format suitable for neural network training `u[n, n, D, batch]`.
 # Returns
 - `u`: Velocity field converted to a tensor format suitable for neural network training.
 """
-function INS_to_NN(u, setup)
+#= function INS_to_NN(u, setup)
     (; dimension, Iu) = setup.grid
     D = dimension()
     if D == 2
@@ -116,8 +119,20 @@ function INS_to_NN(u, setup)
     elseif D == 3
         u = cat(u[1][Iu[1]], u[2][Iu[2]], u[3][Iu[3]]; dims = 4)
         u = reshape(u, size(u)..., 1) # One sample
+
     else
         error("Unsupported dimension: $D. Only 2D and 3D are supported.")
+    end
+end =#
+
+"""
+    copy_INS_to_INS_inplace
+
+    helper function to assign in-place to a tuple because I am no julia guru that can one-line this 
+"""
+function copy_INS_to_INS_inplace!(u_source, u_dest)
+    for (u_s, u_d) in zip(u_source, u_dest)
+        u_d .= u_s
     end
 end
 
@@ -136,35 +151,19 @@ to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
 """
 
 function NN_padded_to_INS(u, setup)
-    (; grid, boundary_conditions) = setup
-    (; dimension) = grid
-    D = dimension()
-    # Not really sure about the necessity for the distinction. 
-    # We just want a place holder for the boundaries and they will in any case be re-calculated via INS.apply_bc_u!
-    if D == 2
-        (@view(u[:, :, 1, 1]), @view(u[:, :, 1, 1]))
-    elseif D == 3
-        (@view(u[:, :, :, 1, 1]), @view(u[:, :, :, 2, 1]), @view(u[:, :, :, 3, 1]))
-    else
-        error("Unsupported dimension: $D. Only 2D and 3D are supported.")
-    end
+    emptydims = ((:) for _ in 1:(ndims(u) - 2))
+    dimdim = ndims(u) - 1
+    Tuple(@view(u[emptydims..., i, 1]) for i in 1:size(u, dimdim))
 end
 
 function NN_padded_to_NN_nopad(u, setup)
     (; grid, boundary_conditions) = setup
-    (; dimension) = grid
-    D = dimension()
-    # Not really sure about the necessity for the distinction. 
-    # We just want a place holder for the boundaries and they will in any case be re-calculated via INS.apply_bc_u!
-    if D == 2
-        x, y, _... = size(u)
-        @view u[2:(x - 1), 2:(y - 1), :, :]
-    elseif D == 3
-        x, y, z, _, _ = size(u)
-        @view u[2:(x - 1), 2:(y - 1), 2:(z - 1), :, :]
-    else
-        error("Unsupported dimension: $D. Only 2D and 3D are supported.")
-    end
+    (; Iu) = grid
+
+    # Iu has multiple, but similar entries, but there is only one grid. We choose the first one 
+    Iu = Iu[1]
+    dimdiff = ((:) for _ in ndims(u) - ndims(Iu))
+    @view u[Iu, dimdiff...]
 end
 
 function IO_padded_to_IO_nopad(io, setups)
