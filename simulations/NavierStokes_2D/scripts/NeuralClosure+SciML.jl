@@ -143,7 +143,7 @@ result_priori = Optimization.solve(
 #include("../../../src/train.jl")
 import CoupledNODE: train
 import Optimization, OptimizationOptimisers
-loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
+loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux;
     nepochs = 10, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 # the trained parameters are then: 
