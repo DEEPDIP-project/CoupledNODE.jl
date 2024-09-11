@@ -66,11 +66,12 @@ function create_io_arrays(data, setups)
         (; u = reshape(u, N..., D, :), c = reshape(c, N..., D, :)) # squeeze time and sample dimensions
     end
 end
+include("../../../src/equations/NavierStokes_utils.jl")
 
 # Create input/output arrays for a-priori training (ubar vs c)
 io = create_io_arrays(data, setups); # modified version that has also place-holder for boundary conditions
-io_nc = NC.create_io_arrays(data, setups) # original syver version, without extra padding
 ig = 1 #index of the LES grid to use.
+io_nc = IO_padded_to_IO_nopad(io, setups) # original syver version, without extra padding
 
 # check that the data is correctly reshaped
 a = data[1].data[ig].u[2][1]
@@ -79,16 +80,13 @@ b = io[ig].u[:, :, 1, 2]
 # io[igrid].u[nx, ny, dim as ux:1, time*nsample]
 a == b
 c = io_nc[ig].u[:, :, 1, 2]
-
-include("../../../src/equations/NavierStokes_utils.jl")
 NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
-INS_to_NN(data[1].data[ig].u[2], setups[ig])[:, :, 1, 1]
+NN_padded_to_NN_nopad(io[ig].u[:, :, :, 2:2], setups[ig])
 
-u0_NN = io[ig].u[:, :, :, 2:2]
-u0_INS = CN_NS.NN_padded_to_INS(u0_NN, setups[ig])
+zu0_NN = io[ig].u[:, :, :, 2:2]
 
 # * Creation of the model: NN closure
-include("../../../src/models/cnn.jl")
+import CoupledNODE: cnn
 closure, θ, st = cnn(;
     setup = setups[ig],
     radii = [3, 3],
@@ -116,20 +114,17 @@ size(train_data[1]) # bar{u} filtered
 size(train_data[2]) # c commutator error
 
 # * loss a priori (similar to Syver's)
-include("../../../src/loss/loss_priori.jl")
-#import CoupledNODE: create_loss_priori, mean_squared_error
+import CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
 loss_priori(closure, θ, st, train_data) # check that the loss is working
 
 # let's define a loss that calculates correctly and in the Lux format
-#import CoupledNODE: loss_priori_lux
+import CoupledNODE: loss_priori_lux
 loss_priori_lux(closure, θ, st, train_data)
 
 ## old way of training
-include("../../../src/utils.jl")
-using Plots: plot!
-#import CoupledNODE: callback
+import CoupledNODE: callback
 import Optimization, OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
     (u, p) -> loss_priori(closure, u, st, train_data), # u here is the optimization variable (θ params of NN)
@@ -145,8 +140,8 @@ result_priori = Optimization.solve(
 θ_priori = result_priori.u
 # with this approach, we have the problem that we cannot loop trough the data. 
 
-include("../../../src/train.jl")
-#import CoupledNODE: train
+#include("../../../src/train.jl")
+import CoupledNODE: train
 import Optimization, OptimizationOptimisers
 loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux_style;
     nepochs = 10, ad_type = Optimization.AutoZygote(),
@@ -226,7 +221,8 @@ size(dataloader_post().u[1][1])
 dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 example2 = dataloader_luisa()
-dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # trick of compatibility: keep always last dimension (time*sample)
+example2.u
+dudt_nn2(example2.u[:, :, :, 1:1], θ, example2.t[1]) # trick of compatibility: keep always last dimension (time*sample)
 
 # Define the loss (a-posteriori)
 import Zygote
@@ -243,7 +239,8 @@ function loss_posteriori(model, p, st, data)
     prob = ODEProblem(dudt_nn2, x, tspan, p)
     pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
     # remember that the first element of pred is the initial condition (SciML)
-    return T(sum(abs2, y - pred[:, :, :, 1, 2:end]) / sum(abs2, y))
+    return T(sum(abs2, y[:, :, :, 1:(size(pred, 5) - 1)] - pred[:, :, :, 1, 2:end]) /
+             sum(abs2, y))
 end
 
 # train a-posteriori: single data point
@@ -257,7 +254,7 @@ result_posteriori = Optimization.solve(
     optprob,
     OptimizationOptimisers.Adam(0.1);
     callback = callback,
-    maxiters = 50,
+    maxiters = 5,
     progress = true
 )
 θ_posteriori = result_posteriori.u
