@@ -22,6 +22,7 @@ The optimized parameters (θ).
 function optimize(θ, loss, ad_type = Optimization.AutoZygote(),
         alg = OptimizationOptimisers.Adam(0.1),
         args...; kwargs...)
+    # would have to remake each of these objects for a different data batch (data goes in loss)
     optf = Optimization.OptimizationFunction((x, p) -> loss(x), ad_type)
     optprob = Optimization.OptimizationProblem(optf, θ)
     Optimization.solve(

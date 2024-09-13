@@ -15,5 +15,6 @@ include("loss/loss_posteriori.jl")
 # Modules for the examples
 include("equations/Burgers.jl")
 include("equations/NavierStokes.jl")
+include("equations/NavierStokes_utils.jl")
 
 end # module CoupledNODE

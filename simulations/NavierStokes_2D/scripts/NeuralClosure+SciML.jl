@@ -1,7 +1,6 @@
 # For an example of pure NeuralClosure+SciML, visit IncompressibleNavierStokes.jl/lib/NeuralClosure/test/examplerun.jl
-# OK Luisa: here you have the workflow of NeuralCLosure with INS. Now the challenge is going to be to adapt this to the SciML framework.
-# I would like to keep the data generation using Syver's code, but the training, loss and error calculation we may have an oportunity to define in CoupledNODE.
-# Of course remember we are limiting ourselves to only using Zygote.
+# Goal: adap the workflow of NeuralCLosure with INS to the SciML framework.
+# Remember we are limiting ourselves to only using Zygote.
 using CairoMakie
 import Random
 import IncompressibleNavierStokes as INS
@@ -66,12 +65,13 @@ function create_io_arrays(data, setups)
         (; u = reshape(u, N..., D, :), c = reshape(c, N..., D, :)) # squeeze time and sample dimensions
     end
 end
-include("../../../src/equations/NavierStokes_utils.jl")
+#include("../../../src/equations/NavierStokes_utils.jl") # for development
+import CoupledNODE: IO_padded_to_IO_nopad, NN_padded_to_INS, NN_padded_to_NN_nopad
 
 # Create input/output arrays for a-priori training (ubar vs c)
 io = create_io_arrays(data, setups); # modified version that has also place-holder for boundary conditions
 ig = 1 #index of the LES grid to use.
-io_nc = IO_padded_to_IO_nopad(io, setups) # original syver version, without extra padding
+io_nc = IO_padded_to_IO_nopad(io, setups) # equivalent to original syver version, without extra padding
 
 # check that the data is correctly reshaped
 a = data[1].data[ig].u[2][1]
@@ -102,32 +102,27 @@ Lux.apply(closure, io_nc[ig].u[:, :, :, 1:1], θ, st)[1]
 model_debug = Lux.Experimental.@debug_mode closure
 Lux.apply(model_debug, io_nc[ig].u[:, :, :, 1:10], θ, st)
 
-# * Right-hand-side out-of-place : not needed in a-priori fitting
-#dudt_nn = CN_NS.create_right_hand_side_with_closure(setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
-#dudt_nn(u0_NN, θ, T(0)) # correct, what is designed for 
-#dudt_nn(stack(data[ig].data[1].u[1]), nothing , T(0)) # fails, not design for this data structure (old way)
-
 # * dataloader priori
-dataloader = NC.create_dataloader_prior(io_nc[ig]; batchsize = 10, rng)
-train_data = dataloader()
-size(train_data[1]) # bar{u} filtered
-size(train_data[2]) # c commutator error
+dataloader_prior = NC.create_dataloader_prior(io_nc[ig]; batchsize = 10, rng)
+train_data_priori = dataloader_prior()
+size(train_data_priori[1]) # bar{u} filtered
+size(train_data_priori[2]) # c commutator error
 
 # * loss a priori (similar to Syver's)
 import CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
-loss_priori(closure, θ, st, train_data) # check that the loss is working
+loss_priori(closure, θ, st, train_data_priori) # check that the loss is working
 
 # let's define a loss that calculates correctly and in the Lux format
 import CoupledNODE: loss_priori_lux
-loss_priori_lux(closure, θ, st, train_data)
+loss_priori_lux(closure, θ, st, train_data_priori)
 
 ## old way of training
 import CoupledNODE: callback
 import Optimization, OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
-    (u, p) -> loss_priori(closure, u, st, train_data), # u here is the optimization variable (θ params of NN)
+    (u, p) -> loss_priori(closure, u, st, train_data_priori), # u here is the optimization variable (θ params of NN)
     Optimization.AutoZygote())
 optprob = Optimization.OptimizationProblem(optf, θ)
 result_priori = Optimization.solve(
@@ -140,49 +135,64 @@ result_priori = Optimization.solve(
 θ_priori = result_priori.u
 # with this approach, we have the problem that we cannot loop trough the data. 
 
+# atempt to create a nice callback
+function create_callback(
+        θ,
+        err_function = nothing,
+        callbackstate = (; θmin = θ, θmin_e = θ, loss_min = eltype(θ)(Inf),
+            emin = eltype(θ)(Inf), hist = Point2f[]),
+        displayref = false,
+        display_each_iteration = true,
+        filename = nothing
+)
+    istart = isempty(callbackstate.hist) ? 0 : Int(callbackstate.hist[end][1])
+    obs = Observable([Point2f(0, 0)])
+    fig = lines(obs; axis = (; title = "Error", xlabel = "step"))
+    displayref && hlines!([1.0f0]; linestyle = :dash)
+    obs[] = callbackstate.hist
+    display(fig)
+    function callback(θ, loss)
+        if err_function !== nothing
+            e = err_function(θ)
+            #@info "Iteration $i \terror: $e"
+            e < state.emin && (state = (; callbackstate..., θmin_e = θ, emin = e))
+        end
+        hist = push!(copy(callbackstate.hist), Point2f(length(callbackstate.hist), loss))
+        obs[] = hist
+        autolimits!(fig.axis)
+        display_each_iteration && display(fig)
+        isnothing(filename) || save(filename, fig)
+        callbackstate = (; callbackstate..., hist)
+        loss < callbackstate.loss_min &&
+            (callbackstate = (; callbackstate..., θmin = θ, loss_min = loss))
+        callbackstate
+    end
+    (; callbackstate, callback)
+end
+callbackstate, callback_2 = create_callback(θ)
+
+# new way of training (via Lux)
 #include("../../../src/train.jl")
 import CoupledNODE: train
 import Optimization, OptimizationOptimisers
-loss, tstate = train(closure, θ, st, dataloader, loss_priori_lux;
-    nepochs = 10, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
-# the trained parameters are then: 
+loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
+    nepochs = 50, ad_type = Optimization.AutoZygote(),
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_2)
+# the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
+# and the best parameters found during training are:
+θ_priori_best = callbackstate.θmin
 
-# * A posteriori dataloader
-# indeed the ioarrays are not useful here, what a bummer! We should come up with a format that would be useful for both a-priori and a-posteriori training. 
-# here we do not use io_arrays, those were nice for a priori because had \bar{u}, c.
+# * A posteriori dataloader 
+# Here we cannot use io_arrays, those were nice for a priori because had \bar{u}, c.
+# And time and sample dimension were squeezed. Here we want to do trajectory fitting thus we need the time sequence.
 
-# in this function we create io_arrays with the following differences:
+# in this function we create io_arrays with the following carachteristics:
 # - we do not need the commutator error c.
 # - we need the time and we keep the initial condition
 # - we do not have the boundary conditions extra elements
 # - put time dimension in the end, since SciML also does
-function create_io_arrays_posteriori(data, setups)
-    nsample = length(data)
-    ngrid, nfilter = size(data[1].data)
-    nt = length(data[1].t) - 1
-    T = eltype(data[1].t)
-    map(CartesianIndices((ngrid, nfilter))) do I
-        ig, ifil = I.I
-        (; dimension, N, Iu) = setups[ig].grid
-        D = dimension()
-        u = zeros(T, N..., D, nsample, nt + 1)
-        t = zeros(T, nsample, nt + 1)
-        ifield = ntuple(Returns(:), D)
-        for is in 1:nsample, it in 1:(nt + 1), α in 1:D
-            copyto!(
-                view(u, ifield..., α, is, it),
-                data[is].data[ig, ifil].u[it][α]
-            )
-            copyto!(
-                view(t, is, :),
-                data[is].t
-            )
-        end
-        (; u = u, t = t)
-    end
-end
+import CoupledNODE: create_io_arrays_posteriori
 io_post = create_io_arrays_posteriori(data, setups)
 (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
 (samples, nsteps) = size(io_post[ig].t)
@@ -202,27 +212,28 @@ dataloader_post().u
 dataloader_post().t
 
 # Luisa: can we create a dataloader that has the data in a nicer (NN) format?
-function create_dataloader_post_Luisa(io_array; nunroll = 10, device = identity, rng)
-    function dataloader()
-        (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
-        @assert nt ≥ nunroll
-        istart = rand(rng, 1:(nt - nunroll))
-        it = istart:(istart + nunroll)
-        isample = rand(rng, 1:samples)
-        (; u = view(io_array.u, :, :, :, isample, it), t = io_array.t[isample, it])
-    end
-end
-dataloader_luisa = create_dataloader_post_Luisa(io_post[ig]; nunroll = nunroll, rng)
-dataloader_luisa().u
-dataloader_luisa().t
-size(dataloader_post().u[1][1])
+import CoupledNODE: create_dataloader_posteriori
+dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
+dataloader_posteriori().u
+dataloader_posteriori().t
 
 # option 2: Luisa's dataloader, io_arrays and rhs
+import CoupledNODE: create_right_hand_side_with_closure_minimal_copy
 dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
-example2 = dataloader_luisa()
+
+# for testing purposes
+example2 = dataloader_posteriori()
 example2.u
-dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # no tricks needed! 
+dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # no tricks needed!
+tspan = [example2.t[1], example2.t[end]]
+dt = example2.t[2] - example2.t[1]
+prob2 = ODEProblem(dudt_nn2, example2.u[:, :, :, 1], tspan, θ)
+pred = Array(solve(
+    prob2, Tsit5(); u0 = example2.u[:, :, :, 1], p = θ, dt = dt, adaptive = false))
+pred[:, :, :, 2:end] - example2.u[:, :, :, 2:end]
+pred[:, :, :, 1] == example2.u[:, :, :, 1] # Sci-ML also keeps the initial condition.
+# end - for testing purposes
 
 # Define the loss (a-posteriori)
 import Zygote
@@ -244,7 +255,9 @@ function loss_posteriori(model, p, st, data)
 end
 
 # train a-posteriori: single data point
-train_data_posteriori = dataloader_luisa()
+using SciMLSensitivity
+SciMLSensitivity.STACKTRACE_WITH_VJPWARN[] = true
+train_data_posteriori = dataloader_posteriori()
 optf = Optimization.OptimizationFunction(
     (u, p) -> loss_posteriori(closure, u, st, train_data_posteriori), # u here is the optimization variable (θ params of NN)
     Optimization.AutoZygote()
@@ -264,7 +277,7 @@ import CoupledNODE: create_loss_post_lux
 loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
-# training
+# training via Lux
 loss, tstate = train(closure, θ, st, dataloader_luisa, loss_posteriori_lux;
     nepochs = 5, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)

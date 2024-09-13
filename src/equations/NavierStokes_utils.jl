@@ -217,3 +217,52 @@ None
 function assert_pad_nopad_similar(io_pad, io_nopad, setup)
     @assert io_nopad == NN_padded_to_NN_nopad(io_pad, setup)
 end
+
+"""
+    create_io_arrays_posteriori(data, setups)
+
+Main differences between this function and NeuralClosure.create_io_arrays
+ - we do not need the commutator error c.
+ - we need the time and we keep the initial condition.
+ - put time dimension in the end, since SciML also does.
+
+# Returns
+A named tuple with fields `u` and `t`.
+`u` is a matrix without padding and shape (nless..., D, sample, t)
+"""
+function create_io_arrays_posteriori(data, setups)
+    nsample = length(data)
+    ngrid, nfilter = size(data[1].data)
+    nt = length(data[1].t) - 1
+    T = eltype(data[1].t)
+    map(CartesianIndices((ngrid, nfilter))) do I
+        ig, ifil = I.I
+        (; dimension, N, Iu) = setups[ig].grid
+        D = dimension()
+        u = zeros(T, N..., D, nsample, nt + 1)
+        t = zeros(T, nsample, nt + 1)
+        ifield = ntuple(Returns(:), D)
+        for is in 1:nsample, it in 1:(nt + 1), α in 1:D
+            copyto!(
+                view(u, ifield..., α, is, it),
+                data[is].data[ig, ifil].u[it][α]
+            )
+            copyto!(
+                view(t, is, :),
+                data[is].t
+            )
+        end
+        (; u = u, t = t)
+    end
+end
+
+function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
+    function dataloader()
+        (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
+        @assert nt ≥ nunroll
+        istart = rand(rng, 1:(nt - nunroll))
+        it = istart:(istart + nunroll)
+        isample = rand(rng, 1:samples)
+        (; u = view(io_array.u, :, :, :, isample, it), t = io_array.t[isample, it])
+    end
+end
