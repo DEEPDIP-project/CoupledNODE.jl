@@ -65,6 +65,7 @@ function create_io_arrays(data, setups)
         (; u = reshape(u, N..., D, :), c = reshape(c, N..., D, :)) # squeeze time and sample dimensions
     end
 end
+
 #include("../../../src/equations/NavierStokes_utils.jl") # for development
 import CoupledNODE: IO_padded_to_IO_nopad, NN_padded_to_INS, NN_padded_to_NN_nopad
 
@@ -75,12 +76,13 @@ io_nc = IO_padded_to_IO_nopad(io, setups) # equivalent to original syver version
 
 # check that the data is correctly reshaped
 a = data[1].data[ig].u[2][1]
-# data[nsample.data[igrid,ifilter],u[t][dim as ux:1, uy:2]
+# data[nsample].data[igrid,ifilter].u[t][dim as ux:1, uy:2]
 b = io[ig].u[:, :, 1, 2]
 # io[igrid].u[nx, ny, dim as ux:1, time*nsample]
 a == b
 c = io_nc[ig].u[:, :, 1, 2]
-NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])[1]
+
+NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])
 NN_padded_to_NN_nopad(io[ig].u[:, :, :, 2:2], setups[ig])
 
 zu0_NN = io[ig].u[:, :, :, 2:2]
@@ -235,6 +237,29 @@ pred[:, :, :, 2:end] - example2.u[:, :, :, 2:end]
 pred[:, :, :, 1] == example2.u[:, :, :, 1] # Sci-ML also keeps the initial condition.
 # end - for testing purposes
 
+# option 1: 
+import CoupledNODE: create_right_hand_side_with_closure
+#dudt_nn = create_right_hand_side_with_closure(
+#    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+#dudt_nn(example2.u[:, :, :, 1], θ, example2.t[1])
+import CoupledNODE: INS_to_NN
+import NNlib: pad_circular
+function dudt_nn1(u, p, t)
+    # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
+    D = 2 # for the moment setting the dimension fixed to 2
+    u = NN_padded_to_INS(u, setups[1])
+    u = INS.apply_bc_u(u, t, setups[1])
+    F = INS.momentum(u, nothing, t, setups[1])
+    F_nopad = INS_to_NN(F, setups[1])
+    F_nopad = F_nopad .+ Lux.apply(closure, INS_to_NN(u, setups[1]), p, st)[1][:, :, :, 1:1]
+    F = NN_padded_to_INS(pad_circular(F_nopad, 1, dims = collect(1:D)), setups[1])
+    F = INS.apply_bc_u(F, t, setups[1]; dudt = true)
+    PF = INS.project(F, setups[1]; psolver = INS.psolver_spectral(setups[ig]))
+    PF = INS.apply_bc_u(PF, t, setups[1]; dudt = true)
+    INS_to_NN(PF, setups[1])
+end
+dudt_nn1(example2.u[:, :, :, 1], θ, example2.t[1])
+
 # Define the loss (a-posteriori)
 import Zygote
 import DifferentialEquations: ODEProblem, solve, Tsit5
@@ -278,7 +303,7 @@ loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # training via Lux
-loss, tstate = train(closure, θ, st, dataloader_luisa, loss_posteriori_lux;
+loss, tstate = train(closure, θ, st, dataloader_posteriori, loss_posteriori_lux;
     nepochs = 5, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 

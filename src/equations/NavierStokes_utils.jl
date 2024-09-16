@@ -34,11 +34,10 @@ This formulation was the one proved best in Syver's paper i.e. DCF.
 create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
         u, p, t)
     # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
-    u_ins = NN_padded_to_INS(u, setup)
+    u = NN_padded_to_INS(u, setup)
     u = INS.apply_bc_u(u, t, setup)
     F = INS.momentum(u, nothing, t, setup)
-    F = F .+
-        NN_padded_to_INS(
+    F = F .+ NN_padded_to_INS(
         Lux.apply(closure, INS_to_NN(u, setup), p, st)[1][:, :, :, 1:1], setup)
     F = INS.apply_bc_u(F, t, setup; dudt = true)
     PF = INS.project(F, setup; psolver)
@@ -111,7 +110,7 @@ to a format suitable for neural network training `u[n, n, D, batch]`.
 # Returns
 - `u`: Velocity field converted to a tensor format suitable for neural network training.
 """
-#= function INS_to_NN(u, setup)
+function INS_to_NN(u, setup)
     (; dimension, Iu) = setup.grid
     D = dimension()
     if D == 2
@@ -124,7 +123,7 @@ to a format suitable for neural network training `u[n, n, D, batch]`.
     else
         error("Unsupported dimension: $D. Only 2D and 3D are supported.")
     end
-end =#
+end
 
 """
     copy_INS_to_INS_inplace
