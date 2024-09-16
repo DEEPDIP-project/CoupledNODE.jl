@@ -140,8 +140,9 @@ end
 """
     NN_padded_to_INS(u, setup)
 
-Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
-to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
+Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, <optional timesteps>]`
+to the IncompressibleNavierStokes.jl style `(ux, uy)`.
+If the <optional timesteps> dimensions has size > 1, an error is thrown.
 
 # Arguments
 - `u`: Velocity field in NN style.
@@ -151,11 +152,27 @@ to the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`.
 - `u`: Velocity field view in IncompressibleNavierStokes.jl style.
 """
 function NN_padded_to_INS(u, setup)
-    fulldims = ((:) for _ in 1:(ndims(u) - 1))
-    Tuple(
-        @view(u[fulldims..., i])
-    for i in 1:size(u, ndims(u))
-    )
+    (; grid) = setup
+    (; dimension) = grid
+    D = dimension()
+    griddims = ((:) for _ in 1:D)
+
+    if ndims(u) == D + 1
+        Tuple(
+            @view(u[griddims..., d])
+        for d in 1:size(u, ndims(u))
+        )
+    elseif ndims(u) == D + 2
+        if size(u, ndims(u)) != 1
+            error("Only a single timeslice is supported")
+        end
+        Tuple(
+            @view(u[griddims..., d, 1])
+        for d in 1:size(u, ndims(u) - 1)
+        )
+    else
+        error("Unsupported or non-matching number of dimensions in IO array")
+    end
 end
 
 """
@@ -174,7 +191,6 @@ but without boundaries.
 function NN_padded_to_NN_nopad(u, setup)
     (; grid, boundary_conditions) = setup
     (; Iu) = grid
-
     # Iu has multiple, but similar entries, but there is only one grid. We choose the first one 
     Iu = Iu[1]
     dimdiff = ((:) for _ in 1:(ndims(u) - ndims(Iu)))
