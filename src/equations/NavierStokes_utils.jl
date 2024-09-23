@@ -175,7 +175,7 @@ function NN_padded_to_INS(u, setup)
 end
 
 """
-    NN_padded_to_INS(u, setup)
+    NN_padded_to_NN_nopad(u, setup)
 
 Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
 but without boundaries.

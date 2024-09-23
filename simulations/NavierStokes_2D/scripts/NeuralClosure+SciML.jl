@@ -85,8 +85,6 @@ c = io_nc[ig].u[:, :, 1, 2]
 NN_padded_to_INS(io[ig].u[:, :, :, 2:2], setups[ig])
 NN_padded_to_NN_nopad(io[ig].u[:, :, :, 2:2], setups[ig])
 
-zu0_NN = io[ig].u[:, :, :, 2:2]
-
 # * Creation of the model: NN closure
 import CoupledNODE: cnn
 closure, θ, st = cnn(;
@@ -174,9 +172,9 @@ end
 callbackstate, callback_2 = create_callback(θ)
 
 # new way of training (via Lux)
-#include("../../../src/train.jl")
 import CoupledNODE: train
 import Optimization, OptimizationOptimisers
+
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_2)
@@ -213,18 +211,18 @@ dataloader_post = NC.create_dataloader_post(trajectories; nunroll = nunroll, rng
 dataloader_post().u
 dataloader_post().t
 
-# Luisa: can we create a dataloader that has the data in a nicer (NN) format?
 import CoupledNODE: create_dataloader_posteriori
 dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
 dataloader_posteriori().u
 dataloader_posteriori().t
 
-# option 2: Luisa's dataloader, io_arrays and rhs
+# option 2:
 import CoupledNODE: create_right_hand_side_with_closure_minimal_copy
 dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
 # for testing purposes
+import DifferentialEquations: ODEProblem, solve, Tsit5
 example2 = dataloader_posteriori()
 example2.u
 dudt_nn2(example2.u[:, :, :, 1], θ, example2.t[1]) # no tricks needed!
@@ -238,7 +236,7 @@ pred[:, :, :, 1] == example2.u[:, :, :, 1] # Sci-ML also keeps the initial condi
 # end - for testing purposes
 
 # option 1: 
-import CoupledNODE: create_right_hand_side_with_closure
+#import CoupledNODE: create_right_hand_side_with_closure
 #dudt_nn = create_right_hand_side_with_closure(
 #    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 #dudt_nn(example2.u[:, :, :, 1], θ, example2.t[1])
@@ -256,10 +254,12 @@ function dudt_nn1(u, p, t)
     F = INS.apply_bc_u(F, t, setups[1]; dudt = true)
     PF = INS.project(F, setups[1]; psolver = INS.psolver_spectral(setups[ig]))
     PF = INS.apply_bc_u(PF, t, setups[1]; dudt = true)
-    INS_to_NN(PF, setups[1])
+    return stack(PF) # From tuple to tensor INS -> NN
 end
 dudt_nn1(example2.u[:, :, :, 1], θ, example2.t[1])
-
+prob1 = ODEProblem(dudt_nn1, example2.u[:, :, :, 1], tspan, θ)
+pred1 = Array(solve(
+    prob1, Tsit5(); u0 = example2.u[:, :, :, 1], p = θ, dt = dt, adaptive = false))
 # Define the loss (a-posteriori)
 import Zygote
 import DifferentialEquations: ODEProblem, solve, Tsit5
@@ -272,7 +272,7 @@ function loss_posteriori(model, p, st, data)
     dt = t[2] - t[1]
     #saveat_loss = [i * dt for i in 1:length(y)]
     tspan = [t[1], t[end]]
-    prob = ODEProblem(dudt_nn2, x, tspan, p)
+    prob = ODEProblem(dudt_nn1, x, tspan, p)
     pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
     # remember that the first element of pred is the initial condition (SciML)
     return T(sum(abs2, y[:, :, :, 1:(size(pred, 4) - 1)] - pred[:, :, :, 2:end]) /
@@ -292,7 +292,7 @@ result_posteriori = Optimization.solve(
     optprob,
     OptimizationOptimisers.Adam(0.1);
     callback = callback,
-    maxiters = 5,
+    maxiters = 3,
     progress = true
 )
 θ_posteriori = result_posteriori.u

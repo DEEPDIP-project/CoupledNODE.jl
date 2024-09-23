@@ -1,6 +1,7 @@
 using SciMLSensitivity
 import Lux
 import Juno
+import Zygote
 import Optimization, OptimizationOptimisers
 """
     optimize(θ, loss, ad_type=Optimization.AutoZygote(), alg::AbstractOptimizationAlgorithm=OptimizationOptimisers.Adam(0.1), args...; kwargs...)
@@ -55,7 +56,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     tstate = Lux.Training.TrainState(model, ps, st, alg)
     loss::Float32 = 0 #NOP
     Juno.@progress for epoch in 1:nepochs
-        data = train_dataloader()
+        data = Zygote.@ignore train_dataloader()
         _, loss, _, tstate = Lux.Training.single_train_step!(
             ad_type, loss_function, data, tstate)
         if callback !== nothing
