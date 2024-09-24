@@ -98,6 +98,87 @@ function create_right_hand_side_with_closure_minimal_copy(setup, psolver, closur
 end
 
 """
+Right hand side with closure, minimal copy, but keep it autodifferentiable
+"""
+function create_right_hand_side_with_closure_minimal_copy_autodiff(
+        setup, psolver, closure, st)
+    function right_hand_side(u, p, t)
+        # u, u_nopad, u_for_lux and u_INS all refer to the same memory location
+        u_nopad = NN_padded_to_NN_nopad(u, setup)
+        u_INS = NN_padded_to_INS(u, setup)
+        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1) # Add dimension for Lux, TODO: can we get rid of it?
+
+        u = INS.apply_bc_u(u_INS, t, setup)
+
+        F = INS.momentum(u, nothing, t, setup)
+
+        #u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
+
+        #FC = sum_NN_nopad_and_INS(u_lux, F, setup)
+
+        FC = INS.apply_bc_u(F, t, setup; dudt = true)
+
+        FP = INS.project(FC, setup; psolver)
+
+        FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+
+        ret = INS_to_NN(FP)
+    end
+end
+
+function create_right_hand_side_simple(setup, psolver, closure, st)
+    function right_hand_side(u, p, t)
+        u_INS = NN_padded_to_INS(u, setup)
+
+        u_nopad = NN_padded_to_NN_nopad(u, setup)
+        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
+
+        u = INS.apply_bc_u(u_INS, t, setup)
+
+        F = INS.momentum(u, nothing, t, setup)
+
+        u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
+
+        FC = sum_NN_nopad_and_INS(u_lux, F, setup)
+
+        FC = INS.apply_bc_u(F, t, setup; dudt = true)
+
+        FP = INS.project(FC, setup; psolver)
+
+        FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+
+        ret = INS_to_NN(FP)
+    end
+end
+
+function pad_manual(u, D, b_axes, Iu)
+    for i in 1:D
+        x1 = (size(u, j) for j in 1:(i - 1))
+        x2 = (size(u, j) for j in (i + 1):D)
+        presize = first(Iu.indices[i]) - 1
+        postsize = last(b_axes[i]) - last(Iu.indices[i])
+
+        pre = similar(u, (x1..., presize, x2...))
+        post = similar(u, (x1..., postsize, x2...))
+
+        u = cat(pre, u, post; dims = i)
+    end
+    u
+end
+
+function sum_NN_nopad_and_INS(a_NN, b_INS, setup)
+    (; grid, boundary_conditions) = setup
+    (; Iu, dimension) = grid
+    D = dimension()
+    b_INS_axes = Tuple(axes(b_INS[i]) for i in eachindex(b_INS))
+
+    Tuple(
+        pad_manual(a_NN[:, :, i, 1], D, b_INS_axes[i], Iu[i]) + b_INS[i]
+    for i in 1:length(b_INS)
+    )
+end
+
+"""
     INS_to_NN(u, setup)
 
 Converts the input velocity field `u` from the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`
@@ -105,24 +186,12 @@ to a format suitable for neural network training `u[n, n, D, batch]`.
 
 # Arguments
 - `u`: Velocity field in INS style.
-- `setup`: IncompressibleNavierStokes.jl setup.
 
 # Returns
 - `u`: Velocity field converted to a tensor format suitable for neural network training.
 """
-function INS_to_NN(u, setup)
-    (; dimension, Iu) = setup.grid
-    D = dimension()
-    if D == 2
-        u = cat(u[1][Iu[1]], u[2][Iu[2]]; dims = 3) # From tuple to tensor
-        u = reshape(u, size(u)..., 1)
-    elseif D == 3
-        u = cat(u[1][Iu[1]], u[2][Iu[2]], u[3][Iu[3]]; dims = 4)
-        u = reshape(u, size(u)..., 1) # One sample
-
-    else
-        error("Unsupported dimension: $D. Only 2D and 3D are supported.")
-    end
+function INS_to_NN(u)
+    cat(u...; dims = ndims(u[1]) + 1)
 end
 
 """
@@ -157,16 +226,14 @@ function NN_padded_to_INS(u, setup)
     griddims = ((:) for _ in 1:D)
 
     if ndims(u) == D + 1
-        Tuple(
-            @view(u[griddims..., d])
-        for d in 1:size(u, ndims(u))
-        )
+        u_INS = eachslice(u, dims = ndims(u))
+        (u_INS...,)
     elseif ndims(u) == D + 2
         if size(u, ndims(u)) != 1
             error("Only a single timeslice is supported")
         end
         Tuple(
-            @view(u[griddims..., d, 1])
+            u[griddims..., d, 1]
         for d in 1:size(u, ndims(u) - 1)
         )
     else
@@ -210,7 +277,7 @@ Creates a view which is similar to the input of the IO arrays, but without bound
 """
 function IO_padded_to_IO_nopad(io, setups)
     [NamedTuple{keys(io[i])}((NN_padded_to_NN_nopad(x, setups[i]) for x in values(io[i])))
-     for i in 1:length(io)]
+     for i in eachindex(io)]
 end
 
 """

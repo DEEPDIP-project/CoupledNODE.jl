@@ -216,11 +216,14 @@ dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunr
 dataloader_posteriori().u
 dataloader_posteriori().t
 
-# option 2:
-import CoupledNODE: create_right_hand_side_with_closure_minimal_copy
-dudt_nn2 = create_right_hand_side_with_closure_minimal_copy(
+# option 2: Luisa's dataloader, io_arrays and rhs
+import CoupledNODE: create_right_hand_side_simple
+dudt_nn2 = create_right_hand_side_simple(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
+# Define the loss (a-posteriori)
+import Zygote
+import DifferentialEquations: ODEProblem, solve, Tsit5
 # for testing purposes
 import DifferentialEquations: ODEProblem, solve, Tsit5
 example2 = dataloader_posteriori()
