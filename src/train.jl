@@ -12,7 +12,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)
     tstate = Lux.Training.TrainState(model, ps, st, alg)
-    loss::Float32 = 0 #NOP
+    loss::Float32 = 0 #NOP TODO: check compatibiity with precision of data
     Juno.@progress for epoch in 1:nepochs
         data = Zygote.@ignore train_dataloader()
         _, loss, _, tstate = Lux.Training.single_train_step!(

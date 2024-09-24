@@ -1,8 +1,8 @@
-import Lux, Random
-import IncompressibleNavierStokes as INS
-import NeuralClosure as NC
-import ComponentArrays: ComponentArray
-import NNlib: pad_circular, pad_repeat
+using Lux: Lux
+using Random: Random
+using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
+using NeuralClosure: NeuralClosure as NC
+using ComponentArrays: ComponentArray
 
 """
     cnn(; setup, radii, channels, activations, use_bias, channel_augmenter = identity, rng = Random.default_rng())
@@ -63,58 +63,4 @@ function cnn(;
     chain = Lux.Chain(layers...)
     params, state = Lux.setup(rng, chain)
     (chain, ComponentArray(params), state)
-end
-
-"""
-Interpolate velocity components to volume centers.
-"""
-function collocate(u)
-    sz..., D = size(u)
-    if D == 2
-        a = selectdim(u, 3, 1)
-        b = selectdim(u, 3, 2)
-        a = (a .+ circshift(a, (1, 0))) ./ 2
-        b = (b .+ circshift(b, (0, 1))) ./ 2
-        a = reshape(a, sz..., 1)
-        b = reshape(b, sz..., 1)
-        cat(a, b; dims = 3)
-    elseif D == 3
-        a = selectdim(u, 4, 1)
-        b = selectdim(u, 4, 2)
-        c = selectdim(u, 4, 3)
-        a = (a .+ circshift(a, (1, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, 1, 0))) ./ 2
-        c = (c .+ circshift(c, (0, 0, 1))) ./ 2
-        a = reshape(a, sz..., 1)
-        b = reshape(b, sz..., 1)
-        c = reshape(c, sz..., 1)
-        cat(a, b, c; dims = 4)
-    end
-end
-
-"""
-Interpolate closure force from volume centers to volume faces.
-"""
-function decollocate(u)
-    sz..., D = size(u)
-    if D == 2
-        a = selectdim(u, 3, 1)
-        b = selectdim(u, 3, 2)
-        a = (a .+ circshift(a, (-1, 0))) ./ 2
-        b = (b .+ circshift(b, (0, -1))) ./ 2
-        a = reshape(a, sz..., 1)
-        b = reshape(b, sz..., 1)
-        cat(a, b; dims = 3)
-    elseif D == 3
-        a = selectdim(u, 4, 1)
-        b = selectdim(u, 4, 2)
-        c = selectdim(u, 4, 3)
-        a = (a .+ circshift(a, (-1, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, -1, 0))) ./ 2
-        c = (c .+ circshift(c, (0, 0, -1))) ./ 2
-        a = reshape(a, sz..., 1)
-        b = reshape(b, sz..., 1)
-        c = reshape(c, sz..., 1)
-        cat(a, b, c; dims = 4)
-    end
 end

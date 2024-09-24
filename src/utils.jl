@@ -46,7 +46,7 @@ function create_stateful_callback(
         display_each_iteration = true,
         filename = nothing
 )
-    istart = isempty(callbackstate.hist) ? 0 : Int(callbackstate.hist[end][1])
+    #istart = isempty(callbackstate.hist) ? 0 : Int(callbackstate.hist[end][1])
     obs = CairoMakie.Observable([CairoMakie.Point2f(0, 0)])
     fig = CairoMakie.lines(obs; axis = (; title = "Error", xlabel = "step"))
     displayref && CairoMakie.hlines!([1.0f0]; linestyle = :dash)
