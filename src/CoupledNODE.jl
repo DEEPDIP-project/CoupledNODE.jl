@@ -1,6 +1,6 @@
 module CoupledNODE
 
-import CUDA
+using CUDA: CUDA
 ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
 include("NODE.jl")
