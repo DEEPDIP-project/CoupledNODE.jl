@@ -4,7 +4,6 @@
 import IncompressibleNavierStokes as INS
 import Lux
 import NNlib: pad_circular, pad_repeat
-import PaddedViews: PaddedView
 
 """
     create_right_hand_side(setup, psolver)
