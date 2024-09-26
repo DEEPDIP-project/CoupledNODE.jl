@@ -103,7 +103,7 @@ loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
 θ_priori_best = callbackstate.θmin
 
 # * A posteriori io_arrays 
-# Here we cannot use io_arrays, those were nice for a priori because had \bar{u}, c.
+# Here we cannot use the previously defined io_arrays, since they have \bar{u} and c which are not used a-posteriori.
 # And time and sample dimension were squeezed. Here we want to do trajectory fitting thus we need the time sequence.
 
 # in this function we create io_arrays with the following carachteristics:
