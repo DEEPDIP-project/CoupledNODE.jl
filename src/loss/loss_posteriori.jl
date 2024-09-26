@@ -152,7 +152,7 @@ end
     create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
 
 Creates a loss function for a-posteriori fitting using the given right-hand side (RHS) function `rhs`.
-The loss function computes the sum of squared differences between the predicted values (autoregressively) and the actual data, 
+The loss function computes the sum of squared differences between the predicted values and the actual data, 
 normalized by the sum of squared actual data values.
 
 # Arguments
