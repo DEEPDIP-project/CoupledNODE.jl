@@ -63,7 +63,7 @@ size(train_data_priori[2]) # c commutator error
 # * loss a priori
 using CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
-# this created function can be called: loss_priori((x, y), θ, st) where x: input to model (\bar{u}), y: label (c), θ: params of NN, st: state of NN.
+# this created function can be called: loss_priori(closure_model, θ, st, data) 
 loss_priori(closure, θ, st, train_data_priori) # check that the loss is working
 
 # * loss in the Lux format
