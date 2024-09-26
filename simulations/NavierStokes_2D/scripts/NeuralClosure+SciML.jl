@@ -1,4 +1,4 @@
-# For an example of pure NeuralClosure+SciML, visit IncompressibleNavierStokes.jl/lib/NeuralClosure/test/examplerun.jl
+# For an example of pure NeuralClosure without using SciML, visit IncompressibleNavierStokes.jl/lib/NeuralClosure/test/examplerun.jl
 # Goal: adapt the workflow of NeuralCLosure with INS to the SciML framework.
 # Remember we are limiting ourselves to only using Zygote.
 using CairoMakie
