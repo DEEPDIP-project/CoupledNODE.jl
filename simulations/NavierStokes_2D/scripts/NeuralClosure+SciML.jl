@@ -75,7 +75,7 @@ using CoupledNODE: callback
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
-    (u, p) -> loss_priori(closure, u, st, train_data_priori), # u here is the optimization variable (θ params of NN)
+    (u, _) -> loss_priori(closure, u, st, train_data_priori), # u here is the optimization variable (θ params of NN)
     Optimization.AutoZygote())
 optprob = Optimization.OptimizationProblem(optf, θ)
 result_priori = Optimization.solve(
