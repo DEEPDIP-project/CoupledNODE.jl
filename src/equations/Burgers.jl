@@ -51,7 +51,8 @@ end
 # ### Filter
 using SparseArrays, Plots
 # To get the LES, we use a Gaussian filter kernel, truncated to zero outside of $3 / 2$ filter widths.
-function create_filter_matrix(dx_dns, nx_dns, dx_les, nx_les, ΔΦ, kernel_type, MY_TYPE=Float64)
+function create_filter_matrix(
+        dx_dns, nx_dns, dx_les, nx_les, ΔΦ, kernel_type, MY_TYPE = Float64)
     ## Filter kernels
     gaussian(Δ, x) = MY_TYPE(sqrt(6 / π) / Δ * exp(-6x^2 / Δ^2))
     top_hat(Δ, x) = MY_TYPE((abs(x) ≤ Δ / 2) / Δ)

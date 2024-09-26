@@ -1,5 +1,5 @@
 ##########################################
-############  NSParams #####################
+####  Standalone definition ##############
 ##########################################
 mutable struct NSParams
     x::Any
@@ -59,9 +59,7 @@ function create_params(
     NSParams(x, N, K, Kf, k, ky, nu, normk, f, Pxx, Pxy, Pyy, pf, ∂x, ∂y)
 end
 
-##########################################
-############  Data  ######################
-##########################################
+# Data 
 # This is a struct that contains the data of LES and DNS
 struct Data
     t::Array{Float32, 1}
@@ -79,9 +77,7 @@ function get_data_name(nu::Float32, les_size::Int, dns_size::Int, myseed::Int)
     return "DNS_$(dns_size)_LES_$(les_size)_nu_$(nu)_$(myseed)"
 end
 
-##########################################
-############  Cache  #####################
-##########################################
+# Cache
 mutable struct NSCache
     du::Any
     uf::Any
@@ -113,9 +109,7 @@ function create_cache(
     NSCache(du, uf, v, vx, vy, v2, v2_reshaped, qf, q, F, Q)
 end
 
-######################################################
-############  Initial Condition ######################
-######################################################
+# Initial Condition 
 # For the initial conditions, we create a random spectrum with some decay.
 # Note that the initial conditions are projected onto the divergence free
 # space at the end.
@@ -144,9 +138,7 @@ function random_spectral_field(params; A = 1.0f6, σ = 30.0f0, s = 5.0f0, nsamp 
     cat(batch_u..., dims = 4)
 end
 
-##########################################
-############  Force ######################
-##########################################
+# Force
 # The function `Q` computes the quadratic term.
 # The `K - Kf` highest frequencies of `u` are cut-off to prevent aliasing.
 function Q(u, params, cache)
@@ -206,9 +198,7 @@ function project(u, params, cache)
     cache.du
 end
 
-##########################################
-############  Utils ######################
-##########################################
+# Utils
 # For plotting, the spatial vorticity can be useful. It is given by
 # $$
 # \omega = -\frac{\partial u_x}{\partial y} + \frac{\partial u_y}{\partial x},

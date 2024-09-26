@@ -132,7 +132,8 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz; input_channels = (u -> u,), output_channels = (u -> u), init_weight = Lux.glorot_uniform)
+function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz; input_channels = (u -> u,),
+        output_channels = (u -> u), init_weight = Lux.glorot_uniform)
     # from the grids I can get the dimension
     dim = length(Nxyz)
     ch_dim = dim + 1
