@@ -1,6 +1,7 @@
-import Zygote
-import Random: shuffle
-import LinearAlgebra: norm
+using Zygote: Zygote
+using Random: shuffle
+using LinearAlgebra: norm
+using DifferentialEquations: ODEProblem, solve, Tsit5
 
 """
     predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
@@ -145,4 +146,49 @@ function loss_MulDtO_oneset(trajectory,
     end
 
     return loss + (continuity * λ_c) + λ_l1 * norm(θ), nothing
+end
+
+"""
+    create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
+
+Creates a loss function for a-posteriori fitting using the given right-hand side (RHS) function `rhs`.
+The loss function computes the sum of squared differences between the predicted values and the actual data, 
+normalized by the sum of squared actual data values.
+
+# Arguments
+- `rhs::Function`: The right-hand side function for the ODE problem.
+- `sciml_solver::AbstractODEAlgorithm`: (Optional) The SciML solver to use for solving the ODE problem. Defaults to `Tsit5()`.
+- `kwargs...`: Additional keyword arguments to pass to the solver.
+
+# Returns
+- `loss_function::Function`: A function that computes the loss given a model, parameters, state, and data `(u, t)`.
+
+## `loss_function` Arguments
+- `model`: The model to evaluate.
+- `ps`: Parameters for the model.
+- `st`: State of the model.
+- `(u, t)`: Tuple containing the data `u` and time points `t`.
+
+## `loss_function` Returns
+- `loss`: The computed loss value.
+- `st`: The model state (unchanged).
+- `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
+This makes it compatible with the Lux ecosystem.
+"""
+function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
+    function loss_function(model, ps, st, (u, t))
+        griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
+        x = u[griddims..., :, 1]
+        y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
+        dt = t[2] - t[1]
+        #saveat_loss = [i * dt for i in 1:length(y)]
+        tspan = [t[1], t[end]]
+        prob = ODEProblem(rhs, x, tspan, ps)
+        pred = Array(solve(
+            prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
+        # remember that the first element of pred is the initial condition (SciML)
+        return sum(
+            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
+               sum(abs2, y), st, (; y_pred = pred)
+    end
 end

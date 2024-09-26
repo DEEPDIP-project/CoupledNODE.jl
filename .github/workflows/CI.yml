@@ -40,6 +40,7 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
   docs:
+    if: github.event.pull_request.draft == false
     name: Documentation
     runs-on: ubuntu-latest
     permissions:

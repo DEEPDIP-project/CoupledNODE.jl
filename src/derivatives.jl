@@ -55,7 +55,7 @@ function Laplacian(u, Δx2, Δy2 = 0.0, Δz2 = 0.0)
         umx = ShiftedArrays.circshift(u, (-1, 0, 0))
         umy = ShiftedArrays.circshift(u, (0, -1, 0))
 
-        @. (upx + umx + upy + umy - u * 4) / Δx2 
+        @. (upx + umx + upy + umy - u * 4) / Δx2
     elseif dims == 1
         up = ShiftedArrays.circshift(u, 1)
         um = ShiftedArrays.circshift(u, -1)

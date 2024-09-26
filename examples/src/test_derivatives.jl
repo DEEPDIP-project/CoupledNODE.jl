@@ -436,11 +436,11 @@ end
 # And plot them
 using Plots
 p1 = bar(methods_gpu, times_gpu, title = "Execution Times", ylabel = "Time (s)",
-    yaxis = :log, legend = false, xrotation = 45, color=:green)
+    yaxis = :log, legend = false, xrotation = 45, color = :green)
 p2 = bar(methods_gpu, allocations_gpu, title = "Memory Allocations",
-    ylabel = "Bytes", legend = false, xrotation = 45, color=:green)
+    ylabel = "Bytes", legend = false, xrotation = 45, color = :green)
 p3 = bar(methods_gpu, gctimes_gpu, title = "GC Time", xlabel = "Methods",
-    ylabel = "Time (s)", legend = false, xrotation = 45, color=:green)
+    ylabel = "Time (s)", legend = false, xrotation = 45, color = :green)
 
 P = plot(p1,
     p2,
