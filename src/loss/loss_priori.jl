@@ -97,11 +97,6 @@ function create_randloss_derivative(
     end
 end
 
-function create_loss_priori(model, ps, st)
-    mseloss = Lux.GenericLossFunction((ŷ, y) -> abs2(ŷ - y); agg = mean)
-    ŷ = model(y, ps, st)
-end
-
 """
 Wrap loss function `loss(batch, θ)`.
 
