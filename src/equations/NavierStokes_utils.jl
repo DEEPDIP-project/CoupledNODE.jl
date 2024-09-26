@@ -303,6 +303,7 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 - The `io_array.u` array is expected to have dimensions `(n, n, dim, samples, nt)`.
 - The `nt` dimension must be greater than or equal to `nunroll`.
 - Have only tested in 2D cases.
+- It assumes that the data are loaded in batches of size 1
 """
 function create_dataloader_posteriori(io_array; nunroll = 10, rng)
     function dataloader()
