@@ -3,8 +3,6 @@ module CoupledNODE
 using CUDA: CUDA
 ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
-include("NODE.jl")
-#include("derivatives.jl")
 include("utils.jl")
 include("train.jl")
 include("models/FNO.jl")
