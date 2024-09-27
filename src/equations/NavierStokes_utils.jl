@@ -6,6 +6,8 @@ module NavierStokes
 
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using Lux: Lux
+using Zygote
+using ChainRulesCore
 
 """
     create_right_hand_side(setup, psolver)
@@ -32,20 +34,23 @@ Create right hand side function f(u, p, t) compatible with SciML ODEProblem.
 This formulation was the one proved best in Syver's paper i.e. DCF.
 `u` has to be an array in the NN style e.g. `[n , n, D]`, with boundary conditions padding.
 """
-create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
-        u, p, t)
-    # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
-    u_INS = NN_padded_to_INS(u, setup)
-    u_nopad = NN_padded_to_NN_nopad(u, setup)
-    u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
-    u = INS.apply_bc_u(u_INS, t, setup)
-    F = INS.momentum(u, nothing, t, setup)
-    u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
-    FC = sum_NN_nopad_and_INS(u_lux, F, setup)
-    FC = INS.apply_bc_u(F, t, setup; dudt = true)
-    FP = INS.project(FC, setup; psolver)
-    FP = INS.apply_bc_u(FP, t, setup; dudt = true)
-    INS_to_NN(FP)
+function create_right_hand_side_with_closure(setup, psolver, closure, st)
+    cache_F = zeros(setup.T, (setup.grid.N[1], setup.grid.N[2], setup.grid.dimension()))
+    function right_hand_side(
+            u, p, t)
+        # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
+        u_INS = NN_padded_to_INS(u, setup)
+        u_nopad = NN_padded_to_NN_nopad(u, setup)
+        u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
+        u = INS.apply_bc_u(u_INS, t, setup)
+        F = INS.momentum(u, nothing, t, setup)
+        u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
+        FC = sum_NN_nopad_and_INS(u_lux, F, setup)
+        FC = INS.apply_bc_u(F, t, setup; dudt = true)
+        FP = INS.project(FC, setup; psolver)
+        FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+        INS_to_NN(FP, cache_F)
+    end
 end
 
 """
@@ -125,19 +130,32 @@ function sum_NN_nopad_and_INS(a_NN, b_INS, setup)
 end
 
 """
-    INS_to_NN(u, setup)
+    INS_to_NN(u, cache)
 
 Converts the input velocity field `u` from the IncompressibleNavierStokes.jl style `u[time step]=(ux, uy)`
-to a format suitable for neural network training `u[n, n, D, batch]`.
+to a format suitable for neural network training `u[n, n, D]`. The result is stored in the `cache` array to avoid memory allocations.
 
 # Arguments
 - `u`: Velocity field in INS style.
 
 # Returns
-- `u`: Velocity field converted to a tensor format suitable for neural network training.
+- `cache`: Velocity field converted to a tensor format suitable for neural network training.
 """
-function INS_to_NN(u)
-    cat(u...; dims = ndims(u[1]) + 1)
+function INS_to_NN(u, cache)
+    cache[:, :, 1] .= u[1]
+    cache[:, :, 2] .= u[2]
+    cache
+end
+
+"""
+Custom Reverse rule for INS_to_NN in order to use mutations in Zygote
+"""
+function ChainRulesCore.rrule(::typeof(INS_to_NN), u::Any, cache::Any)
+    y = INS_to_NN(u, cache)
+    function INS_to_NN_pullback(yb)
+        return NoTangent(), Tangent{typeof(u)}(yb[:, :, 1], yb[:, :, 2]), yb
+    end
+    return y, INS_to_NN_pullback
 end
 
 """
