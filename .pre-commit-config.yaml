@@ -3,12 +3,12 @@ repos:
   hooks:
   - id: "format-julia"
     name: "Format with JuliaFormatter"
-    entry: "julia format_julia_files.jl"
+    entry: "julia --project helper_scripts/format_julia_files.jl"
     language: "system"
 
   - id: "build-notebooks"
     name: "Build Notebooks"
     language: "script"
-    entry: "./build_notebooks.sh"
+    entry: "./helper_scripts/build_notebooks.sh"
     files: 'examples/src/\.jl$'
 

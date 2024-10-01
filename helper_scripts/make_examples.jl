@@ -1,5 +1,5 @@
-using Literate
-using Glob
+using Literate: Literate
+using Glob: glob
 
 cd("examples")
 

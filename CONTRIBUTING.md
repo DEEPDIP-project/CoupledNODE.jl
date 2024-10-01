@@ -18,14 +18,14 @@ If for some reason you want to skip pre-commit checks, you can use the `--no-ver
 At the root of the project:
 ```julia
 ]
-activate . # make sure you are in the CoupleNODE environement
+activate . # make sure you are in the CoupleNODE environment
 # exit Pkg: hit backspace
-using JuliaFormatter
+using JuliaFormatter: format_file
 format_file("path/to/file_to_format.jl")
 ```
 
 ## Manually create notebooks via `Literate.jl`
 ```julia
-using Literate
+using Literate: Literate
 Literate.notebook("path_to_file.jl"; execute = autorun_notebooks)
 ```
