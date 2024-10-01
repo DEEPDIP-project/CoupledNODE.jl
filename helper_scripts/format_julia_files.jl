@@ -1,4 +1,4 @@
-using JuliaFormatter
+using JuliaFormatter: format
 
 for file in ARGS
     format(file)
