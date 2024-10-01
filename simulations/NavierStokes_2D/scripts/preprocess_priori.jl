@@ -7,7 +7,7 @@ rng = Random.Xoshiro(123)
 
 # Load the data
 using JLD2: load
-data = load("simulations/NavierStokes_2D/data/data.jld2", "data")
+data = load("simulations/NavierStokes_2D/data/data_train.jld2", "data")
 params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 
 # Build LES setups and assemble operators
