@@ -7,11 +7,11 @@
 
 # Setup and initial condition
 using GLMakie
-import IncompressibleNavierStokes as INS
+using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 T = Float64 # Precision is important, with Float32 SciML does not give a divergence-free solution.
 ArrayType = Array
 Re = T(1_000)
-n = 256
+n = 64
 lims = T(0), T(1)
 x, y = LinRange(lims..., n + 1), LinRange(lims..., n + 1)
 setup = INS.Setup(x, y; Re, ArrayType);
@@ -48,14 +48,14 @@ _, time_ins, allocation, gc, memory_counters = @timed INS.solve_unsteady(;
 # ## SciML via CoupledNODE.jl
 # ### Projected force for SciML
 # * Right-hand-side out-of-place
-import CoupledNODE: NavierStokes
+using CoupledNODE: NavierStokes
 F_op = NavierStokes.create_right_hand_side(setup, psolver)
 
 # * Right-hand-side in-place
 F_ip = NavierStokes.create_right_hand_side_inplace(setup, psolver)
 
 # Solve the ODE using `ODEProblem`. We use `RK4` (Runge-Kutta 4th order) because this same method is used in `IncompressibleNavierStokes.jl`.
-import DifferentialEquations: ODEProblem, solve, RK4
+using DifferentialEquations: ODEProblem, solve, RK4
 prob_op = ODEProblem(F_op, stack(ustart), trange);
 prob = ODEProblem{true}(F_ip, stack(ustart), trange);
 
@@ -78,7 +78,7 @@ sol_ode, time_ode, allocation_ode, gc_ode, memory_counters_ode = @timed solve(
 
 # ## Comparison
 # Bar plots comparing: time, memory allocation, and number of garbage collections (GC).
-import Plots
+using Plots: Plots
 p1 = Plots.bar(["INS", "CNODE"], [time_ins, time_ode],
     xlabel = "Method", ylabel = "Time (s)", title = "Time comparison", legend = false);
 #Memory allocation
@@ -93,7 +93,6 @@ p3 = Plots.bar(["INS", "CNODE"], [gc, gc_ode], xlabel = "Method",
 Plots.plot(p1, p2, p3, layout = (3, 1), size = (600, 800))
 
 # ### Plots: final state of $u$
-using Plots
 p1 = Plots.heatmap(title = "\$u\$ SciML CNODE", sol_ode.u[end][:, :, 1], ticks = false);
 p2 = Plots.heatmap(title = "\$u\$ INS", state.u[1], ticks = false);
 p3 = Plots.heatmap(title = "\$u_{INS}-u_{CNODE}\$",
@@ -127,16 +126,16 @@ u_last_ode = (sol_ode.u[end][:, :, 1], sol_ode.u[end][:, :, 2]);
 div_ode = INS.divergence(u_last_ode, setup)
 max_div_ode = maximum(abs.(div_ode))
 
-using Printf
-anim = Animation()
+using Printf: @sprintf
+anim = Plots.Animation()
 for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
     ∇_u = INS.divergence((u[:, :, 1], u[:, :, 2]), setup)
     title = @sprintf("\$\\nabla \\cdot u\$ SciML, t = %.3f s", t)
     fig = Plots.heatmap(∇_u'; xlabel = "x", ylabel = "y", title, aspect_ratio = :equal,
         ticks = false, size = (600, 600), clims = (-max_div_ode, max_div_ode))
-    frame(anim, fig)
+    Plots.frame(anim, fig)
 end
-gif(anim, "simulations/NavierStokes_2D/plots/divergence_SciML.gif", fps = 15)
+Plots.gif(anim, "simulations/NavierStokes_2D/plots/divergence_SciML.gif", fps = 15)
 
 # **Conclusion:** While IncompressibleNavierStokes.jl guarantees a $\nabla \cdot u =0$ the other methods do not.
 
@@ -147,7 +146,8 @@ let
     (; Iu) = setup.grid
     i = 1
     #obs = Observable(sol.u[1][Iu[i], i])
-    obs = Observable(INS.vorticity((sol_ode.u[1][:, :, 1], sol_ode.u[1][:, :, 2]), setup))
+    obs = GLMakie.Observable(INS.vorticity(
+        (sol_ode.u[1][:, :, 1], sol_ode.u[1][:, :, 2]), setup))
     fig = GLMakie.heatmap(obs, colorrange = vor_lims)
     fig |> display
     for u in sol_ode.u
@@ -160,7 +160,7 @@ end
 
 # #### Animate SciML solution using `Plots.jl`
 function animation_plots(; variable = "vorticity")
-    anim = Animation()
+    anim = Plots.Animation()
     for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
         if variable == "vorticity"
             ω = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
@@ -172,12 +172,12 @@ function animation_plots(; variable = "vorticity")
             fig = Plots.heatmap(u[:, :, 1]; xlabel = "x", ylabel = "y", title,
                 aspect_ratio = :equal, ticks = false, size = (600, 600))
         end
-        frame(anim, fig)
+        Plots.frame(anim, fig)
     end
     if variable == "vorticity"
-        gif(anim, "simulations/NavierStokes_2D/plots/vorticity_SciML.gif", fps = 15)
+        Plots.gif(anim, "simulations/NavierStokes_2D/plots/vorticity_SciML.gif", fps = 15)
     else
-        gif(anim, "simulations/NavierStokes_2D/plots/velocity_SciML.gif", fps = 15)
+        Plots.gif(anim, "simulations/NavierStokes_2D/plots/velocity_SciML.gif", fps = 15)
     end
 end
 
@@ -188,23 +188,23 @@ animation_plots(; variable = "vorticity")
 animation_plots(; variable = "velocity")
 
 # #### Animate the difference in solution using `Plots.jl`
-anim = Animation()
+anim = Plots.Animation()
 for idx in 1:Int(ceil(trange[end] / saveat))
     # the ODESolution saves the initial state too
     error_u = abs.(outputs.field[idx].u[1] - sol_ode.u[idx + 1][:, :, 1])
     title = @sprintf("\$|u_{INS}-u_{CNODE}|\$, t = %.3f s", sol_ode.t[idx])
     fig = Plots.heatmap(error_u; xlabel = "x", ylabel = "y", title,
         aspect_ratio = :equal, ticks = false, size = (600, 600))
-    frame(anim, fig)
+    Plots.frame(anim, fig)
 end
-gif(anim, "simulations/NavierStokes_2D/plots/u_INS-SciML.gif", fps = 15)
+Plots.gif(anim, "simulations/NavierStokes_2D/plots/u_INS-SciML.gif", fps = 15)
 
 # ## Testing
 dt_1 = T(1e-3)
 trange_1 = (T(0), dt_1)
 state_1, outputs_1 = INS.solve_unsteady(; setup, ustart, tlims = trange_1, Δt = dt_1)
 
-import DifferentialEquations: Tsit5
+using DifferentialEquations: Tsit5
 prob_1 = ODEProblem{true}(F_ip, stack(ustart), trange_1);
 sol_ode_1 = solve(
     prob_1, Tsit5(); dt = dt_1, saveat = dt_1, adaptive = false);

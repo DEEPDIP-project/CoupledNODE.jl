@@ -20,15 +20,14 @@
 # weights are stored in a vector outside the layer, while the layer itself
 # contains information for construction the network.
 
-import Lux
-import Lux: Dense, gelu
+using Lux: Lux, Dense, gelu
 if CUDA.functional()
-    import LuxCUDA
+    using LuxCUDA
 end
-import FFTW: fft
-import Random: AbstractRNG
-import Flux: unsqueeze
-import Tullio: @tullio
+using FFTW: fft
+using Random: AbstractRNG
+using Flux: unsqueeze
+using Tullio: @tullio
 
 struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
     dim_to_fft::Tuple{Vararg{Int}}
