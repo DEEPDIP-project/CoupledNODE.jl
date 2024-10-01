@@ -1,17 +1,17 @@
 module CoupledNODE
 
-import CUDA
+using CUDA: CUDA
 ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
-include("loss_priori.jl")
-include("loss_posteriori.jl")
-include("grid.jl")
-include("NODE.jl")
-include("FNO.jl")
-include("derivatives.jl")
 include("utils.jl")
+include("train.jl")
 
-# Modules for the examples
-include("Burgers.jl")
+include("models/FNO.jl")
+include("models/cnn.jl")
+
+include("loss/loss_priori.jl")
+include("loss/loss_posteriori.jl")
+
+include("equations/NavierStokes_utils.jl")
 
 end # module CoupledNODE
