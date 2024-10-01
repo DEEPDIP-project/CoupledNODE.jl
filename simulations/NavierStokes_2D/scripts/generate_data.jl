@@ -1,5 +1,6 @@
-using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
+using JLD2: jldsave
+using Random: Random
 
 T = Float32
 ArrayType = Array
@@ -33,6 +34,5 @@ params = (;
 data = [NC.create_les_data(; params...) for _ in 1:3]
 
 # save data
-using JLD2: jldsave
 jldsave("simulations/NavierStokes_2D/data/data.jld2"; data)
 jldsave("simulations/NavierStokes_2D/data/params_data.jld2"; params)

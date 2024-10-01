@@ -1,5 +1,11 @@
-using Random: Random
+using CoupledNODE: cnn, train, callback, create_loss_post_lux
+using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
+using DifferentialEquations: ODEProblem, solve, Tsit5
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
+using JLD2: @save
+using Optimization: Optimization
+using OptimizationOptimisers: OptimizationOptimisers
+using Random: Random
 
 T = Float32
 ArrayType = Array
@@ -8,7 +14,6 @@ ig = 1 # index of the LES grid to use.
 include("preprocess_posteriori.jl")
 
 # * Creation of the model: NN closure
-using CoupledNODE: cnn
 closure, θ, st = cnn(;
     setup = setups[ig],
     radii = [3, 3],
@@ -19,12 +24,10 @@ closure, θ, st = cnn(;
 )
 
 # * Define the right hand side of the ODE
-using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
 dudt_nn2 = create_right_hand_side_with_closure(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
 # * Define the loss (a-posteriori) - old way
-using DifferentialEquations: ODEProblem, solve, Tsit5
 function loss_posteriori(model, p, st, data)
     u, t = data
     griddims = axes(u)[1:(ndims(u) - 2)]
@@ -43,9 +46,6 @@ function loss_posteriori(model, p, st, data)
 end
 
 # * train a-posteriori: old way single data point
-using CoupledNODE: callback
-using Optimization: Optimization
-using OptimizationOptimisers: OptimizationOptimisers
 train_data_posteriori = dataloader_posteriori()
 optf = Optimization.OptimizationFunction(
     (x, _) -> loss_posteriori(closure, x, st, train_data_posteriori), # x here is the optimization variable (θ params of NN)
@@ -62,12 +62,10 @@ result_posteriori = Optimization.solve(
 θ_posteriori = result_posteriori.u
 
 # * package loss
-using CoupledNODE: create_loss_post_lux
 loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # * training via Lux
-using CoupledNODE: train
 loss, tstate = train(closure, θ, st, dataloader_posteriori, loss_posteriori_lux;
     nepochs = 10, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
@@ -76,7 +74,6 @@ loss, tstate = train(closure, θ, st, dataloader_posteriori, loss_posteriori_lux
 θ_posteriori = tstate.parameters
 
 # * save the trained model
-using JLD2: @save
 outdir = "simulations/NavierStokes_2D/outputs"
 ispath(outdir) || mkpath(outdir)
 @save "$outdir/trained_model_posteriori.jld2" θ_posteriori st

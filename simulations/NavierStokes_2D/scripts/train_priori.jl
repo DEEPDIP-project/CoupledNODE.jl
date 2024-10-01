@@ -1,5 +1,11 @@
-using Random: Random
+using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux, callback,
+                   create_stateful_callback, train
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
+using JLD2: @save
+using Lux: Lux
+using Optimization: Optimization
+using OptimizationOptimisers: OptimizationOptimisers
+using Random: Random
 
 T = Float32
 ArrayType = Array
@@ -8,7 +14,6 @@ ig = 1 # index of the LES grid to use.
 include("preprocess_priori.jl")
 
 # * Creation of the model: NN closure
-using CoupledNODE: cnn
 closure, θ, st = cnn(;
     setup = setups[ig],
     radii = [3, 3],
@@ -19,23 +24,17 @@ closure, θ, st = cnn(;
 )
 
 # Give the CNN a test run
-using Lux: Lux
 Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
 
 # * loss a priori
-using CoupledNODE: create_loss_priori, mean_squared_error
 loss_priori = create_loss_priori(mean_squared_error, closure)
 # this created function can be called: loss_priori(closure_model, θ, st, data) 
 loss_priori(closure, θ, st, train_data_priori) # check that the loss is working
 
 # * loss in the Lux format
-using CoupledNODE: loss_priori_lux
 loss_priori_lux(closure, θ, st, train_data_priori)
 
 # * old way of training
-using CoupledNODE: callback
-using Optimization: Optimization
-using OptimizationOptimisers: OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
     (x, _) -> loss_priori(closure, x, st, train_data_priori), # x here is the optimization variable (θ params of NN)
     Optimization.AutoZygote())
@@ -51,11 +50,9 @@ result_priori = Optimization.solve(
 # with this approach, we have the problem that we cannot loop trough the data. 
 
 # another option of callback
-using CoupledNODE: create_stateful_callback
 callbackstate, callback_2 = create_stateful_callback(θ)
 
 # * new way of training (via Lux)
-using CoupledNODE: train
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_2)
@@ -63,7 +60,6 @@ loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
 θ_priori = tstate.parameters
 
 # * save the trained model
-using JLD2: @save
 outdir = "simulations/NavierStokes_2D/outputs"
 ispath(outdir) || mkpath(outdir)
 @save "$outdir/trained_model_priori.jld2" θ_priori st
