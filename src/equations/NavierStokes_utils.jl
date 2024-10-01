@@ -35,12 +35,14 @@ This formulation was the one proved best in Syver's paper i.e. DCF.
 create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
         u, p, t)
     u_INS = NN_padded_to_INS(u, setup)
-#    u_nopad = NN_padded_to_NN_nopad(u, setup)
-#    u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
     u_INS = INS.apply_bc_u(u_INS, t, setup)
     F = INS.momentum(u_INS, nothing, t, setup)
-    u_lux = Lux.apply(closure, u[:,:,:,1:1], p, st)[1]
-    FC = (F[1] + u_lux[:,:,1,1], F[2] + u_lux[:,:,2,1])
+    griddimsplusone = Zygote.@ignore ((:) for _ in 1:ndims(u))
+    u_lux = u[griddimsplusone..., 1:1] # Add batch dimension
+    u_lux = Lux.apply(closure, u_lux, p, st)[1]
+    u_lux = u_lux[griddimsplusone..., 1] # Remove batch dimension
+    u_lux = NN_padded_to_INS(u_lux, setup)
+    FC = F .+ u_lux
     FC = INS.apply_bc_u(FC, t, setup; dudt = true)
     FP = INS.project(FC, setup; psolver)
     FP = INS.apply_bc_u(FP, t, setup; dudt = true)
@@ -173,15 +175,15 @@ function NN_padded_to_INS(u, setup)
     if ndims(u) == D + 1
         u_INS = eachslice(u, dims = ndims(u))
         (u_INS...,)
-    # TODO: look at this edge case
-    #elseif ndims(u) == D + 2
-    #    if size(u, ndims(u)) != 1
-    #        error("Only a single timeslice is supported")
-    #    end
-    #    Tuple(
-    #        u[griddims..., d, 1]
-    #    for d in 1:size(u, ndims(u) - 1)
-    #    )
+        # TODO: look at this edge case
+        #elseif ndims(u) == D + 2
+        #    if size(u, ndims(u)) != 1
+        #        error("Only a single timeslice is supported")
+        #    end
+        #    Tuple(
+        #        u[griddims..., d, 1]
+        #    for d in 1:size(u, ndims(u) - 1)
+        #    )
     else
         error("Unsupported or non-matching number of dimensions in IO array")
     end
