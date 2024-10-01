@@ -1,7 +1,6 @@
 using Lux: Lux
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
-using NeuralClosure: NeuralClosure as NC
 using ComponentArrays: ComponentArray
 
 """
