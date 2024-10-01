@@ -34,18 +34,29 @@ This formulation was the one proved best in Syver's paper i.e. DCF.
 """
 create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
         u, p, t)
-    # not sure if we should keep t as a parameter. t is only necessary for the INS functions when having Dirichlet BCs (time dependent)
-    u_INS = NN_padded_to_INS(u, setup)
-    u_nopad = NN_padded_to_NN_nopad(u, setup)
-    u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
-    u = INS.apply_bc_u(u_INS, t, setup)
-    F = INS.momentum(u, nothing, t, setup)
-    u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
-    FC = sum_NN_nopad_and_INS(u_lux, F, setup)
-    FC = INS.apply_bc_u(F, t, setup; dudt = true)
-    FP = INS.project(FC, setup; psolver)
-    FP = INS.apply_bc_u(FP, t, setup; dudt = true)
-    INS_to_NN(FP)
+#    u_INS = NN_padded_to_INS(u, setup)
+#    u_nopad = NN_padded_to_NN_nopad(u, setup)
+#    u_for_lux = reshape(u_nopad, size(u_nopad)..., 1)
+#    u = INS.apply_bc_u(u_INS, t, setup)
+#    F = INS.momentum(u, nothing, t, setup)
+#    u_lux = Lux.apply(closure, u_for_lux, p, st)[1]
+#    FC = sum_NN_nopad_and_INS(u_lux, F, setup)
+#    FC = INS.apply_bc_u(F, t, setup; dudt = true)
+#    FP = INS.project(FC, setup; psolver)
+#    FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+#    INS_to_NN(FP)
+    u_INS = eachslice(u; dims = ndims(u))
+    u_INS = (u_INS...,)
+    u_INS = INS.apply_bc_u(u_INS, t, setup)
+    F = INS.momentum(u_INS, nothing, t, setup)
+    F = INS.apply_bc_u(F, t, setup; dudt = true)
+    u_lux = Lux.apply(closure, u[:,:,:,1:1], p, st)[1]
+    F1 = F[1] + u_lux[:,:,1,1]
+    F2 = F[2] + u_lux[:,:,2,1]
+    F12 = (F1,F2)
+    PF = INS.project(F12, setup; psolver)
+    PF = INS.apply_bc_u(PF, t, setup; dudt = true)
+    cat(PF[1], PF[2]; dims = 3)
 end
 
 """
