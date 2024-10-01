@@ -37,10 +37,9 @@ create_right_hand_side_with_closure(setup, psolver, closure, st) = function righ
     u_INS = NN_padded_to_INS(u, setup)
     u_INS = INS.apply_bc_u(u_INS, t, setup)
     F = INS.momentum(u_INS, nothing, t, setup)
-    griddimsplusone = Zygote.@ignore ((:) for _ in 1:ndims(u))
-    u_lux = u[griddimsplusone..., 1:1] # Add batch dimension
+    u_lux = u[axes(u)..., 1:1] # Add batch dimension
     u_lux = Lux.apply(closure, u_lux, p, st)[1]
-    u_lux = u_lux[griddimsplusone..., 1] # Remove batch dimension
+    u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
     u_lux = NN_padded_to_INS(u_lux, setup)
     FC = F .+ u_lux
     FC = INS.apply_bc_u(FC, t, setup; dudt = true)
@@ -170,20 +169,17 @@ function NN_padded_to_INS(u, setup)
     (; grid) = setup
     (; dimension) = grid
     D = dimension()
-    griddims = ((:) for _ in 1:D)
 
     if ndims(u) == D + 1
         u_INS = eachslice(u, dims = ndims(u))
         (u_INS...,)
-        # TODO: look at this edge case
-        #elseif ndims(u) == D + 2
-        #    if size(u, ndims(u)) != 1
-        #        error("Only a single timeslice is supported")
-        #    end
-        #    Tuple(
-        #        u[griddims..., d, 1]
-        #    for d in 1:size(u, ndims(u) - 1)
-        #    )
+    elseif ndims(u) == D + 2
+        if size(u, ndims(u)) != 1
+            error("Only a single timeslice is supported")
+        end
+        u = u[axes(u)[1:(ndims(u) - 1)]..., 1] # remove last dimension
+        u_INS = eachslice(u, dims = ndims(u))
+        (u_INS...,)
     else
         error("Unsupported or non-matching number of dimensions in IO array")
     end

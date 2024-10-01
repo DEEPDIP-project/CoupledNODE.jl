@@ -150,7 +150,7 @@ pred[:, :, :, 1] == example2.u[:, :, :, 1] # Sci-ML also keeps the initial condi
 # * Define the loss (a-posteriori) - old way
 function loss_posteriori(model, p, st, data)
     u, t = data
-    griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
+    griddims = axes(u)[1:(ndims(u) - 2)]
     x = u[griddims..., :, 1]
     y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
     #dt = params.Δt
