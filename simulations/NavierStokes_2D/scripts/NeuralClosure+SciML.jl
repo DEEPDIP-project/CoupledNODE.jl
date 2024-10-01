@@ -36,8 +36,9 @@ setups = map(params.nles) do nles
 end
 
 # create io_arrays
+using CoupledNODE.NavierStokes: create_io_arrays_priori
 ig = 1 #index of the LES grid to use.
-io_nc = NC.create_io_arrays(data, setups) # original version from syver
+io_priori = create_io_arrays_priori(data, setups) # original version from syver
 
 # * Creation of the model: NN closure
 using CoupledNODE: cnn
@@ -52,10 +53,11 @@ closure, θ, st = cnn(;
 
 # Give the CNN a test run
 using Lux: Lux
-Lux.apply(closure, io_nc[ig].u[:, :, :, 1:1], θ, st)[1]
+Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
 
 # * dataloader priori
-dataloader_prior = NC.create_dataloader_prior(io_nc[ig]; batchsize = 10, rng)
+using CoupledNODE.NavierStokes: create_dataloader_prior
+dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
 train_data_priori = dataloader_prior()
 size(train_data_priori[1]) # bar{u} filtered
 size(train_data_priori[2]) # c commutator error

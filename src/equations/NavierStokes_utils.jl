@@ -6,6 +6,7 @@ module NavierStokes
 
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using Lux: Lux
+using Random: shuffle
 
 """
     create_right_hand_side(setup, psolver)
@@ -247,6 +248,39 @@ function assert_pad_nopad_similar(io_pad, io_nopad, setup)
 end
 
 """
+    create_io_arrays_priori(data, setups)
+
+Create ``(\\bar{u}, c)`` pairs for training.
+# Returns
+A named tuple with fields `u` and `c`. (without boundary conditions padding)
+"""
+function create_io_arrays_priori(data, setups)
+    nsample = length(data)
+    ngrid, nfilter = size(data[1].data)
+    nt = length(data[1].t) - 1
+    T = eltype(data[1].t)
+    map(CartesianIndices((ngrid, nfilter))) do I
+        ig, ifil = I.I
+        (; dimension, N, Iu) = setups[ig].grid
+        D = dimension()
+        u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
+        c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
+        ifield = ntuple(Returns(:), D)
+        for is in 1:nsample, it in 1:(nt + 1), α in 1:D
+            copyto!(
+                view(u, ifield..., α, it, is),
+                view(data[is].data[ig, ifil].u[it][α], Iu[α])
+            )
+            copyto!(
+                view(c, ifield..., α, it, is),
+                view(data[is].data[ig, ifil].c[it][α], Iu[α])
+            )
+        end
+        (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
+    end
+end
+
+"""
     create_io_arrays_posteriori(data, setups)
 
 Main differences between this function and NeuralClosure.create_io_arrays
@@ -285,6 +319,32 @@ function create_io_arrays_posteriori(data, setups)
 end
 
 """
+    create_dataloader_prior(io_array; nunroll=10, device=identity, rng)
+
+    Create dataloader that uses a batch of `batchsize` random samples from
+`data` at each evaluation.
+
+# Arguments
+- `io_array`: An named tuple with the data arrays `u` and `c`.
+- `batchsize`: The number of samples to use in each batch.
+- `device`: A function to move the data to the desired device (e.g. gpu).
+
+# Returns
+- A function `dataloader` that, when called, returns a tuple with:
+  - `u`: bar_u from `io_array` (input to NN)
+  - `c`: commutator error from `io_array` (label)
+"""
+create_dataloader_prior(io_array; batchsize = 50, device = identity, rng) = function dataloader()
+    x, y = io_array
+    nsample = size(x)[end]
+    d = ndims(x)
+    i = sort(shuffle(rng, 1:nsample)[1:batchsize])
+    xuse = device(Array(selectdim(x, d, i)))
+    yuse = device(Array(selectdim(y, d, i)))
+    xuse, yuse
+end
+
+"""
     create_dataloader_posteriori(io_array; nunroll=10, device=identity, rng)
 
 Creates a dataloader function for a-posteriori fitting from the given `io_array`.
@@ -305,7 +365,7 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 - Have only tested in 2D cases.
 - It assumes that the data are loaded in batches of size 1
 """
-function create_dataloader_posteriori(io_array; nunroll = 10, rng)
+function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
     function dataloader()
         (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
         @assert nt ≥ nunroll
