@@ -37,7 +37,7 @@ using CoupledNODE: callback
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 optf = Optimization.OptimizationFunction(
-    (u, _) -> loss_priori(closure, u, st, train_data_priori), # u here is the optimization variable (θ params of NN)
+    (x, _) -> loss_priori(closure, x, st, train_data_priori), # x here is the optimization variable (θ params of NN)
     Optimization.AutoZygote())
 optprob = Optimization.OptimizationProblem(optf, θ)
 result_priori = Optimization.solve(
@@ -61,3 +61,9 @@ loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_2)
 # the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
+
+# * save the trained model
+using JLD2: @save
+outdir = "simulations/NavierStokes_2D/outputs"
+ispath(outdir) || mkpath(outdir)
+@save "$outdir/trained_model_priori.jld2" θ_priori st

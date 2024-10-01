@@ -74,3 +74,9 @@ loss, tstate = train(closure, θ, st, dataloader_posteriori, loss_posteriori_lux
 
 # the trained params are:
 θ_posteriori = tstate.parameters
+
+# * save the trained model
+using JLD2: @save
+outdir = "simulations/NavierStokes_2D/outputs"
+ispath(outdir) || mkpath(outdir)
+@save "$outdir/trained_model_posteriori.jld2" θ_posteriori st
