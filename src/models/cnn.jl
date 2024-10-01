@@ -1,7 +1,6 @@
 using Lux: Lux
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
-using NeuralClosure: NeuralClosure as NC
 using ComponentArrays: ComponentArray
 
 """
@@ -47,8 +46,7 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-        NC.collocate,  # Put inputs in pressure points
-        # Some convolutional layers
+    # Some convolutional layers
         (Lux.Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
@@ -57,8 +55,7 @@ function cnn(;
              init_weight = glorot_uniform_T,
              pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
-        )...,
-        NC.decollocate # Differentiate output to velocity points
+    )...,
     )
     chain = Lux.Chain(layers...)
     params, state = Lux.setup(rng, chain)

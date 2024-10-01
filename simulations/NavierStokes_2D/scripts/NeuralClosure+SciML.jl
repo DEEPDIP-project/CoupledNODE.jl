@@ -4,30 +4,38 @@
 using CairoMakie
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
-using NeuralClosure: NeuralClosure as NC
 
-# Parameters
-T = Float32
-ArrayType = Array
-rng = Random.Xoshiro(123)
-params = (;
-    D = 2,
-    Re = T(1e3),
-    tburn = T(5e-2),
-    tsim = T(0.5),
-    Δt = T(5e-3),
-    nles = [(16, 16), (32, 32)],
-    ndns = (64, 64),
-    filters = (NC.FaceAverage(),),
-    create_psolver = INS.psolver_spectral,
-    icfunc = (setup, psolver, rng) -> INS.random_field(
-        setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
-    rng,
-    savefreq = 1
-)
+# generate the data using NeuralClosure
+# using NeuralClosure: NeuralClosure as NC
+# # Parameters
+# T = Float32
+# ArrayType = Array
+# rng = Random.Xoshiro(123)
+# params = (;
+#     D = 2,
+#     Re = T(1e3),
+#     tburn = T(5e-2),
+#     tsim = T(0.5),
+#     Δt = T(5e-3),
+#     nles = [(16, 16), (32, 32)],
+#     ndns = (64, 64),
+#     filters = (NC.FaceAverage(),),
+#     create_psolver = INS.psolver_spectral,
+#     icfunc = (setup, psolver, rng) -> INS.random_field(
+#         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
+#     rng,
+#     savefreq = 1
+# )
 
-# Generate the data
-data = [NC.create_les_data(; params...) for _ in 1:3]
+# data = [NC.create_les_data(; params...) for _ in 1:3]
+# using JLD2: jldsave
+# jldsave("simulations/NavierStokes_2D/data/data.jld2"; data)
+# jldsave("simulations/NavierStokes_2D/data/params_data.jld2"; params)
+
+# Load the data
+using JLD2: load
+data = load("simulations/NavierStokes_2D/data/data.jld2", "data")
+params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
@@ -36,8 +44,9 @@ setups = map(params.nles) do nles
 end
 
 # create io_arrays
+using CoupledNODE.NavierStokes: create_io_arrays_priori
 ig = 1 #index of the LES grid to use.
-io_nc = NC.create_io_arrays(data, setups) # original version from syver
+io_priori = create_io_arrays_priori(data, setups) # original version from syver
 
 # * Creation of the model: NN closure
 using CoupledNODE: cnn
@@ -52,10 +61,11 @@ closure, θ, st = cnn(;
 
 # Give the CNN a test run
 using Lux: Lux
-Lux.apply(closure, io_nc[ig].u[:, :, :, 1:1], θ, st)[1]
+Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
 
 # * dataloader priori
-dataloader_prior = NC.create_dataloader_prior(io_nc[ig]; batchsize = 10, rng)
+using CoupledNODE.NavierStokes: create_dataloader_prior
+dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
 train_data_priori = dataloader_prior()
 size(train_data_priori[1]) # bar{u} filtered
 size(train_data_priori[2]) # c commutator error
