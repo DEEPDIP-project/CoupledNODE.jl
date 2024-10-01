@@ -5,12 +5,13 @@ using CairoMakie
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 
-# generate the data using NeuralClosure
+T = Float32
+ArrayType = Array
+rng = Random.Xoshiro(123)
+
+# # Generate the data using NeuralClosure
 # using NeuralClosure: NeuralClosure as NC
 # # Parameters
-# T = Float32
-# ArrayType = Array
-# rng = Random.Xoshiro(123)
 # params = (;
 #     D = 2,
 #     Re = T(1e3),
