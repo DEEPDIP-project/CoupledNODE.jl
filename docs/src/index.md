@@ -10,5 +10,5 @@ Documentation for [CoupledNODE](https://github.com/pabrod/CoupledNODE.jl).
 ```
 
 ```@autodocs
-Modules = [CoupledNODE]
+Modules = [CoupledNODE, CoupledNODE.NavierStokes]
 ```
