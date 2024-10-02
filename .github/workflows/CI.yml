@@ -49,18 +49,27 @@ jobs:
       statuses: write
     steps:
       - uses: actions/checkout@v4
-      - uses: julia-actions/setup-julia@v1
+      - uses: julia-actions/setup-julia@v2
         with:
           version: '1'
-      - uses: julia-actions/cache@v1
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-docdeploy@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run doctests
-        shell: julia --project=docs --color=yes {0}
+      - uses: julia-actions/cache@v2
+      - name: Build package
         run: |
-          using Documenter: DocMeta, doctest
-          using CoupledNODE
-          DocMeta.setdocmeta!(CoupledNODE, :DocTestSetup, :(using CoupledNODE); recursive=true)
-          doctest(CoupledNODE)
+          julia --project=docs -e '
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()'
+      - name: Run doctests
+        run: |
+          julia --project=docs -e '
+            using Documenter: DocMeta, doctest
+            using CoupledNODE
+            DocMeta.setdocmeta!(CoupledNODE, :DocTestSetup, :(using CoupledNODE); recursive=true)
+            doctest(CoupledNODE)'
+      - name: Generate documentation
+        run: julia --project=docs docs/make.jl
+        env:
+          JULIA_PKG_SERVER: ""
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+          GKSwstype: "100"

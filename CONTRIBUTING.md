@@ -29,3 +29,8 @@ format_file("path/to/file_to_format.jl")
 using Literate: Literate
 Literate.notebook("path_to_file.jl"; execute = autorun_notebooks)
 ```
+
+## Manually generate documentation
+```sh
+julia --project docs/make.jl
+```
