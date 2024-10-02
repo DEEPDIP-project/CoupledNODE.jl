@@ -53,21 +53,21 @@ jobs:
         with:
           version: '1'
       - uses: julia-actions/cache@v2
-      - run: |
+      - name: Build package
+        run: |
           julia --project=docs -e '
             using Pkg
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()'
-      - run: |
+      - name: Run doctests
+        run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using CoupledNODE
             DocMeta.setdocmeta!(CoupledNODE, :DocTestSetup, :(using CoupledNODE); recursive=true)
             doctest(CoupledNODE)'
-      #- uses: julia-actions/julia-docdeploy@v1
-      #  env:
-      #    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - run: julia --project=docs docs/make.jl
+      - name: Generate documentation
+        run: julia --project=docs docs/make.jl
         env:
           JULIA_PKG_SERVER: ""
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
