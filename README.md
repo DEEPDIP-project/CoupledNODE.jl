@@ -50,7 +50,8 @@ $$
 Then the crucial question that we need to address is
 
 $$
-\tag{2}\bar{u}(t)\stackrel{?}{=} \Phi u(t),
+\tag{2}
+\bar{u}(t)\stackrel{?}{=} \Phi u(t),
 $$
 
 or in words: **does the discretized solution evolve like the original?**
