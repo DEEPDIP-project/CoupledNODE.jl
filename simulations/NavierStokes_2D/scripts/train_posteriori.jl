@@ -23,6 +23,24 @@ closure, θ, st = cnn(;
     rng
 )
 
+using CoupledNODE: AttentionLayer
+using ComponentArrays: ComponentArray
+u = io_post[ig].u[:, :, :, 1, 1:50]
+N = size(u, 1) 
+d = size(u, 3)
+emb_size = 64
+patch_size = 3
+n_heads = 2
+layers = (
+AttentionLayer( N, d, emb_size, patch_size, n_heads),
+)
+chain = Lux.Chain(layers...)
+params, state = Lux.setup(rng, chain)
+(chain, ComponentArray(params), state)
+
+chain(u, params, state)
+
+
 # * Define the right hand side of the ODE
 dudt_nn2 = create_right_hand_side_with_closure(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
