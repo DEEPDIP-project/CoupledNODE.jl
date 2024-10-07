@@ -30,7 +30,6 @@ CnnLayers, _, _ = cnn(;
     T = T,
     D = D,
     data_ch = 2 * D,
-    #data_ch = setups[1].grid.dimension(),
     radii = [3, 3],
     channels = [2, 2],
     activations = [tanh, identity],
@@ -83,7 +82,7 @@ result_posteriori = Optimization.solve(
     optprob,
     OptimizationOptimisers.Adam(0.1);
     callback = callback,
-    maxiters = 10,
+    maxiters = 100,
     progress = true
 )
 θ_posteriori = result_posteriori.u
@@ -94,7 +93,7 @@ loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # * training via Lux
 loss, tstate = train(closure, θ, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = 10, ad_type = Optimization.AutoZygote(),
+    nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
 
 # the trained params are:

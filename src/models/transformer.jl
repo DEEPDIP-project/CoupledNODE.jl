@@ -87,7 +87,6 @@ function ((;)::AttentionLayer)(x, params, state)
     U = params.U
 
     # (1) Split the image into patches 
-    #x_patches = [x[ps*i+1:ps*(i+1), ps*j+1:ps*(j+1), :, :] for i in 0:div(size(x, 1)-1, ps), j in 0:div(size(x, 2)-1, ps)]
     num_patches_h = div(N, ps)
     num_patches_w = div(N, ps)
     x_patches = [x[(i * ps + 1):(i * ps + ps), (j * ps + 1):(j * ps + ps), :, :]
@@ -97,8 +96,6 @@ function ((;)::AttentionLayer)(x, params, state)
     # TODO: do NOT use reshape here
     x_pflat = [reshape(p, ps * ps * d, :) for p in x_patches]
 
-    #x_pflat = [ones(state.T, ps*ps*d, size(x)[end]) for p in x_patches] 
-
     # (3) project the patches onto the embedding space
     x_emb = [Ew * p .+ Eb for p in x_pflat]
 
@@ -106,7 +103,6 @@ function ((;)::AttentionLayer)(x, params, state)
     # notice that we use 1D positional embedding, as suggested [here](https://arxiv.org/pdf/2010.11929)
     x_lemb = [cat(p, ones(state.T, 1, size(p)[2:end]...) * i; dims = 1)
               for (i, p) in enumerate(x_emb)]
-    #x_emb = [ones(state.T, emb_size+1, size(x)[end]) for p in x_emb] 
 
     # (5) compute the attention scores
     # [!] notice that you can not reuse some variable names otherwise Zygote gets confused

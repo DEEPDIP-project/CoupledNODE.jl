@@ -7,7 +7,7 @@ rng = Random.Xoshiro(123)
 
 # Load the data
 using JLD2: load
-data = load("simulations/NavierStokes_2D/data/data_train.jld2", "data")
+data = load("simulations/NavierStokes_2D/data/data_train.jld2", "data_train")
 params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 
 # Build LES setups and assemble operators
@@ -24,5 +24,5 @@ io_priori = create_io_arrays_priori(data, setups) # original version from syver
 using CoupledNODE.NavierStokes: create_dataloader_prior
 dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
 train_data_priori = dataloader_prior()
-size(train_data_priori[1]) # bar{u} filtered
-size(train_data_priori[2]) # c commutator error
+size(train_data_priori[1]); # bar{u} filtered
+size(train_data_priori[2]); # c commutator error
