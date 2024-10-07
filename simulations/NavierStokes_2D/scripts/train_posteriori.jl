@@ -13,33 +13,42 @@ rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 include("preprocess_posteriori.jl")
 
-# * Creation of the model: NN closure
-closure, θ, st = cnn(;
-    setup = setups[ig],
+using CoupledNODE: AttentionLayer
+using ComponentArrays: ComponentArray
+using Lux: Lux
+u = io_post[ig].u[:, :, :, 1, 1:50]
+T = setups[1].T
+d = D = setups[1].grid.dimension()
+N = size(u, 1)
+emb_size = 8
+patch_size = 3
+n_heads = 2
+
+# * Define the CNN layers
+# since I will use them after the attention (that gets concatenated with the input), I have to start from 2*D channels
+CnnLayers, _, _ = cnn(;
+    T = T,
+    D = D,
+    data_ch = 2 * D,
+    #data_ch = setups[1].grid.dimension(),
     radii = [3, 3],
     channels = [2, 2],
     activations = [tanh, identity],
     use_bias = [false, false],
     rng
 )
-
-using CoupledNODE: AttentionLayer
-using ComponentArrays: ComponentArray
-u = io_post[ig].u[:, :, :, 1, 1:50]
-N = size(u, 1) 
-d = size(u, 3)
-emb_size = 64
-patch_size = 3
-n_heads = 2
 layers = (
-AttentionLayer( N, d, emb_size, patch_size, n_heads),
+    Lux.SkipConnection(AttentionLayer(N, d, emb_size, patch_size, n_heads; T = T),
+        (x, y) -> cat(x, y; dims = 3); name = "Attention"),
+    CnnLayers
 )
-chain = Lux.Chain(layers...)
-params, state = Lux.setup(rng, chain)
-(chain, ComponentArray(params), state)
+closure = Lux.Chain(layers...)
+θ, st = Lux.setup(rng, closure)
+using ComponentArrays: ComponentArray
+θ = ComponentArray(θ)
 
-chain(u, params, state)
-
+# test and trigger the model
+closure(u, θ, st)
 
 # * Define the right hand side of the ODE
 dudt_nn2 = create_right_hand_side_with_closure(

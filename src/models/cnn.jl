@@ -23,7 +23,9 @@ A tuple `(chain, params, state)` where
 - `state`: The state of the model.
 """
 function cnn(;
-        setup,
+        T = Float32,
+        D,
+        data_ch,
         radii,
         channels,
         activations,
@@ -31,18 +33,15 @@ function cnn(;
         rng = Random.default_rng()
 )
     r, c, σ, b = radii, channels, activations, use_bias
-    (; T, grid) = setup
-    (; dimension) = grid
-    D = dimension()
 
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = Lux.glorot_uniform(rng, T, dims...)
 
-    # Make sure there are two force fields in output
-    @assert c[end] == D
+    @assert length(c)==length(r)==length(σ)==length(b) "The number of channels, radii, activations, and use_bias must match"
+    @assert c[end]==D "The number of output channels must match the data dimension"
 
-    # Add input channel size
-    c = [D; c]
+    # Put the data channels at the beginning
+    c = [data_ch; c]
 
     # Create convolutional closure model
     layers = (
@@ -54,7 +53,8 @@ function cnn(;
              use_bias = b[i],
              init_weight = glorot_uniform_T,
              pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
-         ) for i in eachindex(r)
+         )
+    for i in eachindex(r)
     )...,
     )
     chain = Lux.Chain(layers...)
