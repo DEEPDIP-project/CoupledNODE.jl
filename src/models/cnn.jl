@@ -70,7 +70,7 @@ TODO, D and dir can be parameters istead of arguments I think
 """
 function interpolate(A, D, dir)
     (i, a) = A
-    staggered = a .+ circshift(a, ntuple(x -> x == D ? dir : 0, D))
+    staggered = a .+ circshift(a, ntuple(x -> x == i ? dir : 0, D))
     staggered ./ 2
 end
 
