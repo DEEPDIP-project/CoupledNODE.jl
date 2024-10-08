@@ -45,8 +45,8 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-    #collocate,
-    # convolutional layers
+        collocate,
+        # convolutional layers
         (Lux.Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
@@ -55,8 +55,8 @@ function cnn(;
              init_weight = glorot_uniform_T,
              pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
-    )...,
-    #decollocate
+        )...,
+        decollocate
     )
     chain = Lux.Chain(layers...)
     params, state = Lux.setup(rng, chain)
@@ -65,67 +65,30 @@ end
 
 """
 Interpolate velocity components to volume centers.
+
+TODO, D and dir can be parameters istead of arguments I think
 """
+function interpolate(A, D, dir)
+    (i, a) = A
+    staggered = a .+ circshift(a, ntuple(x -> x == D ? dir : 0, D))
+    staggered ./ 2
+end
+
 function collocate(u)
-    sz..., D, _ = size(u)
-    # for α = 1:D
-    #     v = selectdim(u, D + 1, α)
-    #     v = (v + circshift(v, ntuple(β -> α == β ? -1 : 0, D + 1))) / 2
-    # end
-    if D == 2
-        a = selectdim(u, 3, 1)
-        b = selectdim(u, 3, 2)
-        a = (a .+ circshift(a, (1, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, 1, 0))) ./ 2
-        a = reshape(a, sz..., 1, :)
-        b = reshape(b, sz..., 1, :)
-        cat(a, b; dims = 3)
-    elseif D == 3
-        a = selectdim(u, 4, 1)
-        b = selectdim(u, 4, 2)
-        c = selectdim(u, 4, 3)
-        a = (a .+ circshift(a, (1, 0, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, 1, 0, 0))) ./ 2
-        c = (c .+ circshift(c, (0, 0, 1, 0))) ./ 2
-        a = reshape(a, sz..., 1, :)
-        b = reshape(b, sz..., 1, :)
-        c = reshape(c, sz..., 1, :)
-        cat(a, b, c; dims = 4)
-    end
+    sz..., nC, _ = axes(u)
+    D = ndims(u) - 2
+    slices = eachslice(u; dims = D + 1)
+    staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
+    stack(staggered_slices; dims = D + 1)
 end
 
 """
 Interpolate closure force from volume centers to volume faces.
 """
 function decollocate(u)
-    sz..., D, _ = size(u)
-    # for α = 1:D
-    #     v = selectdim(u, D + 1, α)
-    #     v = (v + circshift(v, ntuple(β -> α == β ? -1 : 0, D + 1))) / 2
-    # end
-    if D == 2
-        a = selectdim(u, 3, 1)
-        b = selectdim(u, 3, 2)
-        a = (a .+ circshift(a, (-1, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, -1, 0))) ./ 2
-        # a = circshift(a, (1, 0, 0)) .- a
-        # b = circshift(b, (0, 1, 0)) .- b
-        a = reshape(a, sz..., 1, :)
-        b = reshape(b, sz..., 1, :)
-        cat(a, b; dims = 3)
-    elseif D == 3
-        a = selectdim(u, 4, 1)
-        b = selectdim(u, 4, 2)
-        c = selectdim(u, 4, 3)
-        a = (a .+ circshift(a, (-1, 0, 0, 0))) ./ 2
-        b = (b .+ circshift(b, (0, -1, 0, 0))) ./ 2
-        c = (c .+ circshift(c, (0, 0, -1, 0))) ./ 2
-        # a = circshift(a, (1, 0, 0, 0)) .- a
-        # b = circshift(b, (0, 1, 0, 0)) .- b
-        # c = circshift(c, (0, 0, 1, 0)) .- c
-        a = reshape(a, sz..., 1, :)
-        b = reshape(b, sz..., 1, :)
-        c = reshape(c, sz..., 1, :)
-        cat(a, b, c; dims = 4)
-    end
+    sz..., nC, _ = axes(u)
+    D = ndims(u) - 2
+    slices = eachslice(u; dims = D + 1)
+    staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
+    stack(staggered_slices; dims = D + 1)
 end
