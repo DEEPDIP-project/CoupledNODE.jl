@@ -4,28 +4,7 @@ using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
 
 """
-    predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
-
-Auxiliary function to solve the NeuralODE. Returns the prediction and the target sliced to nunroll time steps for convenience when calculating the loss.
-
-# Arguments
-- `uv0`: Initial condition(s) for the NeuralODE.
-- `θ`: Parameters of the NeuralODE.
-- `st`: Time steps for the NeuralODE.
-- `nunroll`: Number of time steps in the window.
-- `training_CNODE`: CNODE model that solves the NeuralODE.
-- `tg`: Target values.
-
-# Returns
-- `sol`: Prediction of the NeuralODE sliced to nunroll time steps.
-- `tg[:, :, 1:nunroll]`: Target values sliced to nunroll time steps.
-"""
-function predict_u_CNODE(uv0, θ, st, nunroll, training_CNODE, tg)
-    sol = Array(training_CNODE(uv0, θ, st)[1])
-    return sol, tg
-end
-
-"""
+[DEPRECATED]
     create_randloss_MulDtO(target; nunroll, nintervals=1, nsamples, λ_c, λ_l1)
 
 Creates a random loss function for the multishooting method with multiple shooting intervals.
@@ -77,6 +56,7 @@ function create_randloss_MulDtO(
 end
 
 """
+[DEPRECATED]
     loss_MulDtO_oneset(trajectory, θ; λ_c=1e1, λ_l1=1e1, nunroll, nintervals, nsamples=nsamples)
 
 Compute the loss function for the multiple shooting method with a continuous neural ODE (CNODE) model.
@@ -191,4 +171,73 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
                sum(abs2, y), st, (; y_pred = pred)
     end
+end
+
+"""
+    loss_posteriori_optim(model, p, st, dataloader)
+
+Compute the loss function for a-posteriori fitting using the given model, parameters, state, and dataloader.
+This function is compatible with training via Optim.jl.
+
+# Arguments
+ - `model`: The model to evaluate.
+ - `p`: Parameters for the model.
+ - `st`: State of the model.
+ - `dataloader::Function`: A function that returns the data `(u, t)`.
+ 
+# Returns
+ - `loss`: The computed loss value.
+"""
+function loss_posteriori_optim(model, p, st, dataloader)
+    data = dataloader()
+    u, t = data
+    griddims = axes(u)[1:(ndims(u) - 2)]
+    x = u[griddims..., :, 1]
+    y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
+    #dt = params.Δt
+    dt = t[2] - t[1]
+    #saveat_loss = [i * dt for i in 1:length(y)]
+    tspan = [t[1], t[end]]
+    prob = ODEProblem(model, x, tspan, p)
+    pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
+    # remember that the first element of pred is the initial condition (SciML)
+    return sum(
+        abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
+           sum(abs2, y)
+end
+
+"""
+    validate_results(model, p, dataloader, nuse = 100)
+
+Validate the results of the model using the given parameters `p`, dataloader, and number of samples `nuse`.
+
+# Arguments
+- `model`: The model to evaluate.
+- `p`: Parameters for the model.
+- `dataloader::Function`: A function that returns the data `(u, t)`.
+- `nuse::Int`: The number of samples to use for validation. Defaults to `100`.
+
+# Returns
+ - `loss`: The computed loss value.
+"""
+function validate_results(model, p, dataloader, nuse = 100)
+    loss = 0
+    for _ in 1:nuse
+        data = dataloader()
+        u, t = data
+        griddims = axes(u)[1:(ndims(u) - 2)]
+        x = u[griddims..., :, 1]
+        y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
+        #dt = params.Δt
+        dt = t[2] - t[1]
+        #saveat_loss = [i * dt for i in 1:length(y)]
+        tspan = [t[1], t[end]]
+        prob = ODEProblem(model, x, tspan, p)
+        pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
+        # remember that the first element of pred is the initial condition (SciML)
+        loss += sum(
+            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
+                sum(abs2, y)
+    end
+    return loss / nuse
 end

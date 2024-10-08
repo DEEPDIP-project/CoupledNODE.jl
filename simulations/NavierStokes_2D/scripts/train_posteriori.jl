@@ -27,95 +27,20 @@ closure, θ, st = cnn(;
 dudt_nn2 = create_right_hand_side_with_closure(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-# * Define the loss (a-posteriori) - old way
-using Zygote: Zygote
-function loss_posteriori(model, p, st, dataloader)
-    data = dataloader()
-    u, t = data
-    griddims = axes(u)[1:(ndims(u) - 2)]
-    x = u[griddims..., :, 1]
-    y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-    #dt = params.Δt
-    dt = t[2] - t[1]
-    #saveat_loss = [i * dt for i in 1:length(y)]
-    tspan = [t[1], t[end]]
-    prob = ODEProblem(dudt_nn2, x, tspan, p)
-    pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
-    # remember that the first element of pred is the initial condition (SciML)
-    return T(sum(
-        abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
-             sum(abs2, y))
-end
-
-NEPOCHS = 500
-LR = 1e-2
-NUSE_VAL = 2000
-
-# * train a-posteriori: old way single data point
+# * Define the loss (a-posteriori) 
 train_data_posteriori = dataloader_posteriori()
-optf = Optimization.OptimizationFunction(
-    (x, _) -> loss_posteriori(closure, x, st, dataloader_posteriori), # x here is the optimization variable (θ params of NN)
-    Optimization.AutoZygote()
-)
-optprob = Optimization.OptimizationProblem(optf, θ)
-optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
-    optprob,
-    OptimizationOptimisers.Adam(LR);
-    callback = callback,
-    maxiters = NEPOCHS,
-    progress = true
-)
-θ_posteriori_optim = optim_result.u
-
-# * package loss
 loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # * training via Lux
 lux_result, lux_t, lux_mem, _ = @timed train(
     closure, θ, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = NEPOCHS, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(LR), cpu = true, callback = callback)
+    nepochs = 10, ad_type = Optimization.AutoZygote(),
+    alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback)
 
 loss, tstate = lux_result
 # the trained params are:
-θ_posteriori_lux = tstate.parameters
-
-# Function to test the results
-function validate_results(p, dataloader, nuse = 100)
-    loss = 0
-    for i in 1:nuse
-        data = dataloader()
-        u, t = data
-        griddims = axes(u)[1:(ndims(u) - 2)]
-        x = u[griddims..., :, 1]
-        y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-        #dt = params.Δt
-        dt = t[2] - t[1]
-        #saveat_loss = [i * dt for i in 1:length(y)]
-        tspan = [t[1], t[end]]
-        prob = ODEProblem(dudt_nn2, x, tspan, p)
-        pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
-        # remember that the first element of pred is the initial condition (SciML)
-        loss += T(sum(
-            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
-                  sum(abs2, y))
-    end
-    return loss / nuse
-end
-val_optim = validate_results(θ_posteriori_optim, dataloader_posteriori, NUSE_VAL)
-val_lux = validate_results(θ_posteriori_lux, dataloader_posteriori, NUSE_VAL)
-
-# Plot the comparison between the two training methods
-using Plots
-p1 = bar(["Optim", "Lux"], [optim_t, lux_t], ylabel = "Time (s)",
-    title = "Training time", legend = false)
-p2 = bar(["Optim", "Lux"], [optim_mem, lux_mem], ylabel = "Memory (MB)",
-    yaxis = :log, title = "Memory usage", legend = false)
-p3 = bar(["Optim", "Lux"], [val_optim, val_lux], ylabel = "Validation",
-    yaxis = :log, title = "Validation loss", legend = false)
-plot(p1, p2, p3, layout = (3, 1), size = (600, 700),
-    title = "A posteriori comparison between loss backends")
+θ_posteriori = tstate.parameters
 
 # * save the trained model
 outdir = "simulations/NavierStokes_2D/outputs"
