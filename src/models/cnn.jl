@@ -70,6 +70,9 @@ TODO, D and dir can be parameters istead of arguments I think
 """
 function interpolate(A, D, dir)
     (i, a) = A
+    if i > D
+        return a
+    end # Nothing to interpolate for extra layers
     staggered = a .+ circshift(a, ntuple(x -> x == i ? dir : 0, D))
     staggered ./ 2
 end

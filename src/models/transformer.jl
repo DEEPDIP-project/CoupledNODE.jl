@@ -87,14 +87,16 @@ function ((;)::AttentionLayer)(x, params, state)
     U = params.U
 
     # (1) Split the image into patches 
-    num_patches_h = div(N, ps)
-    num_patches_w = div(N, ps)
-    x_patches = [x[(i * ps + 1):(i * ps + ps), (j * ps + 1):(j * ps + ps), :, :]
-                 for i in 0:(num_patches_h - 1), j in 0:(num_patches_w - 1)]
-
+    num_patches = div(N, ps)
+    #num_patches_h = div(N, ps)
+    #num_patches_w = div(N, ps) # its the same as num_patches
+    #The subarray of x here is by default a copy, but it can be a view (its not edited)
+    x_patches = [@view(x[(i * ps + 1):(i * ps + ps), (j * ps + 1):(j * ps + ps), :, :])
+                 for i in 0:(num_patches - 1), j in 0:(num_patches - 1)]
     # (2) flatten the patches
-    # TODO: do NOT use reshape here
-    x_pflat = [reshape(p, ps * ps * d, :) for p in x_patches]
+    # reshape is fine and will not create a copy here, as only the first dims are merged, and because julia
+    # is column order, this does not change the shape of the underlying data, this is true for all following reshapes
+    x_pflat = [reshape(p, ps * ps * d, size(p, ndims(p))) for p in x_patches]
 
     # (3) project the patches onto the embedding space
     x_emb = [Ew * p .+ Eb for p in x_pflat]
@@ -110,17 +112,16 @@ function ((;)::AttentionLayer)(x, params, state)
     K0 = [wK[i, :, :] * x_lemb[patchi] for i in 1:n_heads, patchi in 1:np]
     V0 = [wV[i, :, :] * x_lemb[patchi] for i in 1:n_heads, patchi in 1:np]
     # Reshape Q, K, V to match desired output dimensions
-    Q = reshape(vcat(Q0...), (n_heads, np, dh, size(x)[end]))
-    K = reshape(vcat(K0...), (n_heads, np, dh, size(x)[end]))
-    V = reshape(vcat(V0...), (n_heads, np, dh, size(x)[end]))
-
+    Q = reshape(vcat(Q0...), (n_heads, np, dh, size(x, ndims(x))))
+    K = reshape(vcat(K0...), (n_heads, np, dh, size(x, ndims(x))))
+    V = reshape(vcat(V0...), (n_heads, np, dh, size(x, ndims(x))))
     # (6) Compute attention scores without mutations
     A = [Lux.softmax(Q[i, p, :, :] .* K[i, p, :, :] / sqrtDh) for i in 1:n_heads, p in 1:np]
-    A = reshape(vcat(A...), (n_heads, np, dh, size(x)[end]))
+    A = reshape(vcat(A...), (n_heads, np, dh, size(x, ndims(x))))
     SA = A .* V
 
     # (7) multihead attention
-    MSA = reshape(SA, n_heads * np * dh, size(x)[end])
+    MSA = reshape(SA, n_heads * np * dh, size(x, ndims(x)))
     MSA = U * MSA
     MSA = reshape(MSA, size(x)...)
 
