@@ -75,7 +75,6 @@ function interpolate(A, D, dir)
 end
 
 function collocate(u)
-    sz..., nC, _ = axes(u)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
     staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
@@ -86,7 +85,6 @@ end
 Interpolate closure force from volume centers to volume faces.
 """
 function decollocate(u)
-    sz..., nC, _ = axes(u)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
     staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
