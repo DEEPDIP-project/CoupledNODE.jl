@@ -30,4 +30,14 @@ io_post[ig].t[2, :]
 # * Create dataloader containing trajectories with the specified nunroll
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
 nunroll = 5
-dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
+dataloader_posteriori = create_dataloader_posteriori(io_post; nunroll = nunroll, rng)
+
+there is some bullshit going on in the data because the different samples have different sizes
+fix generate_data and understand what is going on and the logic behind it
+
+u,t = dataloader_posteriori()
+u
+
+# Load the test data
+test_data = load("simulations/NavierStokes_2D/data/data_test.jld2", "data_test")
+test_io_post = create_io_arrays_posteriori(test_data, setups)
