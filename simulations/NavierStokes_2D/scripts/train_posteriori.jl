@@ -30,12 +30,19 @@ dudt_nn2 = create_right_hand_side_with_closure(
 # * Define the loss (a-posteriori) 
 train_data_posteriori = dataloader_posteriori()
 loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
+u, t = train_data_posteriori
+u
+t
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+
+# * Callback function
+using CoupledNODE: create_callback
+callback = create_callback(dudt_nn2, test_io_post, 3*nunroll, rng)
 
 # * training via Lux
 lux_result, lux_t, lux_mem, _ = @timed train(
     closure, θ, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = 10, ad_type = Optimization.AutoZygote(),
+    nepochs = 100, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback)
 
 loss, tstate = lux_result

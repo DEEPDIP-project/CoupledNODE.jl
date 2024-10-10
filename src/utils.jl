@@ -71,3 +71,60 @@ function create_stateful_callback(
     end
     (; callbackstate, callback)
 end
+
+
+function create_callback(model, test_io_data; nunroll=10, rng=rng )
+    lhist = [] 
+    lhist_train = []
+    # select a fixed sample for the validation
+    dataloader_posteriori = create_dataloader_posteriori(test_io_data; nunroll = nunroll, rng)
+    u, t = dataloader_posteriori()
+
+    function get_loss(u, t, p)
+        griddims = axes(u)[1:(ndims(u) - 2)]
+        x = u[griddims..., :, 1]
+        y = u[griddims..., :, 2:end] 
+        dt = t[2] - t[1]
+        tspan = [t[1], t[end]]
+        prob = ODEProblem(model, x, tspan, p)
+        pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
+        loss += sum(
+            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
+                sum(abs2, y)
+    end
+
+    no_model_loss = nothing    
+
+    function (p, ltrain, pred = nothing; do_plot = true)
+        l_l = length(lhist)
+        if no_model_loss === nothing
+            # reference loss without model
+            no_model_loss = get_loss(u, t, p.*0)
+        end
+        # to compute the validation loss, use the parameters p at this step
+        l = get_loss(u, t, p) 
+
+        @info "Training Loss[$(l_l)]: $(ltrain)"
+        @info "Validation Loss[$(l_l)]: $(l)"
+        push!(lhist, l)
+        push!(lhist_train, ltrain)
+        if do_plot
+            # plot rolling average of loss, every 10 steps
+            if l_l % 10 == 0
+                Plots.plot()
+                fig = Plots.plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
+                Plots.plot!(fig,
+                    1:10:length(lhist),
+                    [mean(lhist[i:min(i + 9, length(lhist))]) for i in 1:10:length(lhist)],
+                    label = "Validation")
+                Plots.plot!(fig,
+                    1:10:length(lhist_train),
+                    [mean(lhist_train[i:min(i + 9, length(lhist_train))]) for i in 1:10:length(lhist_train)],
+                    label = "Training")
+                Plots.plot!(fig, [0, length(lhist)], [no_model_loss, no_model_loss], label = "Val (no closure)")
+                display(fig)
+            end
+        end
+        return false
+    end
+end

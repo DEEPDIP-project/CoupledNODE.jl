@@ -31,9 +31,12 @@ params = (;
     savefreq = 1
 )
 
-data_train = [NC.create_les_data(; params...) for _ in 1:3];
-data_val = [NC.create_les_data(; params...) for _ in 1:1];
-data_test = NC.create_les_data(; params...);
+Ntrain = Ntest = 3
+Nval = 1
+
+data_train = [NC.create_les_data(; params...) for _ in 1:Ntrain];
+data_val = [NC.create_les_data(; params...) for _ in 1:Nval];
+data_test = [NC.create_les_data(; params...) for _ in 1:Ntest];
 
 # save data
 jldsave("simulations/NavierStokes_2D/data/data_train.jld2"; data_train)
