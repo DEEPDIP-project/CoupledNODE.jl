@@ -21,6 +21,7 @@
 # contains information for construction the network.
 
 using Lux: Lux, Dense, gelu
+using LuxCore: AbstractLuxLayer
 if CUDA.functional()
     using LuxCUDA
 end
@@ -29,7 +30,7 @@ using Random: AbstractRNG
 using Flux: unsqueeze
 using Tullio: @tullio
 
-struct FourierLayer{A, F} <: Lux.AbstractExplicitLayer
+struct FourierLayer{A, F} <: AbstractLuxLayer
     dim_to_fft::Tuple{Vararg{Int}}
     Nxyz::Tuple{Vararg{Int}}
     kmax::Int
