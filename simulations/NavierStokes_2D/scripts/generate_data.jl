@@ -14,6 +14,9 @@ rng = Random.Xoshiro(123)
 
 using NeuralClosure: NeuralClosure as NC
 
+# Number of simulations to generate
+Ndata = Ntrain = Ntest = 3 # TODO it is not nice how this is hadled
+
 # Parameters
 params = (;
     D = 2,
@@ -21,7 +24,7 @@ params = (;
     tburn = T(5e-2),
     tsim = T(0.5),
     Δt = T(5e-3),
-    nles = [(16, 16), (32, 32)],
+    nles = [(16, 16) for _ in 1:Ndata],
     ndns = (64, 64),
     filters = (NC.FaceAverage(),),
     create_psolver = INS.psolver_spectral,
@@ -31,15 +34,10 @@ params = (;
     savefreq = 1
 )
 
-Ntrain = Ntest = 3
-Nval = 1
-
 data_train = [NC.create_les_data(; params...) for _ in 1:Ntrain];
-data_val = [NC.create_les_data(; params...) for _ in 1:Nval];
 data_test = [NC.create_les_data(; params...) for _ in 1:Ntest];
 
 # save data
 jldsave("simulations/NavierStokes_2D/data/data_train.jld2"; data_train)
-jldsave("simulations/NavierStokes_2D/data/data_val.jld2"; data_val)
 jldsave("simulations/NavierStokes_2D/data/data_test.jld2"; data_test)
 jldsave("simulations/NavierStokes_2D/data/params_data.jld2"; params)
