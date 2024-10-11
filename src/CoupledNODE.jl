@@ -5,6 +5,7 @@ ArrayType = CUDA.functional() ? CUDA.CuArray : Array
 
 include("models/FNO.jl")
 include("models/cnn.jl")
+include("models/transformer.jl")
 
 include("loss/loss_priori.jl")
 include("loss/loss_posteriori.jl")
