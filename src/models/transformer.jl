@@ -1,6 +1,7 @@
 using Lux: Lux
+using LuxCore: AbstractLuxLayer
 
-struct AttentionLayer{F} <: Lux.AbstractExplicitLayer
+struct AttentionLayer{F} <: AbstractLuxLayer
     T::Type
     N::Int
     d::Int
