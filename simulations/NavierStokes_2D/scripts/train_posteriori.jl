@@ -19,15 +19,37 @@ using Lux: Lux
 u = io_post[ig].u[:, :, :, 1, 1:50]
 T = setups[1].T
 d = D = setups[1].grid.dimension()
-N = size(u, 1)
 emb_size = 8
 patch_size = 3
 n_heads = 2
+u0 = u
 
+using CoupledNODE: remove_BC
+u0 = zeros(T, 512, 512, D, 1)
+# load an image 
+using TestImages: testimage
+u0[:, :, 1, 1] .= testimage("cameraman")
+heatmap(u0[:, :, 1, 1], aspect_ratio = 1, title = "u0")
+u = remove_BC(u0)
+N = size(u, 1)
+cutoff = 0.1
 using CoupledNODE: create_CNOdownsampler
-nles = size(u)[1]
-ds = create_CNOdownsampler(D, nles, Int(nles/2)) 
+down_factor = 2
+ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
 ds(u)
+using CoupledNODE: create_CNOupsampler
+up_factor = 2
+us = create_CNOupsampler(T, D, N, up_factor, cutoff)
+us(u)
+ds2 = create_CNOdownsampler(T, D, size(us(u))[1], down_factor, cutoff)
+@assert size(ds2(us(u))) == size(u)
+# plot side by side u, ds(u), us(u), ds2(us(u))
+using Plots: heatmap, plot
+p1 = heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u")
+p2 = heatmap(ds(u)[:, :, 1, 1], aspect_ratio = 1, title = "ds(u)")
+p3 = heatmap(us(u)[:, :, 1, 1], aspect_ratio = 1, title = "us(u)")
+p4 = heatmap(ds2(us(u))[:, :, 1, 1], aspect_ratio = 1, title = "ds2(us(u))")
+plot(p1, p2, p3, p4, layout = (2, 2))
 
 # * Define the CNN layers
 # since I will use them after the attention (that gets concatenated with the input), I have to start from 2*D channels
