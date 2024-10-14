@@ -24,6 +24,11 @@ emb_size = 8
 patch_size = 3
 n_heads = 2
 
+using CoupledNODE: create_CNOdownsampler
+nles = size(u)[1]
+ds = create_CNOdownsampler(D, nles, Int(nles/2)) 
+ds(u)
+
 # * Define the CNN layers
 # since I will use them after the attention (that gets concatenated with the input), I have to start from 2*D channels
 CnnLayers, _, _ = cnn(;
