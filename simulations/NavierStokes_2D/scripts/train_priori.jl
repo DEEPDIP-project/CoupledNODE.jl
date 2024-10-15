@@ -1,5 +1,5 @@
 using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
-                   create_stateful_callback, train
+                   create_stateful_callback, create_callback, train
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: @save
 using Lux: Lux
@@ -39,11 +39,15 @@ loss_priori_lux(closure, θ, st, train_data_priori)
 
 # Define the callback
 callbackstate, callback = create_stateful_callback(θ)
+# alternative callback
+callback_validation = create_callback(
+    closure, test_io_post[ig], loss_priori, st, batch_size = 500,
+    rng = rng, do_plot = true, plot_train = false)
 
 # * Training (via Lux)
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback)
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_validation)
 # the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
 

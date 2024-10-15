@@ -102,26 +102,22 @@ A callback function that can be used during training to compute and log validati
 """
 
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
-function create_callback(model, test_io_data; lhist = [], lhist_train = [],
-        nunroll = 10, rng = rng, do_plot = true, plot_train = true)
-    # select a fixed sample for the validation
-    dataloader_posteriori = create_dataloader_posteriori(
-        test_io_data; nunroll = nunroll, rng)
-    u, t = dataloader_posteriori()
-
-    function get_loss(u, t, p)
-        griddims = axes(u)[1:(ndims(u) - 2)]
-        x = u[griddims..., :, 1]
-        y = u[griddims..., :, 2:end]
-        dt = t[2] - t[1]
-        tspan = [t[1], t[end]]
-        prob = ODEProblem(model, x, tspan, p)
-        pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
-        sum(
-            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
-        sum(abs2, y)
+function create_callback(
+        model, test_io_data, loss_function, st; lhist = [], lhist_train = [],
+        nunroll = nothing, batch_size = nothing, rng = rng, do_plot = true, plot_train = true)
+    if nunroll == nothing
+        if batch_size == nothing
+            error("Either nunroll or batch_size must be provided")
+        else
+            print("Creating a priori callback")
+            dataloader = create_dataloader_prior(test_io_data; batchsize = batch_size, rng)
+        end
+    else
+        print("Creating a posteriori callback")
+        dataloader = create_dataloader_posteriori(test_io_data; nunroll = nunroll, rng)
     end
-
+    # select a fixed sample for the validation
+    y1, y2 = dataloader()
     no_model_loss = nothing
 
     function (p, ltrain, pred = nothing; return_lhist = false)
@@ -131,10 +127,10 @@ function create_callback(model, test_io_data; lhist = [], lhist_train = [],
         l_l = length(lhist)
         if no_model_loss === nothing
             # reference loss without model
-            no_model_loss = get_loss(u, t, p .* 0)
+            no_model_loss = loss_function(model, p .* 0, st, (y1, y2))[1]
         end
         # to compute the validation loss, use the parameters p at this step
-        l = get_loss(u, t, p)
+        l = loss_function(model, p, st, (y1, y2))[1]
 
         @info "Training Loss[$(l_l)]: $(ltrain)"
         @info "Validation Loss[$(l_l)]: $(l)"
