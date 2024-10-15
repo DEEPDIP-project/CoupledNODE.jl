@@ -8,7 +8,9 @@ ig = 1 # index of the LES grid to use.
 # Create model
 using CoupledNODE: cnn
 closure, _, _ = cnn(;
-    setup = setups[ig],
+    T = T,
+    D = D,
+    data_ch = D,
     radii = [3, 3],
     channels = [2, 2],
     activations = [tanh, identity],

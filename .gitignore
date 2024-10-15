@@ -6,4 +6,4 @@ Manifest.toml
 /docs/build/
 
 # Ignore large data files
-simulations/*/data/*.jld2
+simulations/*/*/*.jld2

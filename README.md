@@ -67,6 +67,10 @@ However this DE depends on $u$, so the system is not closed and can not be effic
 
 One of the main goal of this repository will be to use CNODEs in order to correct the LES simulation and get a solution as good as the DNS.
 
+## Generative-AI Disclaimer
+
+Parts of the code have been generated and/or refined using GitHub Copilot. All AI-output has been verified for correctness, accuracy and completeness, revised where needed, and approved by the author(s).
+
 ## References
 
 * [SciML style guidelines](https://github.com/SciML/SciMLStyle)
