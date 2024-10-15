@@ -36,17 +36,15 @@ loss_priori(closure, θ, st, train_data_priori) # check that the loss is working
 # * loss in the Lux format
 loss_priori_lux(closure, θ, st, train_data_priori)
 
-# Define the callback
-callbackstate, callback = create_stateful_callback(θ)
-# alternative callback
-callback_validation = create_callback(
-    closure, test_io_post[ig], loss_priori, st, batch_size = 100,
+# * Define the callback
+callbackstate_val, callback_val = create_callback(
+    closure, θ, test_io_post[ig], loss_priori, st, batch_size = 100,
     rng = rng, do_plot = true, plot_train = false)
 
 # * Training (via Lux)
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_validation)
+    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_val)
 # the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
 

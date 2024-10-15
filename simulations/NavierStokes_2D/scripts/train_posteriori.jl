@@ -47,8 +47,8 @@ loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # * Callback function
-callback_validation = create_callback(
-    dudt_nn2, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
+callbackstate_val, callback_val = create_callback(
+    dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
     rng = rng, do_plot = true, plot_train = false)
 θ_posteriori = θ
 
@@ -56,7 +56,7 @@ callback_validation = create_callback(
 lux_result, lux_t, lux_mem, _ = @timed train(
     closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback_validation)
+    alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback_val)
 
 loss, tstate = lux_result
 # the trained params are:
