@@ -1,4 +1,5 @@
 using CairoMakie: CairoMakie
+using Random: Random
 using Statistics: mean
 using CoupledNODE.NavierStokes: create_dataloader_posteriori, create_dataloader_prior
 
@@ -10,16 +11,16 @@ Create a callback function for training and validation of a model.
 # Arguments
 - `model`: The model for the rhs.
 - `θ`: parameters of the model (trainable).
-- `val_io_data`: The validation input-output data for validation.
+- `val_io_data`: The validation io_array.
 - `loss_function`: The loss function to be used.
 - `st`: The state of the model.
 - `callbackstate`: a `NamedTuple` that is updated durign the trainign and contains:
     - `θmin`: The parameters at the minimum validation loss.
     - `loss_min`: The minimum validation loss.
-    - `lhist`: A list to store the history of validation losses. Defaults to a new empty list.
+    - `lhist_val`: A list to store the history of validation losses. Defaults to a new empty list.
     - `lhist_train`: A list to store the history of training losses. Defaults to a new empty list.
-- `nunroll`: The number of unroll steps for the validation loss. It does not have to be the same as the loss function!
-- `rng`: The random number generator to be used. Defaults to `rng`.
+- `nunroll`: The number of unroll steps for the validation loss. It does not have to be the same as the loss function! Pertinent for a-posteriori training.
+- `rng`: The random number generator to be used.
 - `plot_train`: A boolean flag to indicate whether to plot the training loss.
 - `do_plot`: A boolean flag to indicate whether to generate the plots. In HPC systems we may want to deactivate it.
 - `plot_every`: The frequency of plotting the loss history. Defaults to 10. The loss is also averaged in this window.
@@ -39,7 +40,7 @@ function create_callback(
         model, θ, val_io_data, loss_function, st;
         callbackstate = (;
             θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [], lhist_train = []),
-        nunroll = nothing, batch_size = nothing, rng = rng, do_plot = true,
+        nunroll = nothing, batch_size = nothing, rng = Random.Xoshiro(123), do_plot = true,
         plot_train = true, plot_every = 10)
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")

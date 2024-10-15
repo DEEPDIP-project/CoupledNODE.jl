@@ -1,5 +1,5 @@
 using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
-                   create_stateful_callback, create_callback, train
+                   create_callback, train
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: @save
 using Lux: Lux
