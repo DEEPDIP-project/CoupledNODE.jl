@@ -41,16 +41,14 @@ function create_callback(
             θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [], lhist_train = []),
         nunroll = nothing, batch_size = nothing, rng = rng, do_plot = true,
         plot_train = true, plot_every = 10)
-    if nunroll === nothing
-        if batch_size === nothing
-            error("Either nunroll or batch_size must be provided")
-        else
-            @info "Creating a priori callback"
-            dataloader = create_dataloader_prior(val_io_data; batchsize = batch_size, rng)
-        end
-    else
+    if nunroll === nothing && batch_size === nothing
+        error("Either nunroll or batch_size must be provided")
+    elseif nunroll !== nothing
         @info "Creating a posteriori callback"
         dataloader = create_dataloader_posteriori(val_io_data; nunroll = nunroll, rng)
+    else
+        @info "Creating a priori callback"
+        dataloader = create_dataloader_prior(val_io_data; batchsize = batch_size, rng)
     end
     # select a fixed sample for the validation
     y1, y2 = dataloader()
