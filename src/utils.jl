@@ -103,7 +103,7 @@ A callback function that can be used during training to compute and log validati
 
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
 function create_callback(model, test_io_data; lhist = [], lhist_train = [],
-        nunroll = 10, rng = rng, plot_train = true)
+        nunroll = 10, rng = rng, do_plot = true, plot_train = true)
     # select a fixed sample for the validation
     dataloader_posteriori = create_dataloader_posteriori(
         test_io_data; nunroll = nunroll, rng)
@@ -124,7 +124,7 @@ function create_callback(model, test_io_data; lhist = [], lhist_train = [],
 
     no_model_loss = nothing
 
-    function (p, ltrain, pred = nothing; do_plot = true, return_lhist = false)
+    function (p, ltrain, pred = nothing; return_lhist = false)
         if return_lhist
             return lhist, lhist_train
         end

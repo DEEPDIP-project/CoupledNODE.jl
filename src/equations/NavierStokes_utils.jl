@@ -365,15 +365,14 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 """
 function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
     function dataloader()
-        nsim = size(io_array, 1)
-        isimulation = rand(rng, 1:nsim)
-        rand_io = io_array[isimulation]
-        (n, _, dim, samples, nt) = size(rand_io.u) # expects that the io_array will be for a i_grid
+        (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
         @assert nt ≥ nunroll
+        # select starting point for unrolling
         istart = rand(rng, 1:(nt - nunroll))
         it = istart:(istart + nunroll)
+        # select the sample
         isample = rand(rng, 1:samples)
-        (; u = view(rand_io.u, :, :, :, isample, it), t = rand_io.t[isample, it])
+        (; u = view(io_array.u, :, :, :, isample, it), t = io_array.t[isample, it])
     end
 end
 

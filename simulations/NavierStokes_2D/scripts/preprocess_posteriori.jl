@@ -21,7 +21,6 @@ using CoupledNODE.NavierStokes: create_io_arrays_posteriori
 io_post = create_io_arrays_posteriori(data, setups)
 
 # Example of dimensions and how to operate with io_arrays_posteriori
-ig = 1
 (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
 (samples, nsteps) = size(io_post[ig].t)
 # Example: how to select a random sample
@@ -31,7 +30,7 @@ io_post[ig].t[2, :]
 # * Create dataloader containing trajectories with the specified nunroll
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
 nunroll = 5
-dataloader_posteriori = create_dataloader_posteriori(io_post; nunroll = nunroll, rng)
+dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
 
 # Load the test data
 test_data = load("simulations/NavierStokes_2D/data/data_test.jld2", "data_test")

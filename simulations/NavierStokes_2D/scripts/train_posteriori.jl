@@ -61,13 +61,14 @@ loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 # * Callback function
 using CoupledNODE: create_callback
 callback_validation = create_callback(
-    dudt_nn2, test_io_post, nunroll = 3 * nunroll, rng = rng, plot_train = false)
+    dudt_nn2, test_io_post[ig], nunroll = 3 * nunroll,
+    rng = rng, do_plot = false, plot_train = false)
 θ_posteriori = θ
 
 # * training via Lux
 lux_result, lux_t, lux_mem, _ = @timed train(
     closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = 1000, ad_type = Optimization.AutoZygote(),
+    nepochs = 10, ad_type = Optimization.AutoZygote(),
     alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback_validation)
 
 loss, tstate = lux_result
