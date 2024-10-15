@@ -29,20 +29,38 @@ u0 = zeros(T, 512, 512, D, 1)
 # load an image 
 using TestImages: testimage
 u0[:, :, 1, 1] .= testimage("cameraman")
-heatmap(u0[:, :, 1, 1], aspect_ratio = 1, title = "u0")
 u = remove_BC(u0)
-N = size(u, 1)
-cutoff = 0.1
+grid = collect(0.0:1.0/509:1.0)
+cutoff = 100
+
 using CoupledNODE: create_CNOdownsampler
 down_factor = 2
-ds = create_CNOdownsampler(T, D, N, down_factor, cutoff)
-ds(u)
+ds = create_CNOdownsampler(T, D, down_factor, cutoff, grid)
+size(u)
+size(ds(u))
+heatmap(ds(u)[:, :, 1, 1], aspect_ratio = 1, title = "ds(u)")
+
 using CoupledNODE: create_CNOupsampler
 up_factor = 2
-us = create_CNOupsampler(T, D, N, up_factor, cutoff)
-us(u)
-ds2 = create_CNOdownsampler(T, D, size(us(u))[1], down_factor, cutoff)
+us = create_CNOupsampler(T, D, up_factor, cutoff, grid)
+size(u)
+size(us(u))
+heatmap(us(u)[:, :, 1, 1], aspect_ratio = 1, title = "u")
+
+N = length(grid)
+D_up = up_factor * (N - 1) + 1
+grid_up = collect(0.0:1.0/(D_up - 1):1.0)
+ds2 = create_CNOdownsampler(T, D, down_factor, cutoff, grid_up)
 @assert size(ds2(us(u))) == size(u)
+
+D_down = Int(N/down_factor) 
+grid_down = collect(0.0:1.0/(D_down - 1):1.0)
+us2 = create_CNOupsampler(T, D, up_factor, cutoff, grid_down)
+size(us2(ds(u)))
+size(u)
+fix this one above and add this to the plot
+@assert size(us2(ds(u))) == size(u)
+
 # plot side by side u, ds(u), us(u), ds2(us(u))
 using Plots: heatmap, plot
 p1 = heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u")
