@@ -31,3 +31,7 @@ io_post[ig].t[2, :]
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
 nunroll = 5
 dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
+
+# Load the test data
+test_data = load("simulations/NavierStokes_2D/data/data_test.jld2", "data_test")
+test_io_post = create_io_arrays_posteriori(test_data, setups)

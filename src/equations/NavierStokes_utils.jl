@@ -367,8 +367,10 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
     function dataloader()
         (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
         @assert nt ≥ nunroll
+        # select starting point for unrolling
         istart = rand(rng, 1:(nt - nunroll))
         it = istart:(istart + nunroll)
+        # select the sample
         isample = rand(rng, 1:samples)
         (; u = view(io_array.u, :, :, :, isample, it), t = io_array.t[isample, it])
     end
