@@ -8,7 +8,6 @@ using OptimizationOptimisers: OptimizationOptimisers
 using Random: Random
 
 T = Float32
-ArrayType = Array
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 include("preprocess_posteriori.jl")
