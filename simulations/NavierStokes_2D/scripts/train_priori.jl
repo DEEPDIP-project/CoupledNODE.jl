@@ -40,7 +40,7 @@ loss_priori_lux(closure, θ, st, train_data_priori)
 callbackstate, callback = create_stateful_callback(θ)
 # alternative callback
 callback_validation = create_callback(
-    closure, test_io_post[ig], loss_priori, st, batch_size = 500,
+    closure, test_io_post[ig], loss_priori, st, batch_size = 100,
     rng = rng, do_plot = true, plot_train = false)
 
 # * Training (via Lux)

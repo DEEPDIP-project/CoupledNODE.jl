@@ -1,41 +1,6 @@
 using CairoMakie: CairoMakie
-using Plots: Plots
 using Statistics: mean
-
-"""
-    basic_callback(p, l, pred; doplot=true)
-
-The callback function is used to observe training progress. It prints the current loss value and updates the rolling average of the loss. If `do_plot` is `true`, it also plots the rolling average of the loss every 10 steps.
-
-# Arguments
-- `p`: the current parameters
-- `l`: the current loss value
-- `pred`: the current prediction
-- `do_plot`: a boolean indicating whether to plot the rolling average of the loss every 10 steps (default is `true`)
-
-# Returns
-- `false` if nothing unexpected happened.
-"""
-lhist = [] # do not know if defining this outside is correct julia
-basic_callback = function (p, l, pred = nothing; do_plot = true)
-    global lhist
-    l_l = length(lhist)
-    @info "Loss[$(l_l)]: $(l)"
-    push!(lhist, l)
-    if do_plot
-        # plot rolling average of loss, every 10 steps
-        if l_l % 10 == 0
-            Plots.plot()
-            fig = Plots.plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
-            Plots.plot!(fig,
-                1:10:length(lhist),
-                [mean(lhist[i:min(i + 9, length(lhist))]) for i in 1:10:length(lhist)],
-                label = "")
-            display(fig)
-        end
-    end
-    return false
-end
+using CoupledNODE.NavierStokes: create_dataloader_posteriori, create_dataloader_prior
 
 function create_stateful_callback(
         θ,
@@ -100,13 +65,11 @@ A callback function that can be used during training to compute and log validati
 - If `return_lhist` is `true`, returns the validation and training loss histories (`lhist` and `lhist_train`), without computing anything else.
 - Otherwise, returns `false` to operate as expected from a callback function.
 """
-
-using CoupledNODE.NavierStokes: create_dataloader_posteriori
 function create_callback(
         model, test_io_data, loss_function, st; lhist = [], lhist_train = [],
         nunroll = nothing, batch_size = nothing, rng = rng, do_plot = true, plot_train = true)
-    if nunroll == nothing
-        if batch_size == nothing
+    if nunroll === nothing
+        if batch_size === nothing
             error("Either nunroll or batch_size must be provided")
         else
             print("Creating a priori callback")
@@ -137,23 +100,23 @@ function create_callback(
         push!(lhist, l)
         push!(lhist_train, ltrain)
         if do_plot
+            fig = CairoMakie.Figure()
+            ax = CairoMakie.Axis(fig[1, 1], title = "Loss", xlabel = "Iterations",
+                ylabel = "Loss", yscale = CairoMakie.log10)
             # plot rolling average of loss, every 10 steps
             if l_l % 10 == 0
-                Plots.plot()
-                fig = Plots.plot(; xlabel = "Iterations", title = "Loss", yscale = :log10)
-                Plots.plot!(fig,
-                    1:10:length(lhist),
-                    [mean(lhist[i:min(i + 9, length(lhist))]) for i in 1:10:length(lhist)],
-                    label = "Validation")
+                x = 1:10:length(lhist)
+                y = [mean(lhist[i:min(i + 9, length(lhist))]) for i in 1:10:length(lhist)]
+                CairoMakie.lines!(ax, x, y, label = "Validation")
                 if plot_train
-                    Plots.plot!(fig,
-                        1:10:length(lhist_train),
-                        [mean(lhist_train[i:min(i + 9, length(lhist_train))])
-                         for i in 1:10:length(lhist_train)],
-                        label = "Training")
+                    x = 1:10:length(lhist_train)
+                    y = [mean(lhist[i:min(i + 9, length(lhist_train))])
+                         for i in 1:10:length(lhist_train)]
+                    CairoMakie.lines!(ax, x, y, label = "Training")
                 end
-                Plots.plot!(fig, [0, length(lhist)], [no_model_loss, no_model_loss],
+                CairoMakie.lines!(ax, [0, length(lhist)], [no_model_loss, no_model_loss],
                     label = "Val (no closure)")
+                CairoMakie.axislegend(ax)
                 display(fig)
             end
         end

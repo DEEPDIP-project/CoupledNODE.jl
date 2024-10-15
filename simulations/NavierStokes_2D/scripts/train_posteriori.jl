@@ -1,4 +1,4 @@
-using CoupledNODE: cnn, train, create_loss_post_lux
+using CoupledNODE: cnn, train, create_loss_post_lux, create_callback
 using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
@@ -12,7 +12,6 @@ rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 include("preprocess_posteriori.jl")
 
-using CoupledNODE: AttentionLayer
 using ComponentArrays: ComponentArray
 using Lux: Lux
 u = io_post[ig].u[:, :, :, 1, 1:50]
@@ -24,7 +23,7 @@ patch_size = 3
 n_heads = 2
 
 # * Define the CNN layers
-closure, _, _ = cnn(;
+closure, θ, st = cnn(;
     T = T,
     D = D,
     data_ch = D,
@@ -34,9 +33,6 @@ closure, _, _ = cnn(;
     use_bias = [false, false],
     rng
 )
-θ, st = Lux.setup(rng, closure)
-using ComponentArrays: ComponentArray
-θ = ComponentArray(θ)
 
 # test and trigger the model
 closure(u, θ, st)
@@ -51,7 +47,6 @@ loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
 loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 
 # * Callback function
-using CoupledNODE: create_callback
 callback_validation = create_callback(
     dudt_nn2, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
     rng = rng, do_plot = true, plot_train = false)
