@@ -9,26 +9,31 @@ Create a callback function for training and validation of a model.
 
 # Arguments
 - `model`: The model for the rhs.
+- `θ`: parameters of the model (trainable).
 - `val_io_data`: The validation input-output data for validation.
-- `lhist`: A list to store the history of validation losses. Defaults to a new empty list.
-- `lhist_train`: A list to store the history of training losses. Defaults to a new empty list.
+- `loss_function`: The loss function to be used.
+- `st`: The state of the model.
+- `callbackstate`: a `NamedTuple` that is updated durign the trainign and contains:
+    - `θmin`: The parameters at the minimum validation loss.
+    - `loss_min`: The minimum validation loss.
+    - `lhist`: A list to store the history of validation losses. Defaults to a new empty list.
+    - `lhist_train`: A list to store the history of training losses. Defaults to a new empty list.
 - `nunroll`: The number of unroll steps for the validation loss. It does not have to be the same as the loss function!
 - `rng`: The random number generator to be used. Defaults to `rng`.
 - `plot_train`: A boolean flag to indicate whether to plot the training loss.
+- `do_plot`: A boolean flag to indicate whether to generate the plots. In HPC systems we may want to deactivate it.
+- `plot_every`: The frequency of plotting the loss history. Defaults to 10. The loss is also averaged in this window.
 
 # Returns
-A callback function that can be used during training to compute and log validation and training losses, and optionally plot the loss history.
+A `NamedTuple` with the `callbackstate`` and the callback function.
+The callback function is used during training to compute and log validation and training losses, and optionally plot the loss history.
 
-# Callback Function Arguments
+# Callback function arguments
 - `p`: The parameters of the model at the current training step.
-- `ltrain`: The training loss at the current training step.
-- `pred`: Optional. The predictions of the model at the current training step. Defaults to `nothing`.
-- `do_plot`: Optional. A boolean flag to indicate whether to plot the loss history. Defaults to `true`.
-- `return_lhist`: Optional. A boolean flag to indicate whether to return the loss history. Defaults to `false`.
+- `l_train`: The training loss at the current training step.
 
-# Callback Function Returns
-- If `return_lhist` is `true`, returns the validation and training loss histories (`lhist` and `lhist_train`), without computing anything else.
-- Otherwise, returns `false` to operate as expected from a callback function.
+# Callback function returns
+- `callbackstate`: the updated instance of the callback state.
 """
 function create_callback(
         model, θ, val_io_data, loss_function, st;
