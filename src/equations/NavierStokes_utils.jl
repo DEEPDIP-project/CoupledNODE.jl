@@ -365,7 +365,7 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 """
 function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
     function dataloader()
-        nsim = size(io_array,1)
+        nsim = size(io_array, 1)
         isimulation = rand(rng, 1:nsim)
         rand_io = io_array[isimulation]
         (n, _, dim, samples, nt) = size(rand_io.u) # expects that the io_array will be for a i_grid
