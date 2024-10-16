@@ -1,6 +1,7 @@
 using Lux: Lux
 using LuxCore: AbstractLuxLayer
 using FFTW: fft, ifft, fftshift, ifftshift
+using ImageFiltering: imfilter, Kernel
 
 # required pieces:
 # - downsampler
@@ -12,7 +13,38 @@ using FFTW: fft, ifft, fftshift, ifftshift
 # expected input shape: [N, N, d, batch]
 # expected output shape: [N, N, d, batch]
 
-function create_lowpass_filter(T, cutoff, grid)
+function create_lowpass_filter(T, k, grid, sigma=1)
+    # TODO there is something wrong in the sinc filter. I replace it with a gaussian for now
+
+    # TODO extend to multiple dimensions
+    N = length(grid)
+    _kernel = zeros(T, N, N)
+
+    center = k/2
+    for i in 1:k
+        for j in 1:k
+            x = center - i
+            y = center - j
+            _kernel[i, j] = exp(-(x^2 + y^2) / (2 * sigma^2))
+        end
+    end
+    # normalize the kernel
+    _kernel = _kernel / sum(_kernel)
+
+    # Do the fft of the kernel once
+    K_f = fft(_kernel)
+
+    function sinc_interpolation(x)
+        # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
+        X_f = fft(x)
+        filtered_f = X_f .* K_f       
+        real(ifft(filtered_f))
+        x
+    end
+    
+end
+
+function create_sinc_filter(T, cutoff, grid)
     # TODO extend to multiple dimensions
     N = length(grid)
     sinc_kernel = zeros(T, N, N)
@@ -23,18 +55,21 @@ function create_lowpass_filter(T, cutoff, grid)
             sinc_kernel[i, j] = sinc(2 * cutoff* grid[i]) * sinc(2 * cutoff* grid[j])
         end
     end
+    # normalize the kernel
+    sinc_kernel = sinc_kernel / sum(sinc_kernel)
 
     # Do the fft of the kernel once
     K_f = fft(sinc_kernel)
 
     function sinc_interpolation(x)
         # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
-        X_f = fftshift(fft(x))
         X_f = fft(x)
         filtered_f = X_f .* K_f       
         real(ifft(filtered_f))
     end
 end
+
+
 
 function create_CNOdownsampler(T::Type, D::Int, down_factor::Int, cutoff, grid)
     N = length(grid)
@@ -53,7 +88,7 @@ end
 
 function create_CNOupsampler(T::Type, D::Int, up_factor::Int, cutoff, grid)
     N = length(grid)
-    D_up = up_factor * (N - 1) + 1
+    D_up = up_factor * N
     up_size = (D_up for _ in 1:D)
     grid_up = collect(0.0:1.0/(D_up - 1):1.0)
     filter = create_lowpass_filter(T, cutoff, grid_up)
@@ -61,7 +96,7 @@ function create_CNOupsampler(T::Type, D::Int, up_factor::Int, cutoff, grid)
     function CNOupsampler(x)
         # Enhance to the upsampled size
         x_up = zeros(T, up_size..., size(x)[end - 1], size(x)[end])
-        x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x
+        x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x #TODO do this without mutations
         # then apply the lowpass filter
         filter(x_up)
         #x_up.-filter(x_up)

@@ -13,64 +13,65 @@ rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 include("preprocess_posteriori.jl")
 
-using CoupledNODE: AttentionLayer
 using ComponentArrays: ComponentArray
 using Lux: Lux
 u = io_post[ig].u[:, :, :, 1, 1:50]
 T = setups[1].T
 d = D = setups[1].grid.dimension()
-emb_size = 8
-patch_size = 3
-n_heads = 2
 u0 = u
 
-using CoupledNODE: remove_BC
-u0 = zeros(T, 512, 512, D, 1)
-# load an image 
+#************88
+# Test that the downsampler and upsampler work
 using TestImages: testimage
-u0[:, :, 1, 1] .= testimage("cameraman")
-u = remove_BC(u0)
-grid = collect(0.0:1.0/509:1.0)
-cutoff = 100
+using Plots: heatmap, plot, plot!
 
+N0 = 512
+u0 = zeros(T, N0, N0, D, 1)
+u0[:, :, 1, 1] = testimage("cameraman")
+grid = collect(0.0:1.0/(N0-1):1.0)
+cutoff = 5
+
+# downsize the input which would be too large to autodiff
 using CoupledNODE: create_CNOdownsampler
+down_factor = 6
+ds = create_CNOdownsampler(T, D, down_factor, cutoff, grid)
+u = ds(u0)
+N = size(u, 1)
+grid = collect(0.0:1.0/(N-1):1.0)
+heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u")
+
+# define a downsampling op
 down_factor = 2
 ds = create_CNOdownsampler(T, D, down_factor, cutoff, grid)
-size(u)
-size(ds(u))
-heatmap(ds(u)[:, :, 1, 1], aspect_ratio = 1, title = "ds(u)")
 
+# define an upsampling op
 using CoupledNODE: create_CNOupsampler
 up_factor = 2
 us = create_CNOupsampler(T, D, up_factor, cutoff, grid)
-size(u)
-size(us(u))
-heatmap(us(u)[:, :, 1, 1], aspect_ratio = 1, title = "u")
 
-N = length(grid)
-D_up = up_factor * (N - 1) + 1
+# test upsampling->downsampling
+D_up = up_factor * N
 grid_up = collect(0.0:1.0/(D_up - 1):1.0)
 ds2 = create_CNOdownsampler(T, D, down_factor, cutoff, grid_up)
 @assert size(ds2(us(u))) == size(u)
 
+# test downsampling->upsampling
 D_down = Int(N/down_factor) 
 grid_down = collect(0.0:1.0/(D_down - 1):1.0)
 us2 = create_CNOupsampler(T, D, up_factor, cutoff, grid_down)
-size(us2(ds(u)))
-size(u)
-fix this one above and add this to the plot
 @assert size(us2(ds(u))) == size(u)
 
-# plot side by side u, ds(u), us(u), ds2(us(u))
-using Plots: heatmap, plot
-p1 = heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u")
-p2 = heatmap(ds(u)[:, :, 1, 1], aspect_ratio = 1, title = "ds(u)")
-p3 = heatmap(us(u)[:, :, 1, 1], aspect_ratio = 1, title = "us(u)")
-p4 = heatmap(ds2(us(u))[:, :, 1, 1], aspect_ratio = 1, title = "ds2(us(u))")
-plot(p1, p2, p3, p4, layout = (2, 2))
+# summary plot
+p1 = heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u", colorbar=false)
+p2 = heatmap(ds(u)[:, :, 1, 1], aspect_ratio = 1, title = "ds(u)", colorbar=false)
+p3 = heatmap(us(u)[:, :, 1, 1], aspect_ratio = 1, title = "us(u)", colorbar=false)
+p4 = heatmap(ds2(us(u))[:, :, 1, 1], aspect_ratio = 1, title = "ds2(us(u))", colorbar=false)
+p5 = heatmap(us2(ds(u))[:, :, 1, 1], aspect_ratio = 1, title = "us2(ds(u))", colorbar=false)
+plot(p1, p2, p3, p4, p5, layout = (2, 3))
 
-# * Define the CNN layers
-# since I will use them after the attention (that gets concatenated with the input), I have to start from 2*D channels
+
+# ***** Test if you can differentiate upsample and downsample
+
 CnnLayers, _, _ = cnn(;
     T = T,
     D = D,
@@ -81,10 +82,12 @@ CnnLayers, _, _ = cnn(;
     use_bias = [false, false],
     rng
 )
+ds = create_CNOdownsampler(T, D, down_factor, cutoff, grid)
+us = create_CNOupsampler(T, D, up_factor, cutoff, grid_down)
 layers = (
-    Lux.SkipConnection(AttentionLayer(N, d, emb_size, patch_size, n_heads; T = T),
-        (x, y) -> cat(x, y; dims = 3); name = "Attention"),
-    CnnLayers
+    x -> ds(x),
+    x -> us(x),
+    #CnnLayers
 )
 closure = Lux.Chain(layers...)
 θ, st = Lux.setup(rng, closure)
@@ -92,7 +95,17 @@ using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
 
 # test and trigger the model
+using FFTW: FFTW
+Zygote.@adjoint FFTW.fft(xs) = (FFTW.fft(xs), (Δ)-> (FFTW.ifft(Δ),))
+Zygote.@adjoint FFTW.ifft(xs) = (FFTW.ifft(xs), (Δ)-> (FFTW.fft(Δ),))
 closure(u, θ, st)
+heatmap(closure(u, θ, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "closure(u)")
+using Zygote: Zygote
+Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
+
+
+#############
+
 
 # * Define the right hand side of the ODE
 dudt_nn2 = create_right_hand_side_with_closure(
