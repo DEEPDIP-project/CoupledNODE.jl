@@ -3,7 +3,6 @@ using JLD2: jldsave
 using Random: Random
 
 T = Float32
-ArrayType = Array
 rng = Random.Xoshiro(123)
 
 # Generate the data using NeuralClosure

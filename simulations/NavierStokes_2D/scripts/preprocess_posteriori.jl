@@ -2,7 +2,6 @@ using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 
 T = Float32
-ArrayType = Array
 rng = Random.Xoshiro(123)
 
 # Load the data
