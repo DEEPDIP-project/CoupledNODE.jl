@@ -6,6 +6,7 @@ version = "0.0.2"
 [deps]
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DiffEqFlux = "aae7a2af-3d4f-5e19-a356-7da93b79d9d0"
 DiffEqGPU = "071ae1c0-96b5-11e9-1965-c90190d839ea"

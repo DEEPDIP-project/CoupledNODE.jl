@@ -39,7 +39,6 @@ function create_lowpass_filter(T, k, grid, sigma=1)
         X_f = fft(x)
         filtered_f = X_f .* K_f       
         real(ifft(filtered_f))
-        x
     end
     
 end
@@ -86,6 +85,23 @@ function create_CNOdownsampler(T::Type, D::Int, down_factor::Int, cutoff, grid)
     end
 end
 
+function expand_with_zeros(x, T, up_size, up_factor)
+    x_up = zeros(T, up_size..., size(x)[end - 1], size(x)[end])
+    x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x 
+    return x_up
+end
+
+using ChainRules: ChainRulesCore, NoTangent
+function ChainRulesCore.rrule(::typeof(expand_with_zeros), x, T, up_size, up_factor)
+    y = expand_with_zeros(x, T, up_size, up_factor)
+    function expand_with_zeros_pb(ȳ)
+        x̄ = zeros(size(x))
+        x̄ .= ȳ[1:up_factor:end, 1:up_factor:end, :, :]
+        return NoTangent(), x̄, NoTangent(), NoTangent(), NoTangent()
+    end
+    return y, expand_with_zeros_pb  
+end
+
 function create_CNOupsampler(T::Type, D::Int, up_factor::Int, cutoff, grid)
     N = length(grid)
     D_up = up_factor * N
@@ -95,13 +111,12 @@ function create_CNOupsampler(T::Type, D::Int, up_factor::Int, cutoff, grid)
 
     function CNOupsampler(x)
         # Enhance to the upsampled size
-        x_up = zeros(T, up_size..., size(x)[end - 1], size(x)[end])
-        x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x #TODO do this without mutations
+        x_up = expand_with_zeros(x, T, up_size, up_factor)
         # then apply the lowpass filter
         filter(x_up)
-        #x_up.-filter(x_up)
     end
 end
+
 
 function remove_BC(x)
     # TODO this is redundant with NN_padded_to_NN_nopad, but I want to use it like this
