@@ -24,7 +24,6 @@ function AttentionLayer(
     @assert N % patch_size==0 "N must be divisible by patch_size"
     n_patches = (div(N, patch_size))^d
     dh = div(emb_size, n_heads)
-    println("In the constructor")
     AttentionLayer(T, N, d, emb_size, patch_size, n_patches, n_heads, dh, init_weight)
 end
 
@@ -78,7 +77,6 @@ function ((;)::AttentionLayer)(x, params, state)
     dh = state.dh
     sqrtDh = state.sqrtDh
     n_heads = state.n_heads
-    emb_size = state.emb_size
 
     Ew = params.Ew
     Eb = params.Eb
@@ -89,8 +87,6 @@ function ((;)::AttentionLayer)(x, params, state)
 
     # (1) Split the image into patches 
     num_patches = div(N, ps)
-    #num_patches_h = div(N, ps)
-    #num_patches_w = div(N, ps) # its the same as num_patches
     #The subarray of x here is by default a copy, but it can be a view (its not edited)
     x_patches = [@view(x[(i * ps + 1):(i * ps + ps), (j * ps + 1):(j * ps + ps), :, :])
                  for i in 0:(num_patches - 1), j in 0:(num_patches - 1)]

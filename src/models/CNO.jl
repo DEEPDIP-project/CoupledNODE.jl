@@ -1,124 +1,126 @@
-using Lux: Lux
+using Lux: Lux, relu
 using LuxCore: AbstractLuxLayer
-using FFTW: fft, ifft, fftshift, ifftshift
-using ImageFiltering: imfilter, Kernel
 
-# required pieces:
-# - downsampler
-# - upsampler
-# - activation
-# - CCN (standard layer)
-# notice that downsampler and upsampler have NO weights, so I can just code them as functions!
+# Observation: the original CNO paper basically assumes PBC everywhere.
+# In the current implementation, we assume PBC in the upsample and downsample layers, but for the convolution kernels we use Lux which does NOT assume PBC. Think about this and decide if you want to change it.
 
 # expected input shape: [N, N, d, batch]
 # expected output shape: [N, N, d, batch]
 
-function create_lowpass_filter(T, k, grid, sigma=1)
-    # TODO there is something wrong in the sinc filter. I replace it with a gaussian for now
+struct CNODownsampleBlock
+    T::Type
+    N::Int
+    D::Int
+    ch_in::Int
+    ch_out::Int
+    k_radius::Int
+    use_bias::Bool
+    use_batchnorm::Bool
+    layers::Tuple
+end
 
-    # TODO extend to multiple dimensions
-    N = length(grid)
-    _kernel = zeros(T, N, N)
+function CNODownsampleBlock(
+        N::Int,
+        D::Int,
+        down_factor::Int,
+        ch_in::Int,
+        ch_out::Int
+        ;
+        k_radius = 3,
+        use_bias = false,
+        use_batchnorm = true,
+        cutoff = 0.1,        
+        T = Float32,
+        activation_function = relu,
+        init_weight = Lux.glorot_uniform,
+        )
+    downsampler = create_CNOdownsampler(T, D, N, down_factor, cutoff)
+    activation = create_CNOactivation(T, D, N, cutoff, activation_function = activation_function)
 
-    center = k/2
-    for i in 1:k
-        for j in 1:k
-            x = center - i
-            y = center - j
-            _kernel[i, j] = exp(-(x^2 + y^2) / (2 * sigma^2))
+    layers = (
+        Lux.Conv(
+             ntuple(α -> 2*k_radius + 1, D),
+             ch_in => ch_out,
+             identity;
+             use_bias = use_bias,
+             init_weight = init_weight,
+             pad = (ntuple(α -> 2*k_radius + 1, D) .- 1) .÷ 2
+        ),
+        Lux.WrappedFunction(activation),
+        if use_batchnorm
+            Lux.WrappedFunction(downsampler),
+            Lux.BatchNorm(ch_out)
+        else
+            Lux.WrappedFunction(downsampler)
         end
-    end
-    # normalize the kernel
-    _kernel = _kernel / sum(_kernel)
+    )
 
-    # Do the fft of the kernel once
-    K_f = fft(_kernel)
-
-    function sinc_interpolation(x)
-        # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
-        X_f = fft(x)
-        filtered_f = X_f .* K_f       
-        real(ifft(filtered_f))
-    end
-    
+    CNODownsampleBlock(T, N, D, ch_in, ch_out, k_radius, use_bias, use_batchnorm, layers)
 end
 
-function create_sinc_filter(T, cutoff, grid)
-    # TODO extend to multiple dimensions
-    N = length(grid)
-    sinc_kernel = zeros(T, N, N)
 
-    # Create the sinc kernel
-    for i in 1:N
-        for j in 1:N
-            sinc_kernel[i, j] = sinc(2 * cutoff* grid[i]) * sinc(2 * cutoff* grid[j])
+struct CNOUpsampleBlock
+    T::Type
+    N::Int
+    D::Int
+    ch_in::Int
+    ch_out::Int
+    k_radius::Int
+    use_bias::Bool
+    use_batchnorm::Bool
+    layers::Tuple
+end
+
+function CNOUpsampleBlock(
+        N::Int,
+        D::Int,
+        up_factor::Int,
+        ch_in::Int,
+        ch_out::Int
+        ;
+        k_radius = 3,
+        use_bias = false,
+        use_batchnorm = true,
+        cutoff = 0.1,        
+        T = Float32,
+        activation_function = relu,
+        init_weight = Lux.glorot_uniform,
+        )
+    upsampler = create_CNOupsampler(T, D, N, up_factor, cutoff)
+    activation = create_CNOactivation(T, D, N, cutoff, activation_function = activation_function)
+
+    layers = (
+        Lux.Conv(
+             ntuple(α -> 2*k_radius + 1, D),
+             ch_in => ch_out,
+             identity;
+             use_bias = use_bias,
+             init_weight = init_weight,
+             pad = (ntuple(α -> 2*k_radius + 1, D) .- 1) .÷ 2
+        ),
+        Lux.WrappedFunction(activation),
+        if use_batchnorm
+            Lux.WrappedFunction(upsampler),
+            Lux.BatchNorm(ch_out)
+        else
+            Lux.WrappedFunction(upsampler)
         end
+    )
+
+    CNOUpsampleBlock(T, N, D, ch_in, ch_out, k_radius, use_bias, use_batchnorm, layers)
+end
+
+
+function create_CNO(T, N, D; channels, down_factors, up_factors, cutoffs, use_batchnorms, use_biases, conv_per_block)
+    layers = ()
+    for i in 1:length(channels)-1 
+        layers = (layers..., CNODownsampleBlock(N, D, down_factors[i], channels[i], channels[i+1], use_batchnorm = use_batchnorms[i], use_bias = use_biases[i]).layers)
     end
-    # normalize the kernel
-    sinc_kernel = sinc_kernel / sum(sinc_kernel)
+    return layers
 
-    # Do the fft of the kernel once
-    K_f = fft(sinc_kernel)
-
-    function sinc_interpolation(x)
-        # Perform circular convolution using FFT (notice I am assuming PBC in both directions)
-        X_f = fft(x)
-        filtered_f = X_f .* K_f       
-        real(ifft(filtered_f))
-    end
-end
-
-
-
-function create_CNOdownsampler(T::Type, D::Int, down_factor::Int, cutoff, grid)
-    N = length(grid)
-    filtered_size = (((1:down_factor:N) for _ in 1:D)..., :, :)
-    filter = create_lowpass_filter(T, cutoff, grid)
-    # The prefactor is the factor by which the energy is conserved (check 'Convolutional Neural Operators for robust and accurate learning of PDEs')
-    prefactor = 1 / down_factor^D
-
-    function CNOdownsampler(x)
-        # Apply the lowpass filter
-        x_filter = filter(x)*prefactor
-        # then take only the downsampled values
-        @view x_filter[filtered_size...]
-    end
-end
-
-function expand_with_zeros(x, T, up_size, up_factor)
-    x_up = zeros(T, up_size..., size(x)[end - 1], size(x)[end])
-    x_up[1:up_factor:end, 1:up_factor:end, :, :] .= x 
-    return x_up
-end
-
-using ChainRules: ChainRulesCore, NoTangent
-function ChainRulesCore.rrule(::typeof(expand_with_zeros), x, T, up_size, up_factor)
-    y = expand_with_zeros(x, T, up_size, up_factor)
-    function expand_with_zeros_pb(ȳ)
-        x̄ = zeros(size(x))
-        x̄ .= ȳ[1:up_factor:end, 1:up_factor:end, :, :]
-        return NoTangent(), x̄, NoTangent(), NoTangent(), NoTangent()
-    end
-    return y, expand_with_zeros_pb  
-end
-
-function create_CNOupsampler(T::Type, D::Int, up_factor::Int, cutoff, grid)
-    N = length(grid)
-    D_up = up_factor * N
-    up_size = (D_up for _ in 1:D)
-    grid_up = collect(0.0:1.0/(D_up - 1):1.0)
-    filter = create_lowpass_filter(T, cutoff, grid_up)
-
-    function CNOupsampler(x)
-        # Enhance to the upsampled size
-        x_up = expand_with_zeros(x, T, up_size, up_factor)
-        # then apply the lowpass filter
-        filter(x_up)
-    end
-end
-
-
-function remove_BC(x)
-    # TODO this is redundant with NN_padded_to_NN_nopad, but I want to use it like this
-    @view x[2:(end - 1), 2:(end - 1), :, :]
-end
+    here you see the problem: if your blocks return the layers you can not easily apply them in the UNet fashion, because you have problem to 
+    1) store the parameters of all the block
+    2) keep track of the intemediate states that you have to concatenate 
+    ---> the solution then is to scrap this structure with the create_block and define a custom layers that stores all the parameters in itself
+    * at the same time you can re-define the convolution to make it periodic!
+end 
