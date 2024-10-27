@@ -153,6 +153,5 @@ function ch_to_bottleneck_ranges(bot_d::Vector{Int}, ch_size::Vector{Int})
         push!(ranges, this_bottleneck)
         start += ch_size[i]
     end
-    println(ranges)
     return ranges
 end

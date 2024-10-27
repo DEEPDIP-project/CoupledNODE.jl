@@ -26,79 +26,74 @@ using Plots: heatmap, plot, plot!
 
 
 N0 = 512
-u0 = zeros(T, N0, N0, D, 1)
+u0 = zeros(T, N0, N0, D, 6)
 u0[:, :, 1, 1] = testimage("cameraman")
+u0[:, :, 2, 1] = testimage("cameraman")
+u0[:, :, 1, 2] = testimage("brick_wall_512")
+u0[:, :, 2, 2] = testimage("brick_wall_512")
+u0[:, :, 1, 3] = testimage("fabio_gray_512")
+u0[:, :, 2, 3] = testimage("fabio_gray_512")
+u0[:, :, 1, 4] = testimage("lena_gray_512")
+u0[:, :, 2, 4] = testimage("lena_gray_512")
+u0[:, :, 1, 5] = testimage("livingroom")
+u0[:, :, 2, 5] = testimage("livingroom")
+u0[:, :, 1, 6] = testimage("pirate")
+u0[:, :, 2, 6] = testimage("pirate")
 typeof(u0)
-cutoff = 0.1
+cutoff = 0.5
+
+# downsize the input which would be too large to autodiff
+using CoupledNODE: create_CNOdownsampler
+down_factor = 2
+ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff)
+u = ds(u0)
+N = size(u, 1)
+heatmap(u[:, :, 2, 3], aspect_ratio = 1, title = "downsampled")
 
 using CoupledNODE: create_CNO
-ch_ = [2,2]
+ch_ = [1,1]
 df = [2,2]
-k_rad = [3,2]
-bd = [5,5]
-model = create_CNO(T=T, N=N0, D=D, cutoff=cutoff, ch_sizes=ch_, down_factors=df, k_radii=k_rad, bottleneck_depths = bd)
-θ, st = Lux.setup(rng, model)
+k_rad = [1,1]
+bd = [2,2,2]
+model = create_CNO(T=T, N=N, D=D, cutoff=cutoff, ch_sizes=ch_, down_factors=df, k_radii=k_rad, bottleneck_depths = bd);
+θ, st = Lux.setup(rng, model);
 using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
-heatmap(model(u0, θ, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
+size(model(u, θ, st)[1])
+size(u)
+heatmap(model(u, θ, st)[1][:, :, 1, 4], aspect_ratio = 1, title = "model(u0)")
 
 
 using Zygote: Zygote
-model(u0, θ, st)[1] .- u0
-loss(θ) = sum((model(u0, θ, st)[1][:,:,1,1] .- u0[:,:,1,1])^2)
+model(u, θ, st)[1] .- u
+function loss(θ)
+    û = model(u, θ, st)[1]
+    return sum(abs2,(û .- u)./ u)
+end
 loss(θ)
 g = Zygote.gradient(θ->loss(θ), θ)
+
+function callback(p, l_train)
+    @info "Training Loss: $(l_train)"
+    println(p.u[1])
+    false
+end
 
 # test training with optimize
 using Optimization: Optimization
 optf = Optimization.OptimizationFunction(
-    (x, _) -> loss(x),
+    (p, _) -> loss(p),
     Optimization.AutoZygote()
 )
 optprob = Optimization.OptimizationProblem(optf, θ)
 optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
     optprob,
-    OptimizationOptimisers.Adam(0.01);
-    maxiters = 20,
+    OptimizationOptimisers.Adam(0.2);
+    maxiters = 200,
+    callback = callback,
     progress = true
 )
 θ_p = optim_result.u
-heatmap(model(u0, θ_p, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
+heatmap(model(u, θ_p, st)[1][:, :, 1, 3], aspect_ratio = 1, title = "model(u0)")
 θ = θ_p
 
-#TODO use new callback (merge main!)
-
-
-#############
-
-
-
-# * Define the right hand side of the ODE
-dudt_nn2 = create_right_hand_side_with_closure(
-    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
-
-# * Define the loss (a-posteriori) 
-train_data_posteriori = dataloader_posteriori()
-loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
-loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-
-# * Callback function
-callbackstate_val, callback_val = create_callback(
-    dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
-    rng = rng, do_plot = true, plot_train = false)
-θ_posteriori = θ
-
-# * training via Lux
-lux_result, lux_t, lux_mem, _ = @timed train(
-    closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = callback_val)
-
-loss, tstate = lux_result
-# the trained params are:
-θ_posteriori = tstate.parameters
-
-# * save the trained model
-outdir = "simulations/NavierStokes_2D/outputs"
-ispath(outdir) || mkpath(outdir)
-@save "$outdir/trained_model_posteriori.jld2" θ_posteriori st

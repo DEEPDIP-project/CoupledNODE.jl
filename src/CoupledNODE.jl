@@ -17,4 +17,5 @@ include("equations/NavierStokes_utils.jl")
 include("utils.jl")
 include("train.jl")
 
+
 end # module CoupledNODE
