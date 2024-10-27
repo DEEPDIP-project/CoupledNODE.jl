@@ -3,7 +3,6 @@ using JLD2: jldsave
 using Random: Random
 
 T = Float32
-ArrayType = Array
 rng = Random.Xoshiro(123)
 
 # Generate the data using NeuralClosure
@@ -13,6 +12,10 @@ rng = Random.Xoshiro(123)
 # dev "path_to_NeuralClosure"
 
 using NeuralClosure: NeuralClosure as NC
+
+# Number of simulations to generate for each grid
+Nsim_train = 3
+Nsim_test = 2
 
 # Parameters
 params = (;
@@ -31,12 +34,10 @@ params = (;
     savefreq = 1
 )
 
-data_train = [NC.create_les_data(; params...) for _ in 1:3];
-data_val = [NC.create_les_data(; params...) for _ in 1:1];
-data_test = NC.create_les_data(; params...);
+data_train = [NC.create_les_data(; params...) for _ in 1:Nsim_train];
+data_test = [NC.create_les_data(; params...) for _ in 1:Nsim_test];
 
 # save data
 jldsave("simulations/NavierStokes_2D/data/data_train.jld2"; data_train)
-jldsave("simulations/NavierStokes_2D/data/data_val.jld2"; data_val)
 jldsave("simulations/NavierStokes_2D/data/data_test.jld2"; data_test)
 jldsave("simulations/NavierStokes_2D/data/params_data.jld2"; params)
