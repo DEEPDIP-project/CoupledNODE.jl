@@ -32,44 +32,46 @@ u0[:, :, 1, 1] = testimage("cameraman")
 typeof(u0)
 cutoff = 0.1
 
-# downsize the input which would be too large to autodiff
-using CoupledNODE: create_CNOdownsampler
-down_factor = 2
-ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff)
-u = ds(u0)
-N = size(u, 1)
-
-
-using CoupledNODE: CNODownsampleBlock
-down_factor = 2
-dl = CNODownsampleBlock(N, D, down_factor, 2, 1, use_batchnorm =false, T=T)
-
-using CoupledNODE: CNOUpsampleBlock
-up_factor = 2
-dl = CNOUpsampleBlock(N, D, up_factor, 2, 1, use_batchnorm =false, T=T)
-
 using CoupledNODE: create_CNO
-cn = create_CNO(T, N, D, channels= [2, 2], down_factors = [2, 2], up_factors = [2, 2], cutoffs=[0.1, 0.1], use_batchnorms=[false, false], use_biases=[false, false], conv_per_block=1) 
-
-
-
-# ***** Test if you can differentiate upsample and downsample
-layers = dl.layers
-layers = cn
-closure = Lux.Chain(layers...)
-θ, st = Lux.setup(rng, closure)
+ch_ = [2,2]
+df = [2,2]
+k_rad = [3,2]
+bd = [5,5]
+model = create_CNO(T=T, N=N0, D=D, cutoff=cutoff, ch_sizes=ch_, down_factors=df, k_radii=k_rad, bottleneck_depths = bd)
+θ, st = Lux.setup(rng, model)
 using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
+heatmap(model(u0, θ, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
 
-# test and trigger the model
-closure(u, θ, st)
-heatmap(closure(u, θ, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "closure(u)")
+
 using Zygote: Zygote
-Zygote.gradient(θ -> closure(u, θ, st)[1][1], θ)
+model(u0, θ, st)[1] .- u0
+loss(θ) = sum((model(u0, θ, st)[1][:,:,1,1] .- u0[:,:,1,1])^2)
+loss(θ)
+g = Zygote.gradient(θ->loss(θ), θ)
+
+# test training with optimize
+using Optimization: Optimization
+optf = Optimization.OptimizationFunction(
+    (x, _) -> loss(x),
+    Optimization.AutoZygote()
+)
+optprob = Optimization.OptimizationProblem(optf, θ)
+optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
+    optprob,
+    OptimizationOptimisers.Adam(0.01);
+    maxiters = 20,
+    progress = true
+)
+θ_p = optim_result.u
+heatmap(model(u0, θ_p, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
+θ = θ_p
+
+#TODO use new callback (merge main!)
 
 
 #############
-assemble the blocks: where do the parameter go?
+
 
 
 # * Define the right hand side of the ODE
