@@ -349,6 +349,7 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 
 # Arguments
 - `io_array`: A structure containing the data arrays `u` and `t`.
+- The `io_array.u` array is expected to have dimensions `(nx, ny... , dim, samples, nt)`.
 - `nunroll`: The number of time steps to unroll (default is 10).
 - `rng`: A random number generator.
 
@@ -358,21 +359,22 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
   - `t`: The corresponding time steps from the `t` array of `io_array`.
 
 # Notes
-- The `io_array.u` array is expected to have dimensions `(n, n, dim, samples, nt)`.
 - The `nt` dimension must be greater than or equal to `nunroll`.
 - Have only tested in 2D cases.
 - It assumes that the data are loaded in batches of size 1
 """
 function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
     function dataloader()
-        (n, _, dim, samples, nt) = size(io_array.u) # expects that the io_array will be for a i_grid
+        (n..., dim, _, _) = axes(io_array.u) # expects that the io_array will be for a i_grid
+        (_..., samples, nt) = size(io_array.u)
+
         @assert nt ≥ nunroll
         # select starting point for unrolling
         istart = rand(rng, 1:(nt - nunroll))
         it = istart:(istart + nunroll)
         # select the sample
         isample = rand(rng, 1:samples)
-        (; u = view(io_array.u, :, :, :, isample, it), t = io_array.t[isample, it])
+        (; u = view(io_array.u, n..., dim, isample, it), t = io_array.t[isample, it])
     end
 end
 
