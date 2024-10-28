@@ -1,4 +1,5 @@
 using Lux: Lux, relu, leakyrelu
+using NNlib: tanh_fast
 using LuxCore: AbstractLuxLayer
 using Tullio
 
@@ -23,6 +24,7 @@ struct CNO{F} <: AbstractLuxLayer
     bottleneck_depths::Array
     bottlenecks_radii::Array
     bottlenecks_ch::Array
+    filter_type::String
     init_weight::F
 end
 
@@ -39,6 +41,7 @@ function create_CNO(
         use_batchnorms = nothing,
         bottleneck_depths = nothing,
         bottlenecks_radii = nothing,
+        filter_type="sinc",
         T = Float32,
         init_weight = Lux.kaiming_uniform)
     @assert length(ch_sizes) == length(down_factors) == length(k_radii) "The size of the input arrays must be consistent"
@@ -73,11 +76,11 @@ function create_CNO(
     down_ch = ch_sizes
     up_ch = reverse([D; ch_sizes[1:end-1]])
 
-    CNO(T, N, D, cutoff, activations, down_factors, down_ch, up_factors, up_ch, k_radii, use_biases, use_batchnorms, bottleneck_depths, bottlenecks_radii, bottlenecks_ch, init_weight)
+    CNO(T, N, D, cutoff, activations, down_factors, down_ch, up_factors, up_ch, k_radii, use_biases, use_batchnorms, bottleneck_depths, bottlenecks_radii, bottlenecks_ch, filter_type, init_weight)
 end
 
 function Lux.initialparameters(rng::AbstractRNG,
-        (; T, N, D, down_factors, down_ch, up_factors, up_ch, k_radii, bottleneck_depths, bottlenecks_radii, bottlenecks_ch, init_weight)::CNO)
+        (; T, N, D, down_factors, down_ch, up_factors, up_ch, k_radii, bottleneck_depths, bottlenecks_radii, bottlenecks_ch, filter_type, init_weight)::CNO)
 
     # Count the number of bottlenecks kernels
     # There are two types of bottleneck blocks: residual and standard. Here we always use the residual, except for the last one (TODO make this controllable)
@@ -91,6 +94,7 @@ function Lux.initialparameters(rng::AbstractRNG,
     end
     (;
         # Notice that those kernels are in the k-space, because we don't want to transform them every time
+        # [!] NO ^  you can not keep them in Fourier space otherwise they are non-local and impossible to mask correctly!
         # Also notice that the kernels contain a zero padding in order to have the same size and allow for serialization (otherwise Zygote complains)
         # they will be adapted to the correct size by using masks
         # notice also that there is a kernel for every output channel 
@@ -102,21 +106,21 @@ function Lux.initialparameters(rng::AbstractRNG,
 end
 
 function Lux.initialstates(rng::AbstractRNG,
-        (; T, N, D, cutoff, activations, down_factors, down_ch, up_factors, up_ch, k_radii, bottleneck_depths, bottlenecks_radii, bottlenecks_ch)::CNO)
+        (; T, N, D, cutoff, activations, down_factors, down_ch, up_factors, up_ch, k_radii, bottleneck_depths, bottlenecks_radii, bottlenecks_ch, filter_type)::CNO)
     downsamplers = []
     activations_down = []
     Nd = N
     # Define downsampling, upsampling and activation functions
     for (i,df) in enumerate(down_factors)
-        push!(activations_down, create_CNOactivation(T, D, Nd, cutoff, activation_function = activations[i]))
-        push!(downsamplers, create_CNOdownsampler(T, D, Nd, df, cutoff))
+        push!(activations_down, create_CNOactivation(T, D, Nd, cutoff, activation_function = activations[i], filter_type=filter_type))
+        push!(downsamplers, create_CNOdownsampler(T, D, Nd, df, cutoff, filter_type))
         Nd = Int(Nd/df)
     end
     upsamplers = []
     activations_up = []
     for (i,uf) in enumerate(up_factors)
-        push!(activations_up, create_CNOactivation(T, D, Nd, cutoff, activation_function = activations[i]))
-        push!(upsamplers, create_CNOupsampler(T, D, Nd, uf, cutoff))
+        push!(activations_up, create_CNOactivation(T, D, Nd, cutoff, activation_function = reverse(activations)[i], filter_type=filter_type))
+        push!(upsamplers, create_CNOupsampler(T, D, Nd, uf, cutoff, filter_type))
         Nd = Int(Nd*uf)
     end
     # compute the masks to adapt the upsampling/downsampling kernels to the correct size
@@ -220,8 +224,9 @@ function ((;)::CNO)(x, params, state)
     # * Bottleneck blocks
     # they are n-1 residual blocks each consisting of conv->act->conv
     # followed by 1 non-residual blocks of conv->act
-    # the last block takes as input the cat with the downsampler and it passes its output to the upsample
-    # So, the last bottleneck is applied directly to the compressed data
+    # The last block takes as input the cat with the downsampler 
+    # and it passes its output to the upsample (except the last one).
+    # Insted, the last bottleneck is applied directly to the compressed data
     # -> apply the n-1 residual blocks
     mask = masks_bottlenecks[end]
     k_residual= bottleneck_ranges[end][1:end-1]
@@ -229,6 +234,7 @@ function ((;)::CNO)(x, params, state)
 
     # -> last (non-residual) block of the bottleneck
     y = apply_masked_convolution(y, k = k_bottlenecks[bottleneck_ranges[end][end]...,:,:], mask=masks_bottlenecks[end])
+    y = activations_layers_up[1](y)
 
     ## Now I have to apply the bottlenecks to all the intermediates (except the last one which is already processed as y)
     bottlenecks_out = []
@@ -254,6 +260,7 @@ function ((;)::CNO)(x, params, state)
         # 5) apply the last bottleneck
         # ! do not forget to reverse the bottleneck ranges
         y = apply_masked_convolution(y, k = k_bottlenecks[reverse(bottleneck_ranges)[i+1][end]...,:,:], mask=masks_bottlenecks[i])
+        y = reverse(activations_layers_down)[i](y)
     end
 
     
@@ -266,7 +273,7 @@ function convolve(x,k)
     # following [this](https://datascience.stackexchange.com/questions/68045/how-are-the-channels-handled-in-cnn-is-it-independently-processed-or-fused)
     # I basically have to convolve ch_out kernels to each ch_in and sum them (?TODO? sure about sum?) 
     # ! the index can not have 'long' names like ch_in
-    @tullio ffty[i,j,c,b] := fft(x)[i,j,a,b] * k[c,i,j]
+    @tullio ffty[i,j,c,b] := fft(x)[i,j,a,b] * fft(k)[c,i,j]
     real(ifft(ffty))
 end
 
@@ -283,8 +290,8 @@ function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
         kb = k_bottlenecks[k_residual[ik+1]..., :, :]
         
         # Apply masks to the kernels
-        @tullio k2a[c, x, y] := ka[c, x, y] * mask[x, y]
-        @tullio k2b[c, x, y] := kb[c, x, y] * mask[x, y]
+        k2a = mask_kernel(ka, mask)
+        k2b = mask_kernel(kb, mask)
         
         # Adjust the kernel sizes to match the input dimensions
         k3a = k2a[:, 1:size(y0)[1], 1:size(y0)[2]]
@@ -314,7 +321,7 @@ function apply_masked_convolution(y; k, mask )
     # ! also Zygote wants the mask to be explicitely defined as a vector so i have to pull it out from the tuple via mask=masks[i]
 
     # Apply the mask to the kernel
-    @tullio k2[c, x, y] := k[c, x, y] * mask[x, y]
+    k2 = mask_kernel(k, mask)
     
     # Adjust the kernel size to match the input dimensions
     k3 = k2[:, 1:size(y)[1], 1:size(y)[2]]
@@ -323,4 +330,8 @@ function apply_masked_convolution(y; k, mask )
     y = convolve(y, k3)
     
     return y
+end
+
+function mask_kernel(k, mask)
+    @tullio k2[c, x, y] := k[c, x, y] * mask[x, y]
 end

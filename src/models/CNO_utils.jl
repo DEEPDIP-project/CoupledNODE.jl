@@ -39,6 +39,8 @@ function create_filter(T, grid, cutoff; sigma=1, filter_type="sinc")
                 _kernel[i, j] = sinc(pos) * sinc(pos / k)
             end
         end
+    elseif filter_type == "identity"
+        _kernel .= 1
     else
         error("Filter type not recognized")
     end
@@ -59,10 +61,10 @@ function create_filter(T, grid, cutoff; sigma=1, filter_type="sinc")
 end
 
 
-function create_CNOdownsampler(T::Type, D::Int, N::Int, down_factor::Int, cutoff)
+function create_CNOdownsampler(T::Type, D::Int, N::Int, down_factor::Int, cutoff, filter_type="sinc")
     grid = collect(0.0:1.0/(N-1):1.0)
     filtered_size = (((1:down_factor:N) for _ in 1:D)..., :, :)
-    filter = create_filter(T, grid, cutoff, filter_type="sinc")
+    filter = create_filter(T, grid, cutoff, filter_type=filter_type)
     # The prefactor is the factor by which the energy is conserved (check 'Convolutional Neural Operators for robust and accurate learning of PDEs')
     prefactor = T(1 / down_factor^D)
 
@@ -91,11 +93,11 @@ function ChainRulesCore.rrule(::typeof(expand_with_zeros), x, T, up_size, up_fac
     return y, expand_with_zeros_pb  
 end
 
-function create_CNOupsampler(T::Type, D::Int, N::Int, up_factor::Int, cutoff)
+function create_CNOupsampler(T::Type, D::Int, N::Int, up_factor::Int, cutoff, filter_type="sinc")
     D_up = up_factor * N
     up_size = (D_up for _ in 1:D)
     grid_up = collect(0.0:1.0/(D_up - 1):1.0)
-    filter = create_filter(T, grid_up, cutoff, filter_type="sinc")
+    filter = create_filter(T, grid_up, cutoff, filter_type=filter_type)
 
     function CNOupsampler(x)
         # Enhance to the upsampled size
@@ -112,11 +114,11 @@ function remove_BC(x)
 end
 
 
-function create_CNOactivation(T::Type, D::Int, N::Int, cutoff; activation_function=identity)
+function create_CNOactivation(T::Type, D::Int, N::Int, cutoff; activation_function=identity, filter_type="sinc")
     # the activation function is applied like this:
     # upsamplex2 -> apply activation -> downsamplex2 
-    us = create_CNOupsampler(T, D, N, 2, cutoff)
-    ds = create_CNOdownsampler(T, D, N*2, 2, cutoff)
+    us = create_CNOupsampler(T, D, N, 2, cutoff, filter_type)
+    ds = create_CNOdownsampler(T, D, N*2, 2, cutoff, filter_type)
     function CNOactivation(x)
         ds(activation_function(us(x)))
     end

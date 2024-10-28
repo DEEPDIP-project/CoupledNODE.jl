@@ -40,7 +40,6 @@ u0[:, :, 2, 5] = testimage("livingroom")
 u0[:, :, 1, 6] = testimage("pirate")
 u0[:, :, 2, 6] = testimage("pirate")
 typeof(u0)
-cutoff = 0.5
 
 # downsize the input which would be too large to autodiff
 using CoupledNODE: create_CNOdownsampler
@@ -51,14 +50,30 @@ N = size(u, 1)
 heatmap(u[:, :, 2, 3], aspect_ratio = 1, title = "downsampled")
 
 using CoupledNODE: create_CNO
-ch_ = [1,1]
-df = [2,2]
-k_rad = [1,1]
-bd = [2,2,2]
-model = create_CNO(T=T, N=N, D=D, cutoff=cutoff, ch_sizes=ch_, down_factors=df, k_radii=k_rad, bottleneck_depths = bd);
+using NNlib: tanh_fast
+ch_ = [4]
+act = [identity]
+df = [2]
+k_rad = [3]
+bd = [2,2]
+cutoff = 0.1
+model = create_CNO(T=T, N=N, D=D, cutoff=cutoff, ch_sizes=ch_, activations=act, down_factors=df, k_radii=k_rad, bottleneck_depths = bd);
 θ, st = Lux.setup(rng, model);
 using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
+
+# * Define the CNN layers
+#model, θ, st = cnn(;
+#    T = T,
+#    D = D,
+#    data_ch = D,
+#    radii = [3, 3],
+#    channels = [2, 2],
+#    activations = [tanh, identity],
+#    use_bias = [false, false],
+#    rng
+#)
+
 size(model(u, θ, st)[1])
 size(u)
 heatmap(model(u, θ, st)[1][:, :, 1, 4], aspect_ratio = 1, title = "model(u0)")
@@ -88,12 +103,12 @@ optf = Optimization.OptimizationFunction(
 optprob = Optimization.OptimizationProblem(optf, θ)
 optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
     optprob,
-    OptimizationOptimisers.Adam(0.2);
-    maxiters = 200,
+    OptimizationOptimisers.Adam(0.01);
+    maxiters = 50,
     callback = callback,
     progress = true
 )
 θ_p = optim_result.u
-heatmap(model(u, θ_p, st)[1][:, :, 1, 3], aspect_ratio = 1, title = "model(u0)")
+heatmap(model(u, θ_p, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
 θ = θ_p
 
