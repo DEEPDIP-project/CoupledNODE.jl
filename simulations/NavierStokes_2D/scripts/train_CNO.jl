@@ -24,7 +24,6 @@ u0 = u
 using TestImages: testimage
 using Plots: heatmap, plot, plot!
 
-
 N0 = 512
 u0 = zeros(T, N0, N0, D, 6)
 u0[:, :, 1, 1] = testimage("cameraman")
@@ -43,7 +42,8 @@ typeof(u0)
 
 # downsize the input which would be too large to autodiff
 using CoupledNODE: create_CNOdownsampler
-down_factor = 2
+down_factor = 4
+cutoff = 0.1
 ds = create_CNOdownsampler(T, D, N0, down_factor, cutoff)
 u = ds(u0)
 N = size(u, 1)
@@ -51,13 +51,13 @@ heatmap(u[:, :, 2, 3], aspect_ratio = 1, title = "downsampled")
 
 using CoupledNODE: create_CNO
 using NNlib: tanh_fast
-ch_ = [4]
-act = [identity]
-df = [2]
-k_rad = [3]
-bd = [2,2]
-cutoff = 0.1
-model = create_CNO(T=T, N=N, D=D, cutoff=cutoff, ch_sizes=ch_, activations=act, down_factors=df, k_radii=k_rad, bottleneck_depths = bd);
+ch_ = [2, 2]
+act = [tanh_fast, identity]
+df = [2, 2]
+k_rad = [3, 3]
+bd = [2, 2, 2]
+cutoff = 10
+model = create_CNO(T = T, N = N, D = D, cutoff = cutoff, ch_sizes = ch_, activations = act, down_factors = df, k_radii = k_rad, bottleneck_depths = bd);
 θ, st = Lux.setup(rng, model);
 using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
@@ -74,19 +74,23 @@ using ComponentArrays: ComponentArray
 #    rng
 #)
 
-size(model(u, θ, st)[1])
-size(u)
+@assert size(model(u, θ, st)[1])==size(u)
 heatmap(model(u, θ, st)[1][:, :, 1, 4], aspect_ratio = 1, title = "model(u0)")
-
 
 using Zygote: Zygote
 model(u, θ, st)[1] .- u
 function loss(θ)
     û = model(u, θ, st)[1]
-    return sum(abs2,(û .- u)./ u)
+    return sum(abs2, (û .- u) ./ u)
+end
+function loss(θ, batch = 16)
+    y = rand(T, N, N, 1, batch)
+    y = cat(y, y, dims = 3)
+    yout = model(y, θ, st)[1]
+    return sum(abs2, (yout .- y) )
 end
 loss(θ)
-g = Zygote.gradient(θ->loss(θ), θ)
+g = Zygote.gradient(θ -> loss(θ), θ)
 
 function callback(p, l_train)
     @info "Training Loss: $(l_train)"
@@ -101,14 +105,27 @@ optf = Optimization.OptimizationFunction(
     Optimization.AutoZygote()
 )
 optprob = Optimization.OptimizationProblem(optf, θ)
+using OptimizationOptimisers: OptimiserChain, Adam, ClipGrad
+ClipAdam = OptimiserChain(Adam(1.0e-1), ClipGrad(1));
 optim_result, optim_t, optim_mem, _ = @timed Optimization.solve(
     optprob,
-    OptimizationOptimisers.Adam(0.01);
-    maxiters = 50,
+    ClipAdam,
+    maxiters = 30,
     callback = callback,
     progress = true
 )
 θ_p = optim_result.u
-heatmap(model(u, θ_p, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
+p1 = heatmap(model(u, θ_p, st)[1][:, :, 1, 1], aspect_ratio = 1, title = "model(u0)")
+p2 = heatmap(u[:, :, 1, 1], aspect_ratio = 1, title = "u0")
+p3 = heatmap(model(u, θ_p, st)[1][:, :, 1, 3], aspect_ratio = 1, title = "model(u0)")
+p4 = heatmap(u[:, :, 1, 3], aspect_ratio = 1, title = "u0")
+plot(p1, p2, p3, p4)
+
 θ = θ_p
+
+size(θ.down_k)
+size(st.masks_down)
+model.k_radii[1]
+heatmap((θ.down_k[1,:,:] .* st.masks_down[1][:, :, 1, 1])[1:(2*model.k_radii[1]+1 +1),1:(2*model.k_radii[1]+1 +1)], aspect_ratio = 1, title = "masks_down")
+heatmap((θ.down_k[4,:,:] .* st.masks_down[2][:, :, 1, 1])[1:(2*model.k_radii[2]+1 +1),1:(2*model.k_radii[2]+1 +1)], aspect_ratio = 1, title = "masks_down")
 

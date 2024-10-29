@@ -12,7 +12,7 @@ struct CNO{F} <: AbstractLuxLayer
     T::Type
     N::Int
     D::Int
-    cutoff::Union{Float32,Float64} #TODO make it same type as T
+    cutoff::Union{Int,Float32,Float64} #TODO make it same type as T
     activations::Array
     down_factors::Array
     down_ch::Array
@@ -156,12 +156,14 @@ function Lux.initialstates(rng::AbstractRNG,
         down_ch_ranges = ch_to_ranges(down_ch),
         # The first bottleneck layer has ch_sizes of the input
         bottleneck_ranges = ch_to_bottleneck_ranges(bottleneck_depths, bottlenecks_ch),
+        reversed_bottleneck_ranges = reverse(ch_to_bottleneck_ranges(bottleneck_depths, bottlenecks_ch)),
         down_factors = down_factors,
         up_factors = up_factors,
         downsamplers = downsamplers,
         upsamplers = upsamplers,
         activations_up = activations_up,
         activations_down = activations_down,
+        reversed_activations_down = reverse(activations_down),
         masks_down = masks_down,
         masks_up = masks_up,
         masks_bottlenecks = masks_bottlenecks,
@@ -197,12 +199,14 @@ function ((;)::CNO)(x, params, state)
     upsampling_layers = state.upsamplers
     activations_layers_up = state.activations_up
     activations_layers_down = state.activations_down
+    reversed_activations_layers_down = state.reversed_activations_down
     masks_down = state.masks_down
     masks_up = state.masks_up
     masks_bottlenecks = state.masks_bottlenecks
     up_ch_ranges = state.up_ch_ranges
     down_ch_ranges = state.down_ch_ranges
     bottleneck_ranges = state.bottleneck_ranges
+    reversed_bottleneck_ranges = state.reversed_bottleneck_ranges
 
     # we have to keep track of each downsampled state
     intermediate_states = []
@@ -211,15 +215,12 @@ function ((;)::CNO)(x, params, state)
     intermediate_states = vcat(intermediate_states, [y] )
     # * Downsampling blocks
     for (i,(ds,da)) in enumerate(zip(downsampling_layers, activations_layers_down))
-        # 1) convolve
-        y = apply_masked_convolution(y, k = k_down[down_ch_ranges[i],:,:], mask=masks_down[i])
-        # 2) activate
-        y = da(y)
-        # 3) downsample
-        y = ds(y)
-        # 4) store intermediates
+        # (masked) convolution + activation + downsampling
+        y = combined_mconv_activation_updown(y, @view(k_down[down_ch_ranges[i],:,:]), masks_down[i], da, ds)
+        # store intermediates
         intermediate_states = vcat(intermediate_states, [y])
     end
+
 
     # * Bottleneck blocks
     # they are n-1 residual blocks each consisting of conv->act->conv
@@ -233,7 +234,7 @@ function ((;)::CNO)(x, params, state)
     y = apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activations_layers_up[1])
 
     # -> last (non-residual) block of the bottleneck
-    y = apply_masked_convolution(y, k = k_bottlenecks[bottleneck_ranges[end][end]...,:,:], mask=masks_bottlenecks[end])
+    y = apply_masked_convolution(y, k = @view(k_bottlenecks[bottleneck_ranges[end][end]...,:,:]), mask=masks_bottlenecks[end])
     y = activations_layers_up[1](y)
 
     ## Now I have to apply the bottlenecks to all the intermediates (except the last one which is already processed as y)
@@ -249,18 +250,14 @@ function ((;)::CNO)(x, params, state)
 
     # * Upsampling blocks
     for (i,(us,ua)) in enumerate(zip(upsampling_layers, activations_layers_up))
-        # 1) convolve
-        y = apply_masked_convolution(y, k = k_up[up_ch_ranges[i],:,:], mask=masks_up[i])
-        # 2) activate
-        y = ua(y)
-        # 3) upsample
-        y = us(y)
-        # 4) concatenate with the corresponding bottleneck
+        # (masked) convolution + activation + upsampling
+        y = combined_mconv_activation_updown(y, @view(k_up[up_ch_ranges[i],:,:]), masks_up[i], ua, us)
+        # concatenate with the corresponding bottleneck
         y = cat(y, bottlenecks_out[i], dims=D+1)
-        # 5) apply the last bottleneck
+        # apply the last bottleneck
         # ! do not forget to reverse the bottleneck ranges
-        y = apply_masked_convolution(y, k = k_bottlenecks[reverse(bottleneck_ranges)[i+1][end]...,:,:], mask=masks_bottlenecks[i])
-        y = reverse(activations_layers_down)[i](y)
+        y = apply_masked_convolution(y, k = @view(k_bottlenecks[reversed_bottleneck_ranges[i+1][end]...,:,:]), mask=masks_bottlenecks[i])
+        y = reversed_activations_layers_down[i](y)
     end
 
     
@@ -286,16 +283,16 @@ function apply_residual_blocks(y, k_bottlenecks, k_residual, mask, activation)
         y0 = copy(y)
         
         # Get the kernels
-        ka = k_bottlenecks[k_residual[ik]..., :, :]
-        kb = k_bottlenecks[k_residual[ik+1]..., :, :]
+        ka = @view k_bottlenecks[k_residual[ik]..., :, :]
+        kb = @view k_bottlenecks[k_residual[ik+1]..., :, :]
         
         # Apply masks to the kernels
         k2a = mask_kernel(ka, mask)
         k2b = mask_kernel(kb, mask)
         
         # Adjust the kernel sizes to match the input dimensions
-        k3a = k2a[:, 1:size(y0)[1], 1:size(y0)[2]]
-        k3b = k2b[:, 1:size(y0)[1], 1:size(y0)[2]]
+        k3a = @view k2a[:, 1:size(y0)[1], 1:size(y0)[2]]
+        k3b = @view k2b[:, 1:size(y0)[1], 1:size(y0)[2]]
         
         # Apply the first convolution
         y = convolve(y, k3a)
@@ -324,7 +321,7 @@ function apply_masked_convolution(y; k, mask )
     k2 = mask_kernel(k, mask)
     
     # Adjust the kernel size to match the input dimensions
-    k3 = k2[:, 1:size(y)[1], 1:size(y)[2]]
+    k3 = @view k2[:, 1:size(y)[1], 1:size(y)[2]]
     
     # Apply the convolution
     y = convolve(y, k3)
@@ -334,4 +331,8 @@ end
 
 function mask_kernel(k, mask)
     @tullio k2[c, x, y] := k[c, x, y] * mask[x, y]
+end
+
+function combined_mconv_activation_updown(y, k, mask, activation, updown)
+    updown(activation(apply_masked_convolution(y, k=k, mask=mask)))
 end
