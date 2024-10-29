@@ -1,9 +1,11 @@
 using JLD2: @load
+using Random: Random
 
 T = Float32
 ArrayType = Array
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
+D = 2 # dimension
 
 # Create model
 using CoupledNODE: cnn

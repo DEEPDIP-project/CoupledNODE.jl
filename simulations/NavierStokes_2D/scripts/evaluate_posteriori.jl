@@ -18,6 +18,7 @@ outdir = "simulations/NavierStokes_2D/outputs"
 
 # Load data params
 params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
+D = params.D # dimension
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
     x = ntuple(α -> LinRange(T(0.0), T(1.0), nles[α] + 1), params.D)
@@ -28,7 +29,7 @@ end
 closure, _, _ = cnn(;
     T = T,
     D = D,
-    data_ch = 2 * D,
+    data_ch = D,
     radii = [3, 3],
     channels = [2, 2],
     activations = [tanh, identity],
@@ -41,9 +42,9 @@ dudt_nn = create_right_hand_side_with_closure(
 
 # Define params where we want to evaluate the model
 dt = params.Δt
-tspan = [0, 1]
+tspan = [T(0), T(1)]
 
-u0 = INS.random_field(setups[ig], 0)
+u0 = INS.random_field(setups[ig], T(0))
 u0_NN = INS_to_NN(u0)
 prob = ODEProblem(dudt_nn, u0_NN, tspan, θ_posteriori)
 sol = solve(prob, Tsit5(); u0 = u0_NN, p = θ_posteriori, dt = dt, adaptive = false)
