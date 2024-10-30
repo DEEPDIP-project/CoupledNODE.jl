@@ -28,17 +28,12 @@ closure, θ, st = cnn(;
 # Give the CNN a test run
 Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
 
-# * loss a priori
-loss_priori = create_loss_priori(mean_squared_error, closure)
-# this created function can be called: loss_priori(closure_model, θ, st, data) 
-loss_priori(closure, θ, st, train_data_priori) # check that the loss is working
-
 # * loss in the Lux format
 loss_priori_lux(closure, θ, st, train_data_priori)
 
 # * Define the callback
 callbackstate_val, callback_val = create_callback(
-    closure, θ, test_io_post[ig], loss_priori, st, batch_size = 100,
+    closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
     rng = rng, do_plot = true, plot_train = false)
 
 # * Training (via Lux)
