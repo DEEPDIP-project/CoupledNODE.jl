@@ -29,22 +29,23 @@ function CNODownsampleBlock(
         k_radius = 3,
         use_bias = false,
         use_batchnorm = true,
-        cutoff = 0.1,        
+        cutoff = 0.1,
         T = Float32,
         activation_function = relu,
-        init_weight = Lux.glorot_uniform,
-        )
+        init_weight = Lux.glorot_uniform
+)
     downsampler = create_CNOdownsampler(T, D, N, down_factor, cutoff)
-    activation = create_CNOactivation(T, D, N, cutoff, activation_function = activation_function)
+    activation = create_CNOactivation(
+        T, D, N, cutoff, activation_function = activation_function)
 
     layers = (
         Lux.Conv(
-             ntuple(α -> 2*k_radius + 1, D),
-             ch_in => ch_out,
-             identity;
-             use_bias = use_bias,
-             init_weight = init_weight,
-             pad = (ntuple(α -> 2*k_radius + 1, D) .- 1) .÷ 2
+            ntuple(α -> 2 * k_radius + 1, D),
+            ch_in => ch_out,
+            identity;
+            use_bias = use_bias,
+            init_weight = init_weight,
+            pad = (ntuple(α -> 2 * k_radius + 1, D) .- 1) .÷ 2
         ),
         Lux.WrappedFunction(activation),
         if use_batchnorm
@@ -57,7 +58,6 @@ function CNODownsampleBlock(
 
     CNODownsampleBlock(T, N, D, ch_in, ch_out, k_radius, use_bias, use_batchnorm, layers)
 end
-
 
 struct CNOUpsampleBlock
     T::Type
@@ -81,22 +81,23 @@ function CNOUpsampleBlock(
         k_radius = 3,
         use_bias = false,
         use_batchnorm = true,
-        cutoff = 0.1,        
+        cutoff = 0.1,
         T = Float32,
         activation_function = relu,
-        init_weight = Lux.glorot_uniform,
-        )
+        init_weight = Lux.glorot_uniform
+)
     upsampler = create_CNOupsampler(T, D, N, up_factor, cutoff)
-    activation = create_CNOactivation(T, D, N, cutoff, activation_function = activation_function)
+    activation = create_CNOactivation(
+        T, D, N, cutoff, activation_function = activation_function)
 
     layers = (
         Lux.Conv(
-             ntuple(α -> 2*k_radius + 1, D),
-             ch_in => ch_out,
-             identity;
-             use_bias = use_bias,
-             init_weight = init_weight,
-             pad = (ntuple(α -> 2*k_radius + 1, D) .- 1) .÷ 2
+            ntuple(α -> 2 * k_radius + 1, D),
+            ch_in => ch_out,
+            identity;
+            use_bias = use_bias,
+            init_weight = init_weight,
+            pad = (ntuple(α -> 2 * k_radius + 1, D) .- 1) .÷ 2
         ),
         Lux.WrappedFunction(activation),
         if use_batchnorm
@@ -110,17 +111,19 @@ function CNOUpsampleBlock(
     CNOUpsampleBlock(T, N, D, ch_in, ch_out, k_radius, use_bias, use_batchnorm, layers)
 end
 
-
-function _attempt_create_CNO(T, N, D; channels, down_factors, up_factors, cutoffs, use_batchnorms, use_biases, conv_per_block)
+function _attempt_create_CNO(T, N, D; channels, down_factors, up_factors,
+        cutoffs, use_batchnorms, use_biases, conv_per_block)
     layers = ()
-    for i in 1:length(channels)-1 
-        layers = (layers..., CNODownsampleBlock(N, D, down_factors[i], channels[i], channels[i+1], use_batchnorm = use_batchnorms[i], use_bias = use_biases[i]).layers)
+    for i in 1:(length(channels) - 1)
+        layers = (layers...,
+            CNODownsampleBlock(N, D, down_factors[i], channels[i], channels[i + 1],
+                use_batchnorm = use_batchnorms[i], use_bias = use_biases[i]).layers)
     end
     return layers
 
-#    here you see the problem: if your blocks return the layers you can not easily apply them in the UNet fashion, because you have problem to 
-#    1) store the parameters of all the block
-#    2) keep track of the intemediate states that you have to concatenate 
-#    ---> the solution then is to scrap this structure with the create_block and define a custom layers that stores all the parameters in itself
-#    * at the same time you can re-define the convolution to make it periodic!
-end 
+    #    here you see the problem: if your blocks return the layers you can not easily apply them in the UNet fashion, because you have problem to 
+    #    1) store the parameters of all the block
+    #    2) keep track of the intemediate states that you have to concatenate 
+    #    ---> the solution then is to scrap this structure with the create_block and define a custom layers that stores all the parameters in itself
+    #    * at the same time you can re-define the convolution to make it periodic!
+end

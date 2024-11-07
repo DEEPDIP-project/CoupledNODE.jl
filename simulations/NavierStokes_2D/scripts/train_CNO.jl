@@ -57,7 +57,8 @@ df = [2, 2]
 k_rad = [3, 3]
 bd = [2, 2, 2]
 cutoff = 10
-model = create_CNO(T = T, N = N, D = D, cutoff = cutoff, ch_sizes = ch_, activations = act, down_factors = df, k_radii = k_rad, bottleneck_depths = bd);
+model = create_CNO(T = T, N = N, D = D, cutoff = cutoff, ch_sizes = ch_, activations = act,
+    down_factors = df, k_radii = k_rad, bottleneck_depths = bd);
 θ, st = Lux.setup(rng, model);
 using ComponentArrays: ComponentArray
 θ = ComponentArray(θ)
@@ -74,7 +75,7 @@ using ComponentArrays: ComponentArray
 #    rng
 #)
 
-@assert size(model(u, θ, st)[1])==size(u)
+@assert size(model(u, θ, st)[1]) == size(u)
 heatmap(model(u, θ, st)[1][:, :, 1, 4], aspect_ratio = 1, title = "model(u0)")
 
 using Zygote: Zygote
@@ -87,7 +88,7 @@ function loss(θ, batch = 16)
     y = rand(T, N, N, 1, batch)
     y = cat(y, y, dims = 3)
     yout = model(y, θ, st)[1]
-    return sum(abs2, (yout .- y) )
+    return sum(abs2, (yout .- y))
 end
 loss(θ)
 g = Zygote.gradient(θ -> loss(θ), θ)
@@ -126,6 +127,13 @@ plot(p1, p2, p3, p4)
 size(θ.down_k)
 size(st.masks_down)
 model.k_radii[1]
-heatmap((θ.down_k[1,:,:] .* st.masks_down[1][:, :, 1, 1])[1:(2*model.k_radii[1]+1 +1),1:(2*model.k_radii[1]+1 +1)], aspect_ratio = 1, title = "masks_down")
-heatmap((θ.down_k[4,:,:] .* st.masks_down[2][:, :, 1, 1])[1:(2*model.k_radii[2]+1 +1),1:(2*model.k_radii[2]+1 +1)], aspect_ratio = 1, title = "masks_down")
-
+heatmap(
+    (θ.down_k[1, :, :] .* st.masks_down[1][:, :, 1, 1])[
+        1:(2 * model.k_radii[1] + 1 + 1), 1:(2 * model.k_radii[1] + 1 + 1)],
+    aspect_ratio = 1,
+    title = "masks_down")
+heatmap(
+    (θ.down_k[4, :, :] .* st.masks_down[2][:, :, 1, 1])[
+        1:(2 * model.k_radii[2] + 1 + 1), 1:(2 * model.k_radii[2] + 1 + 1)],
+    aspect_ratio = 1,
+    title = "masks_down")
