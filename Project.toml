@@ -48,6 +48,10 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
 [compat]
 Flux = "0.14"
+SciMLSensitivity = "7"
+IncompressibleNavierStokes = "2"
+LuxCore = "1"
+LuxCUDA = "0.3"
 ShiftedArrays = "2"
 Plots = "1"
 OptimizationEvolutionary = "0.4"
