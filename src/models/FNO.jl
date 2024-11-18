@@ -27,7 +27,6 @@ if CUDA.functional()
 end
 using FFTW: fft
 using Random: AbstractRNG
-using Flux: unsqueeze
 using Tullio: @tullio
 
 struct FourierLayer{A, F} <: AbstractLuxLayer
