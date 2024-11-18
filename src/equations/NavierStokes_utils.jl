@@ -100,9 +100,9 @@ A named tuple with fields `u` and `c`. (without boundary conditions padding)
 """
 function create_io_arrays_priori(data, setups)
     nsample = length(data)
-    ngrid, nfilter = size(data[1].data)
-    nt = length(data[1].t) - 1
-    T = eltype(data[1].t)
+    ngrid, nfilter = size(data[1])
+    nt = length(data[1][1].t) - 1
+    T = eltype(data[1][1].t)
     map(CartesianIndices((ngrid, nfilter))) do I
         ig, ifil = I.I
         (; dimension, N, Iu) = setups[ig].grid
@@ -110,14 +110,14 @@ function create_io_arrays_priori(data, setups)
         u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         ifield = ntuple(Returns(:), D)
-        for is in 1:nsample, it in 1:(nt + 1), α in 1:D
+        for is in 1:nsample, it in 1:(nt + 1)
             copyto!(
-                view(u, ifield..., α, it, is),
-                view(data[is].data[ig, ifil].u[it][α], Iu[α])
+                view(u, ifield..., :, :, is),
+                data[is][ig, ifil].u[Iu[1], :, :]
             )
             copyto!(
-                view(c, ifield..., α, it, is),
-                view(data[is].data[ig, ifil].c[it][α], Iu[α])
+                view(c, ifield..., :, :, is),
+                data[is][ig, ifil].c[Iu[1], :, :]
             )
         end
         (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
