@@ -21,7 +21,7 @@ create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
     F = INS.apply_bc_u(F, t, setup; dudt = true)
     PF = INS.project(F, setup; psolver)
     PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-return PF
+    return PF
 end
 
 """
@@ -42,7 +42,7 @@ create_right_hand_side_with_closure(setup, psolver, closure, st) = function righ
     FC = INS.apply_bc_u(FC, t, setup; dudt = true)
     FP = INS.project(FC, setup; psolver)
     FP = INS.apply_bc_u(FP, t, setup; dudt = true)
-return FP
+    return FP
 end
 
 """
