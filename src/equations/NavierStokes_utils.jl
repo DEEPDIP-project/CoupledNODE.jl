@@ -21,7 +21,7 @@ create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
     F = INS.apply_bc_u(F, t, setup; dudt = true)
     PF = INS.project(F, setup; psolver)
     PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-    PF
+return PF
 end
 
 """
