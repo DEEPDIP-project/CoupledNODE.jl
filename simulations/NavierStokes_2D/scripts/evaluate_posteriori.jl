@@ -1,5 +1,5 @@
 using CoupledNODE: cnn
-using CoupledNODE.NavierStokes: create_right_hand_side_with_closure, INS_to_NN
+using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @load
@@ -21,8 +21,8 @@ params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 D = params.D # dimension
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
-    x = ntuple(α -> LinRange(T(0.0), T(1.0), nles[α] + 1), params.D)
-    INS.Setup(x...; params.Re)
+    x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+    INS.Setup(; x = x, Re = params.Re)
 end
 
 # Create model
@@ -45,16 +45,15 @@ dt = params.Δt
 tspan = [T(0), T(1)]
 
 u0 = INS.random_field(setups[ig], T(0))
-u0_NN = INS_to_NN(u0)
-prob = ODEProblem(dudt_nn, u0_NN, tspan, θ_posteriori)
-sol = solve(prob, Tsit5(); u0 = u0_NN, p = θ_posteriori, dt = dt, adaptive = false)
+prob = ODEProblem(dudt_nn, u0, tspan, θ_posteriori)
+sol = solve(prob, Tsit5(); u0 = u0, p = θ_posteriori, dt = dt, adaptive = false)
 
 # Plot the field results
 function animation_plots(sol_ode, setup; variable = "vorticity")
     anim = Plots.Animation()
     for (idx, (t, u)) in enumerate(zip(sol_ode.t, sol_ode.u))
         if variable == "vorticity"
-            ω = INS.vorticity((u[:, :, 1], u[:, :, 2]), setup)
+            ω = INS.vorticity(u, setup)
             title = @sprintf("Vorticity, t = %.3f s", t)
             vor_lims = extrema(ω) # can specify manually other limits
             fig = Plots.heatmap(ω'; xlabel = "x", ylabel = "y", title, clims = vor_lims,
