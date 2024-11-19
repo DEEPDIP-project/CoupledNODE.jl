@@ -6,11 +6,9 @@ T = Float32
 rng = Random.Xoshiro(123)
 
 # Generate the data using NeuralClosure
-# locally in the environment of the project you can add this dependency as follows:
-# julia
-# ]
-# dev "path_to_NeuralClosure"
-
+# Add NeuralClosure from the git repo, until it is added to the public repo
+using Pkg
+Pkg.add(url = "git@github.com:DEEPDIP-project/NeuralClosure.jl.git")
 using NeuralClosure: NeuralClosure as NC
 
 # Number of simulations to generate for each grid
