@@ -23,7 +23,7 @@ using OptimizationOptimisers: OptimizationOptimisers
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
-        x = ntuple(α -> LinRange(T(0.0), T(1.0), nles[α] + 1), params.D)
+        x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
         INS.Setup(; x = x, Re = params.Re)
     end
 
@@ -47,7 +47,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     test_io_post = create_io_arrays_posteriori(test_data, setups)
 
     u = io_post[ig].u[:, :, :, 1, 1:50]
-    T = setups[1].T
+    #T = setups[1].T
     d = D = setups[1].grid.dimension()
     N = size(u, 1)
 

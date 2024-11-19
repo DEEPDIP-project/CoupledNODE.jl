@@ -15,7 +15,7 @@ include("preprocess_posteriori.jl")
 using ComponentArrays: ComponentArray
 using Lux: Lux
 u = io_post[ig].u[:, :, :, 1, 1:50]
-T = setups[1].T
+#T = setups[1].T
 d = D = setups[1].grid.dimension()
 N = size(u, 1)
 emb_size = 8
