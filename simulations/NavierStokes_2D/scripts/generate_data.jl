@@ -8,7 +8,7 @@ rng = Random.Xoshiro(123)
 # Generate the data using NeuralClosure
 # Add NeuralClosure from the git repo, until it is added to the public repo
 using Pkg
-Pkg.add(url = "git@github.com:DEEPDIP-project/NeuralClosure.jl.git")
+Pkg.add(url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git")
 using NeuralClosure: NeuralClosure as NC
 
 # Number of simulations to generate for each grid
