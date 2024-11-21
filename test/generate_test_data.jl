@@ -35,7 +35,15 @@ params = (;
 data_train = [NC.create_les_data(; params...) for _ in 1:Nsim_train];
 data_test = [NC.create_les_data(; params...) for _ in 1:Nsim_test];
 
+@test data_train isa Array
+@test data_test isa Array
+@test params isa NamedTuple
+
 #save data
-jldsave("simulations/NavierStokes_2D/data/data_train.jld2"; data_train)
-jldsave("simulations/NavierStokes_2D/data/data_test.jld2"; data_test)
-jldsave("simulations/NavierStokes_2D/data/params_data.jld2"; params)
+jldsave("test_data/data_train.jld2"; data_train)
+jldsave("test_data/data_test.jld2"; data_test)
+jldsave("test_data/params_data.jld2"; params)
+
+@test isfile("test_data/data_train.jld2")
+@test isfile("test_data/data_test.jld2")
+@test isfile("test_data/params_data.jld2")
