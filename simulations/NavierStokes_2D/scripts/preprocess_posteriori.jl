@@ -6,8 +6,27 @@ rng = Random.Xoshiro(123)
 
 # Load the data
 using JLD2: load
-data = load("simulations/NavierStokes_2D/data/data_train.jld2", "data_train")
-params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
+#data = load("simulations/NavierStokes_2D/data/data_train_PaperDC_float32.jld2", "data_train")
+#params = load("simulations/NavierStokes_2D/data/params_data_PaperDC_float32.jld2", "params")
+
+data = load("/var/scratch/lorozco/INS_old/lib/PaperDC/output/postanalysis/data_train.jld2", "data_train")
+# Parameters
+get_params(nlesscalar) = (;
+    D = 2,
+    Re = T(10_000),
+    tburn = T(0.05),
+    tsim = T(0.5),
+    Δt = T(5e-5),
+    nles = map(n -> (n, n), nlesscalar), # LES resolutions
+    ndns = (n -> (n, n))(4096), # DNS resolution
+    filters = (1, 2), 
+    ArrayType,
+    create_psolver = INS.psolver_spectral,
+    icfunc = (setup, psolver, rng) ->
+        random_field(setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
+    rng,
+)
+params = (; get_params([64, 128, 256])..., tsim = T(0.5), savefreq = 10);
 
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
@@ -32,5 +51,6 @@ nunroll = 5
 dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
 
 # Load the test data
-test_data = load("simulations/NavierStokes_2D/data/data_test.jld2", "data_test")
+#test_data = load("simulations/NavierStokes_2D/data/data_test_PaperDC_float32.jld2", "data_test")
+test_data = load("/var/scratch/lorozco/INS_old/lib/PaperDC/output/postanalysis/data_valid.jld2", "data_valid")
 test_io_post = create_io_arrays_posteriori(test_data, setups)

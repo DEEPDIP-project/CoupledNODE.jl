@@ -41,7 +41,7 @@ function create_callback(
         callbackstate = (;
             θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [], lhist_train = []),
         nunroll = nothing, batch_size = nothing, rng = Random.Xoshiro(123), do_plot = true,
-        plot_train = true, plot_every = 10)
+        plot_train = true, plot_every = 10, device = identity)
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")
     elseif nunroll !== nothing
@@ -52,7 +52,7 @@ function create_callback(
         dataloader = create_dataloader_prior(val_io_data; batchsize = batch_size, rng)
     end
     # select a fixed sample for the validation
-    y1, y2 = dataloader()
+    y1, y2 = device(dataloader())
     no_model_loss = loss_function(model, θ .* 0, st, (y1, y2))[1]
 
     function callback(p, l_train)

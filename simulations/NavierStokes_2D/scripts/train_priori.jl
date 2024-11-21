@@ -33,8 +33,8 @@ loss_priori_lux(closure, θ, st, train_data_priori)
 
 # * Define the callback
 callbackstate_val, callback_val = create_callback(
-    closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
-    rng = rng, do_plot = true, plot_train = false)
+    closure, θ, test_io_post[ig], loss_priori, st, batch_size = 100,
+    rng = rng, do_plot = false, plot_train = false)
 
 # * Training (via Lux)
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
