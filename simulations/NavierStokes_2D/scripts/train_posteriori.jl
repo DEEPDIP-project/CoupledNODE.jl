@@ -49,7 +49,7 @@ loss_posteriori_lux(closure, θ, st, train_data_posteriori)
 # * Callback function
 callbackstate_val, callback_val = create_callback(
     dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
-    rng = rng, do_plot = true, plot_train = false)
+    rng = rng, do_plot = false, plot_train = false)
 θ_posteriori = θ
 
 # * training via Lux

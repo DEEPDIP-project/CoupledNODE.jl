@@ -2,6 +2,7 @@ using Zygote: Zygote
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
+using Lux: Lux 
 
 """
 [DEPRECATED]
@@ -161,8 +162,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
         x = u[griddims..., :, 1]
         y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
         dt = t[2] - t[1]
-        #saveat_loss = [i * dt for i in 1:length(y)]
-        tspan = [t[1], t[end]]
+        tspan = typeof(x)([t[1], t[end]])
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = Array(solve(
             prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))

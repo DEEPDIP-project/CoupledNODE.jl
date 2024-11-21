@@ -9,6 +9,7 @@ using JLD2: load
 data = load("simulations/NavierStokes_2D/data/data_train.jld2", "data_train")
 params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 
+
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
     x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
