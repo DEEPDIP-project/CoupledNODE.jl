@@ -3,7 +3,6 @@ using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using Lux: Lux 
-using CUDA: CUDA
 
 """
 [DEPRECATED]
@@ -163,11 +162,14 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kw
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
-        CUDA.@allowscalar dt = dev(t[2] - t[1])
-        CUDA.@allowscalar tspan = dev([t[1], t[end]])
-        prob = ODEProblem(rhs, x, tspan, ps)
-        pred = dev(Array(solve(
-            prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...)))
+        tspan, dt, prob, pred = nothing, nothing, nothing, nothing # intiialize variable outside allowcscallar do.
+        CUDA.allowscalar() do
+            dt = t[2] - t[1]  # needs allowscalar
+            tspan = [t[1], t[end]] # needs allowscalar    
+            prob = ODEProblem(rhs, x, tspan, ps)
+            pred = dev(Array(solve(
+                prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...)))
+        end
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /

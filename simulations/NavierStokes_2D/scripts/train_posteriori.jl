@@ -1,6 +1,6 @@
 using CoupledNODE: cnn, train, create_loss_post_lux, create_callback
 using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
-using DifferentialEquations: ODEProblem, solve, Tsit5
+using DifferentialEquations: Tsit5
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: @save
 using Lux: Lux
@@ -14,7 +14,7 @@ using CUDA: CUDA
 if CUDA.functional()
     @info "Running on CUDA"
     using LuxCUDA
-    CUDA.allowscalar(true)
+    CUDA.allowscalar(false)
     dev = Lux.gpu_device()
     cpu = false
     backend = CUDA.CUDABackend()
