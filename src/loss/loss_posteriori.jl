@@ -166,7 +166,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kw
         CUDA.@allowscalar dt = dev(t[2] - t[1])
         CUDA.@allowscalar tspan = dev([t[1], t[end]])
         prob = ODEProblem(rhs, x, tspan, ps)
-        solve(prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...)
         pred = dev(Array(solve(
             prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...)))
         # remember that the first element of pred is the initial condition (SciML)

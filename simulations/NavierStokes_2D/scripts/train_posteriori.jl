@@ -17,10 +17,12 @@ if CUDA.functional()
     CUDA.allowscalar(true)
     dev = Lux.gpu_device()
     cpu = false
+    backend = CUDA.CUDABackend()
 else
     @info "Running on CPU"
     dev = Lux.cpu_device()
     cpu = true
+    backend = INS.CPU()
 end
 
 rng = Random.Xoshiro(123)
