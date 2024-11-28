@@ -8,3 +8,6 @@ Manifest.toml
 # Ignore large data files
 simulations/*/*/*.jld2
 test/test_data/*.jld2
+
+# Benchmarking
+simulations/Benchmark/output
