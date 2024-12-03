@@ -12,7 +12,8 @@ params = load("simulations/NavierStokes_2D/data/params_data.jld2", "params")
 # Build LES setups and assemble operators
 setups = map(params.nles) do nles
     x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
-    INS.Setup(; x = x, Re = params.Re)
+    INS.Setup(; x = x, Re = params.Re, backend = backend)
+    # warning: backend defined in training_posteriori.jl. Needed in Setup for INS functions called in rhs.
 end
 
 # * A posteriori io_arrays 

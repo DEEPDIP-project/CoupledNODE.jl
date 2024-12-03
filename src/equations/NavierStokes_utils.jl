@@ -149,7 +149,6 @@ function create_io_arrays_posteriori(data, setups)
         t = zeros(T, nsample, nt + 1)
         ifield = ntuple(Returns(:), D)
         for is in 1:nsample
-            println(is, ig, ifil)
             copyto!(
                 view(u, ifield..., :, is, :),
                 data[is][ig, ifil].u[ifield..., :, :]

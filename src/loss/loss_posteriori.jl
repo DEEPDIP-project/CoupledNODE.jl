@@ -2,6 +2,7 @@ using Zygote: Zygote
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
+using Lux: Lux
 
 """
 [DEPRECATED]
@@ -155,16 +156,20 @@ normalized by the sum of squared actual data values.
 - `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
 This makes it compatible with the Lux ecosystem.
 """
-function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
+function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kwargs...)
+    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
+    ArrayType = cpu ? Array : CUDA.CuArray
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
-        x = u[griddims..., :, 1]
-        y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-        dt = t[2] - t[1]
-        #saveat_loss = [i * dt for i in 1:length(y)]
-        tspan = [t[1], t[end]]
+        x = dev(u[griddims..., :, 1])
+        y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
+        tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
+        CUDA.allowscalar() do
+            dt = t[2] - t[1]  # needs allowscalar
+            tspan = [t[1], t[end]] # needs allowscalar
+        end
         prob = ODEProblem(rhs, x, tspan, ps)
-        pred = Array(solve(
+        pred = ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
