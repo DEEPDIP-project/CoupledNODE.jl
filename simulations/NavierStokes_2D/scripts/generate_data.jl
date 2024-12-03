@@ -6,8 +6,7 @@ T = Float64
 rng = Random.Xoshiro(123)
 
 using Pkg
-Pkg.add(url = "git@github.com:DEEPDIP-project/NeuralClosure.jl.git")
-
+Pkg.add(url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git")
 using NeuralClosure: NeuralClosure as NC
 
 # Number of simulations to generate for each grid

@@ -1,6 +1,11 @@
 using CoupledNODE
 using Test
 
+# Needs to be run before tests
+@testset "generate test data" begin
+    include("generate_test_data.jl")
+end
+
 #=
 Don't add your tests to runtests.jl. Instead, create files named
 
