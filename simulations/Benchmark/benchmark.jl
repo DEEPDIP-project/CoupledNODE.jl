@@ -127,7 +127,7 @@ params = (;
     Re = T(6e3),
     tburn = T(0.5),
     tsim = T(2),
-    savefreq = 50,
+    savefreq = 100,
     ndns = 64,
     nles = [32,],
     filters = (FaceAverage(),),
@@ -137,6 +137,7 @@ params = (;
     bodyforce = (dim, x, y, t) -> (dim == 1) * 5 * sinpi(8 * y),
     issteadybodyforce = true,
     processors = (; log = timelogger(; nupdate = 100)),
+    Δt = T(1e-3),
 )
 
 # DNS seeds

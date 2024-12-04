@@ -11,3 +11,4 @@ test/test_data/*.jld2
 
 # Benchmarking
 simulations/Benchmark/output
+simulations/Benchmark/Manifest.toml

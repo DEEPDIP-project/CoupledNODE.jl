@@ -20,7 +20,7 @@ createdata(; params, seeds, outdir, taskid) =
             ispath(datadir) || mkpath(datadir)
             push!(filenames, f)
         end
-        data = create_les_data(; params..., rng = Xoshiro(seed), filenames)
+        data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt)
         @info(
             "Trajectory info:",
             data[1].comptime / 60,
@@ -83,11 +83,15 @@ function trainprior(;
         figfile = joinpath(figdir, splitext(basename(priorfile))[1] * ".pdf")
         checkfile = join(splitext(priorfile), "_checkpoint")
         batchseed, validseed = splitseed(priorseed, 2) # Same seed for all training setups
-        setup = getsetup(; params, nles)
-        #data_train =
-        #    map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_train)
-        #data_valid =
-        #    map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_valid)
+
+        # Read the data in the format expected by the CoupledNODE
+        T = eltype(params.Re)
+        setup = []
+        for nl in nles
+            x = ntuple(α -> LinRange(T(0.0), T(1.0), nl + 1), params.D)
+            push!(setup, Setup(; x = x, Re = params.Re))
+        end
+        
         # Read the data in the format expected by the CoupledNODE
         data_train = [] 
         for s in dns_seeds_train
@@ -99,18 +103,10 @@ function trainprior(;
             data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
             push!(data_valid, hcat(data_i))
         end
-        @show length(data_train)
-        @show typeof(data_train)
-        @assert false
-        @show size(data_train[1].u)
-        @show size(data_train[1])
         io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
-        @assert false
-#        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
+        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
         θ = device(θ_start)
-        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(data_train; batchsize = batchsize,rng=dns_seeds_train)
-        @info dataloader_prior()
-        @assert false
+        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(io_train[1]; batchsize = batchsize,rng=Random.Xoshiro(dns_seeds_train[1]))
         train_data_priori = dataloader_prior()
         loss = loss_priori_lux(closure, θ, st, train_data_priori)
         optstate = Optimisers.setup(opt, θ)
