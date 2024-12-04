@@ -128,8 +128,8 @@ params = (;
     tburn = T(0.5),
     tsim = T(2),
     savefreq = 50,
-    ndns = 32,
-    nles = [16,],
+    ndns = 64,
+    nles = [32,],
     filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
@@ -140,19 +140,17 @@ params = (;
 )
 
 # DNS seeds
-ntrajectory = 3
+ntrajectory = 5
 dns_seeds = splitseed(seeds.dns, ntrajectory)
 dns_seeds_train = dns_seeds[1:ntrajectory-2]
 dns_seeds_valid = dns_seeds[ntrajectory-1:ntrajectory-1]
 dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
-docreatedata = false
 docreatedata = true
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
 
 # Computational time
-docomp = false
 docomp = true
 docomp && let
     comptime, datasize = 0.0, 0.0
@@ -181,7 +179,7 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 # All training sessions will start from the same θ₀
 # for a fair comparison.
 
-closure, θ, st = CoupledNODE.cnn(;
+closure, θ_start, st = CoupledNODE.cnn(;
     T = T,
     D = params.D,
     data_ch = params.D,
@@ -189,7 +187,7 @@ closure, θ, st = CoupledNODE.cnn(;
     channels = [2, 2],
     activations = [tanh, identity],
     use_bias = [false, false],
-    rng
+    rng = Xoshiro(seeds.θ_start),
 )
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
@@ -203,7 +201,7 @@ let
     u = randn(T, 32, 32, 2, 10) |> device
     θ = θ_start |> device
     closure(u, θ, st)
-    gradient(θ -> sum(closure(u, θ, st)), θ)
+    gradient(θ -> sum(closure(u, θ, st)[1]), θ)
     clean()
 end
 
@@ -222,11 +220,9 @@ end
 
 # Train
 let
-    dotrain = false
     dotrain = true
     nepoch = 10
     niter = 20
-    #niter = nothing
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,

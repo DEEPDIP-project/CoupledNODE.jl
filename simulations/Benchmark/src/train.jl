@@ -84,15 +84,33 @@ function trainprior(;
         checkfile = join(splitext(priorfile), "_checkpoint")
         batchseed, validseed = splitseed(priorseed, 2) # Same seed for all training setups
         setup = getsetup(; params, nles)
-        data_train =
-            map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_train)
-        data_valid =
-            map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_valid)
-        @info size(data_train)
+        #data_train =
+        #    map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_train)
+        #data_valid =
+        #    map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_valid)
+        # Read the data in the format expected by the CoupledNODE
+        data_train = [] 
+        for s in dns_seeds_train
+            data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
+            push!(data_train, hcat(data_i))
+        end
+        data_valid = []
+        for s in dns_seeds_valid
+            data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
+            push!(data_valid, hcat(data_i))
+        end
+        @show length(data_train)
+        @show typeof(data_train)
+        @assert false
+        @show size(data_train[1].u)
+        @show size(data_train[1])
         io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
-        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
+        @assert false
+#        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
         θ = device(θ_start)
-        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(io_train; batchsize = batchsize, dns_seeds_train)
+        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(data_train; batchsize = batchsize,rng=dns_seeds_train)
+        @info dataloader_prior()
+        @assert false
         train_data_priori = dataloader_prior()
         loss = loss_priori_lux(closure, θ, st, train_data_priori)
         optstate = Optimisers.setup(opt, θ)
