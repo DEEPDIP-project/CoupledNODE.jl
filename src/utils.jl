@@ -58,7 +58,9 @@ function create_callback(
     function callback(p, l_train)
         step = length(callbackstate.lhist_val)
         # to compute the validation loss, use the parameters p at this step
-        l_val = loss_function(model, p, st, (y1, y2))[1]
+        #l_val = loss_function(model, p, st, (y1, y2))[1]
+        # to compute the validation loss, use the best parameters 
+        l_val = loss_function(model, callbackstate.θmin, st, (y1, y2))[1]
 
         @info "Training Loss[$(step)]: $(l_train)"
         @info "Validation Loss[$(step)]: $(l_val)"

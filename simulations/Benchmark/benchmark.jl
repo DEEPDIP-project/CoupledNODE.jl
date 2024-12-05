@@ -126,10 +126,10 @@ params = (;
     lims = (T(0), T(1)),
     Re = T(6e3),
     tburn = T(0.5),
-    tsim = T(2),
+    tsim = T(5),
     savefreq = 100,
-    ndns = 64,
-    nles = [32,],
+    ndns = 128,
+    nles = [64,],
     filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
@@ -141,18 +141,18 @@ params = (;
 )
 
 # DNS seeds
-ntrajectory = 5
+ntrajectory = 8
 dns_seeds = splitseed(seeds.dns, ntrajectory)
 dns_seeds_train = dns_seeds[1:ntrajectory-2]
 dns_seeds_valid = dns_seeds[ntrajectory-1:ntrajectory-1]
 dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
-docreatedata = true
+docreatedata = false
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
 
 # Computational time
-docomp = true
+docomp = false
 docomp && let
     comptime, datasize = 0.0, 0.0
     for seed in dns_seeds
@@ -184,10 +184,10 @@ closure, θ_start, st = CoupledNODE.cnn(;
     T = T,
     D = params.D,
     data_ch = params.D,
-    radii = [2, 2],
-    channels = [2, 2],
-    activations = [tanh, identity],
-    use_bias = [false, false],
+    radii = [2, 2, 2, 2],
+    channels = [8,8,8, 2],
+    activations = [tanh,tanh,tanh, identity],
+    use_bias = [true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
 
@@ -221,9 +221,8 @@ end
 
 # Train
 let
-    dotrain = true
-    nepoch = 10
-    niter = 20
+    dotrain = false
+    nepoch = 300
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
@@ -236,16 +235,8 @@ let
         θ_start,
         st,
         opt = Adam(T(1.0e-3)),
-        λ = T(5.0e-5),
-        scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-3), period = nepoch),
-        nvalid = 64,
-        batchsize = 16,
-        displayref = true,
-        displayupdates = true, # Set to `true` if using CairoMakie
-        nupdate_callback = 20,
-        loadcheckpoint = false,
+        batchsize = 32,
         nepoch,
-        niter,
     )
 end
 
@@ -277,20 +268,14 @@ with_theme(; palette) do
         ylims!(-0.05, 1.05)
         lines!(
             ax,
-            [Point2f(0, 1), Point2f(priortraining[ig, 1].hist[end][1], 1)];
+            [Point2f(0, 1), Point2f(priortraining[ig, 1].lhist_val[end][1], 1)];
             label = "No closure",
             linestyle = :dash,
         )
         for (ifil, Φ) in enumerate(params.filters)
             label = Φ isa FaceAverage ? "FA" : "VA"
-            lines!(ax, priortraining[ig, ifil].hist; label)
+            lines!(ax, priortraining[ig, ifil].lhist_val; label)
         end
-        # lines!(
-        #     ax,
-        #     [Point2f(0, 0), Point2f(priortraining[ig, 1].hist[end][1], 0)];
-        #     label = "DNS",
-        #     linestyle = :dash,
-        # )
     end
     axes = filter(x -> x isa Axis, fig.content)
     linkaxes!(axes...)
@@ -317,9 +302,8 @@ projectorders = ProjectOrder.First, ProjectOrder.Last
 
 # Train
 let
-    dotrain = false
+    dotrain = true
     nepoch = 10
-    niter = 10
     dotrain && trainpost(;
         params,
         projectorders,
@@ -329,21 +313,13 @@ let
         postseed = seeds.post,
         dns_seeds_train,
         dns_seeds_valid,
-        nsubstep = 5,
-        nunroll = 10,
-        ntrajectory = 5,
+        nunroll = 5,
         closure,
         θ_start = θ_cnn_prior,
+        st,
         opt = Adam(T(1e-4)),
-        λ = T(5e-8),
-        scheduler = CosAnneal(; l0 = T(1e-6), l1 = T(1e-4), period = nepoch),
-        nunroll_valid = 50,
-        nupdate_callback = 10,
-        displayref = false,
-        displayupdates = true,
-        loadcheckpoint = false,
-        nepoch,
-        niter,
+        nunroll_valid = 10,
+        nepoch
     )
 end
 

@@ -5,7 +5,12 @@ module Benchmark
 
 using Accessors
 using Adapt
+using ComponentArrays
+using CoupledNODE
+using CoupledNODE: loss_priori_lux, create_loss_post_lux
+using CoupledNODE.NavierStokes: create_right_hand_side_with_closure
 using Dates
+using DifferentialEquations
 using DocStringExtensions
 using EnumX
 using LinearAlgebra

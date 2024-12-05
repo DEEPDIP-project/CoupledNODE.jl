@@ -1,4 +1,3 @@
-using CoupledNODE
 
 getdatafile(outdir, nles, filter, seed) =
     joinpath(outdir, "data", splatfileparts(; seed = repr(seed), filter, nles) * ".jld2")
@@ -51,17 +50,9 @@ function trainprior(;
     θ_start,
     st,
     opt,
-    λ = nothing,
-    noiselevel = nothing,
-    scheduler = nothing,
-    nvalid,
     batchsize,
-    displayref,
-    displayupdates,
-    nupdate_callback,
-    loadcheckpoint,
+    loadcheckpoint=false,
     nepoch,
-    niter,
 )
     device(x) = adapt(params.backend, x)
     itotal = 0
@@ -105,77 +96,27 @@ function trainprior(;
         end
         io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
         io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
-        θ = device(θ_start)
-        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(io_train[1]; batchsize = batchsize,rng=Random.Xoshiro(dns_seeds_train[1]))
+        θ = device(copy(θ_start))
+        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(io_train[itotal]; batchsize = batchsize,rng=Random.Xoshiro(dns_seeds_train[itotal]))
         train_data_priori = dataloader_prior()
-        loss = loss_priori_lux(closure, θ, st, train_data_priori)
-        optstate = Optimisers.setup(opt, θ)
-        it = rand(Xoshiro(validseed), 1:size(io_valid.u, params.D + 2), nvalid)
-        validset = device(map(v -> collect(selectdim(v, ndims(v), it)), io_valid))
-        (; callbackstate, callback) = create_callback(
-            create_relerr_prior(closure, validset...);
-            θ,
-            displayref,
-            displayupdates,
-            figfile,
-            nupdate = nupdate_callback,
-        )
-        if loadcheckpoint
-            # Resume from checkpoint
-            (; icheck, trainstate, callbackstate) = namedtupleload(checkfile)
-            @assert eltype(callbackstate.θmin) == Float32 "gpu_device() only works with Float32"
-            trainstate = trainstate |> gpu_device()
-            @reset callbackstate.θmin = callbackstate.θmin |> gpu_device()
-        else
-            icheck = 0
-            trainstate = (; optstate, θ, rng = Xoshiro(batchseed))
-            callbackstate = callback(callbackstate, trainstate) # Initial callback
-        end
-        for iepoch = icheck+1:nepoch
-            # (; trainstate, callbackstate) = train(;
-            #     dataloader,
-            #     loss,
-            #     trainstate,
-            #     scheduler,
-            #     callbackstate,
-            #     callback,
-            #     niter,
-            # )
-            dataloader = DataLoader(
-                (io_train.u, io_train.c);
-                batchsize,
-                trainstate.rng,
-                buffer = true,
-                shuffle = true,
-                parallel = false,
-                partial = false,
-            )
-            (; trainstate, callbackstate) = trainepoch(;
-                dataloader,
-                loss,
-                trainstate,
-                callbackstate,
-                callback,
-                device,
-                noiselevel,
-                λ,
-            )
-            if !isnothing(scheduler)
-                eta = scheduler(iepoch)
-                Optimisers.adjust!(trainstate.optstate, eta)
-            end
-            # Save all states to resume training later
-            # First move all arrays to CPU
-            c = callbackstate |> cpu_device()
-            t = trainstate |> cpu_device()
-            jldsave(checkfile; icheck = iepoch, callbackstate = c, trainstate = t)
-        end
+        loss_priori_lux(closure, θ, st, train_data_priori)
+        loss = loss_priori_lux
+
+        callbackstate, callback = CoupledNODE.create_callback(
+            closure, θ, io_valid[itotal], loss, st, batch_size = batchsize,
+            rng = Xoshiro(batchseed), do_plot = true, plot_train = false)
+
+        l, trainstate = CoupledNODE.train(closure, θ, st, dataloader_prior, loss;    nepochs = nepoch, alg = opt, cpu =  params.backend==CPU() , callback = callback)
+        # TODO CoupledNODE has no checkpoints yet, but here it should save them
+        # TODO CoupledNODE should also save some figures
+
         θ = callbackstate.θmin # Use best θ instead of last θ
-        results = (; θ = Array(θ), comptime = time() - starttime, callbackstate.hist)
+        results = (; θ = Array(θ), comptime = time() - starttime, callbackstate.lhist_val)
         save_object(priorfile, results)
     end
     @info "Finished a-priori training."
 end
+
 
 getpostfile(outdir, nles, filter, projectorder) =
     joinpath(outdir, "posttraining", splatfileparts(; projectorder, filter, nles) * ".jld2")
@@ -196,21 +137,13 @@ function trainpost(;
     postseed,
     dns_seeds_train,
     dns_seeds_valid,
-    nsubstep,
     nunroll,
-    ntrajectory,
     closure,
     θ_start,
+    st,
     opt,
-    λ = nothing,
-    scheduler,
     nunroll_valid,
-    nupdate_callback,
-    displayref,
-    displayupdates,
-    loadcheckpoint,
     nepoch,
-    niter,
 )
     device(x) = adapt(params.backend, x)
     itotal = 0
@@ -235,69 +168,43 @@ function trainpost(;
         checkfile = join(splitext(postfile), "_checkpoint")
         setup = getsetup(; params, nles)
         psolver = default_psolver(setup)
-        loss = create_loss_post(;
-            setup,
-            psolver,
-            method = RKProject(params.method, projectorder),
-            closure,
-            nsubstep, # Time steps per loss evaluation
-        )
-        data_train =
-            map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_train)
-        data_valid =
-            map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_valid)
-        dataloader = create_dataloader_post(
-            map(d -> (; d.u, d.t), data_train);
-            device,
-            nunroll,
-            ntrajectory,
-        )
-        θ = θ_start[igrid, ifil] |> device
-        optstate = Optimisers.setup(opt, θ)
-        (; callbackstate, callback) = let
-            d = data_valid[1]
-            it = 1:nunroll_valid
-            data =
-                (; u = selectdim(d.u, ndims(d.u), it) |> collect |> device, t = d.t[it])
-            create_callback(
-                create_relerr_post(;
-                    data,
-                    setup,
-                    psolver,
-                    method = RKProject(params.method, projectorder),
-                    closure_model = wrappedclosure(closure, setup),
-                    nsubstep,
-                );
-                θ,
-                figfile,
-                displayref,
-                displayupdates,
-                nupdate = nupdate_callback,
-            )
+        # Read the data in the format expected by the CoupledNODE
+        T = eltype(params.Re)
+        setup = []
+        for nl in nles
+            x = ntuple(α -> LinRange(T(0.0), T(1.0), nl + 1), params.D)
+            push!(setup, Setup(; x = x, Re = params.Re))
         end
-        if loadcheckpoint
-            @info "Resuming from checkpoint $checkfile"
-            (; icheck, trainstate, callbackstate) = namedtupleload(checkfile)
-            @assert eltype(callbackstate.θmin) == Float32 "gpu_device() only works with Float32"
-            trainstate = trainstate |> gpu_device()
-            @reset callbackstate.θmin = callbackstate.θmin |> gpu_device()
-        else
-            icheck = 0
-            trainstate = (; optstate, θ, rng = Xoshiro(postseed))
-            callbackstate = callback(callbackstate, trainstate) # Initial callback
+        
+        # Read the data in the format expected by the CoupledNODE
+        data_train = [] 
+        for s in dns_seeds_train
+            data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
+            push!(data_train, hcat(data_i))
         end
-        for iepoch = icheck+1:nepoch
-            (; trainstate, callbackstate) =
-                train(; dataloader, loss, trainstate, niter, callbackstate, callback, λ)
-            if !isnothing(scheduler)
-                eta = scheduler(iepoch)
-                Optimisers.adjust!(trainstate.optstate, eta)
-            end
-            @info "Saving checkpoint to $(basename(checkfile))"
-            c = callbackstate |> cpu_device()
-            t = trainstate |> cpu_device()
-            jldsave(checkfile; icheck = iepoch, callbackstate = c, trainstate = t)
+        data_valid = []
+        for s in dns_seeds_valid
+            data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
+            push!(data_valid, hcat(data_i))
         end
+        io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
+        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
+
+        θ = copy(θ_start)
+        θ = device(copy(θ_start[itotal]))
+        dataloader_post = CoupledNODE.NavierStokes.create_dataloader_posteriori(io_train[itotal]; nunroll = nunroll, rng=Random.Xoshiro(dns_seeds_train[itotal]))
+
+        dudt_nn = create_right_hand_side_with_closure(
+            setup[1], psolver, closure, st)
+        loss = create_loss_post_lux(dudt_nn; sciml_solver = Tsit5())
+
+        callbackstate, callback = CoupledNODE.create_callback(
+            closure, θ, io_valid[itotal], loss, st, nunroll = nunroll_valid,            rng = Xoshiro(postseed), do_plot = true,     plot_train = false)
+
+        l, trainstate = CoupledNODE.train(closure, θ, st, dataloader_post, loss;    nepochs = nepoch, alg = opt, cpu =  params.backend==CPU() , callback = callback)
+        # TODO CoupledNODE has no checkpoints yet, but here it should save them
+        # TODO CoupledNODE should also save some figures
+
         θ = callbackstate.θmin # Use best θ instead of last θ
         results = (; θ = Array(θ), comptime = time() - starttime)
         save_object(postfile, results)
