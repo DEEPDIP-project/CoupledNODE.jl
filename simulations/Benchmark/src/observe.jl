@@ -19,7 +19,7 @@ function observe_v(dnsobs, Φ, les, compression, psolver)
         Pv = zeros(T, 0),
         Pc = zeros(T, 0),
         c = zeros(T, 0),
-        E = zeros(T, 0),
+        E = zeros(T, 0)
     )
     on(dnsobs) do (; u, PF, t, E)
         push!(results.t, t)
@@ -63,13 +63,13 @@ function observe_v(dnsobs, Φ, les, compression, psolver)
     results
 end
 
-observe_u(dns, psolver_dns, filters; PF, p, nupdate = 1) =
+function observe_u(dns, psolver_dns, filters; PF, p, nupdate = 1)
     processor() do state
         # PF = zero.(state[].u)
         # p = zero(state[].u[1])
         dnsobs = Observable((; state[].u, PF, state[].t, E = zero(eltype(p))))
-        results =
-            map(f -> observe_v(dnsobs, f.Φ, f.setup, f.compression, f.psolver), filters)
+        results = map(
+            f -> observe_v(dnsobs, f.Φ, f.setup, f.compression, f.psolver), filters)
         on(state) do (; u, t, n)
             n % nupdate == 0 || return
             apply_bc_u!(u, t, dns)
@@ -86,3 +86,4 @@ observe_u(dns, psolver_dns, filters; PF, p, nupdate = 1) =
         # state[] = state[] # Save initial conditions
         results
     end
+end

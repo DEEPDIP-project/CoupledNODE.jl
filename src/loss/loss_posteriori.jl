@@ -160,12 +160,14 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = u[griddims..., :, 1]
         y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-        dt = t[2] - t[1]
-        #saveat_loss = [i * dt for i in 1:length(y)]
+        if !(:dt in keys(kwargs))
+            dt = t[2] - t[1]
+            kwargs = (; kwargs..., dt = dt)
+        end
         tspan = [t[1], t[end]]
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = Array(solve(
-            prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
+            prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /

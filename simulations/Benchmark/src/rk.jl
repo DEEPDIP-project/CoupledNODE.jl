@@ -15,35 +15,38 @@ end
 
 Runge-Kutta method with different projection order than the default Runge-Kutta method.
 """
-struct RKProject{T,R} <: IncompressibleNavierStokes.AbstractODEMethod{T}
+struct RKProject{T, R} <: IncompressibleNavierStokes.AbstractODEMethod{T}
     "Runge-Kutta method, for example `RKMethods.RK44()`."
     rk::R
 
     "Projection order, see [`ProjectOrder`](@ref)."
     projectorder::ProjectOrder.T
 
-    RKProject(rk, projectorder) = new{eltype(rk.A),typeof(rk)}(rk, projectorder)
+    RKProject(rk, projectorder) = new{eltype(rk.A), typeof(rk)}(rk, projectorder)
 end
 
-IncompressibleNavierStokes.ode_method_cache(method::RKProject, setup) =
+function IncompressibleNavierStokes.ode_method_cache(method::RKProject, setup)
     IncompressibleNavierStokes.ode_method_cache(method.rk, setup)
+end
 
-IncompressibleNavierStokes.create_stepper(
-    method::RKProject;
-    setup,
-    psolver,
-    u,
-    temp,
-    t,
-    n = 0,
-) = IncompressibleNavierStokes.create_stepper(method.rk; setup, psolver, u, temp, t, n)
+function IncompressibleNavierStokes.create_stepper(
+        method::RKProject;
+        setup,
+        psolver,
+        u,
+        temp,
+        t,
+        n = 0
+)
+    IncompressibleNavierStokes.create_stepper(method.rk; setup, psolver, u, temp, t, n)
+end
 
 function IncompressibleNavierStokes.timestep!(
-    method::RKProject,
-    stepper,
-    Δt;
-    θ = nothing,
-    cache,
+        method::RKProject,
+        stepper,
+        Δt;
+        θ = nothing,
+        cache
 )
     (; setup, psolver, u, temp, t, n) = stepper
     (; closure_model) = setup
@@ -58,7 +61,7 @@ function IncompressibleNavierStokes.timestep!(
     tstart = t
     copyto!(ustart, u)
 
-    for i = 1:nstage
+    for i in 1:nstage
         # Compute force at current stage i
         apply_bc_u!(u, t, setup)
         momentum!(ku[i], u, temp, t, setup)
@@ -83,7 +86,7 @@ function IncompressibleNavierStokes.timestep!(
 
         # Apply stage forces
         u .= ustart
-        for j = 1:i
+        for j in 1:i
             @. u += Δt * A[i, j] * ku[j]
         end
 
@@ -117,7 +120,7 @@ function IncompressibleNavierStokes.timestep(method::RKProject, stepper, Δt; θ
     ustart = u
     ku = ()
 
-    for i = 1:nstage
+    for i in 1:nstage
         # Compute force at current stage i
         u = IncompressibleNavierStokes.apply_bc_u(u, t, setup)
         F = IncompressibleNavierStokes.momentum(u, temp, t, setup)
@@ -145,7 +148,7 @@ function IncompressibleNavierStokes.timestep(method::RKProject, stepper, Δt; θ
 
         # Apply stage forces
         u = ustart
-        for j = 1:i
+        for j in 1:i
             u = @. u + Δt * A[i, j] * ku[j]
         end
 

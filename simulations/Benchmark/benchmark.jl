@@ -1,3 +1,4 @@
+#! format: off 
 if false                      #src
     include("src/Benchmark.jl") #src
 end                           #src
@@ -127,9 +128,9 @@ params = (;
     Re = T(6e3),
     tburn = T(0.5),
     tsim = T(5),
-    savefreq = 100,
+    savefreq = 10,
     ndns = 128,
-    nles = [64,],
+    nles = [32,],
     filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
@@ -221,8 +222,8 @@ end
 
 # Train
 let
-    dotrain = false
-    nepoch = 300
+    dotrain = true
+    nepoch = 200
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
@@ -234,8 +235,8 @@ let
         closure,
         θ_start,
         st,
-        opt = Adam(T(1.0e-3)),
-        batchsize = 32,
+        opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1)),
+        batchsize = 64,
         nepoch,
     )
 end
@@ -268,7 +269,8 @@ with_theme(; palette) do
         ylims!(-0.05, 1.05)
         lines!(
             ax,
-            [Point2f(0, 1), Point2f(priortraining[ig, 1].lhist_val[end][1], 1)];
+#            [Point2f(0, 1), Point2f(priortraining[ig, 1].lhist_nomodel[end][1], 1)];
+            priortraining[ig, 1].lhist_nomodel,
             label = "No closure",
             linestyle = :dash,
         )
@@ -298,12 +300,16 @@ end
 #
 # The time stepper `RKProject` allows for choosing when to project.
 
-projectorders = ProjectOrder.First, ProjectOrder.Last
+# First = DIF (Bad!)
+# Last = DCF
+projectorders = (ProjectOrder.Last, )
+# I think that in practice we can only do DCF 
+nprojectorders = length(projectorders)
 
 # Train
 let
     dotrain = true
-    nepoch = 10
+    nepoch = 100
     dotrain && trainpost(;
         params,
         projectorders,
@@ -317,9 +323,10 @@ let
         closure,
         θ_start = θ_cnn_prior,
         st,
-        opt = Adam(T(1e-4)),
+        opt = ClipAdam = OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1)),
         nunroll_valid = 10,
-        nepoch
+        nepoch,
+        dt = T(1e-3),
     )
 end
 
@@ -332,7 +339,7 @@ posttraining = loadpost(outdir, params.nles, params.filters, projectorders)
 # Training times
 map(p -> p.comptime, posttraining) ./ 60
 map(p -> p.comptime, posttraining) |> sum |> x -> x / 60
-map(p -> p.comptime, posttraining) |> x -> reshape(x, :, 2) .|> x -> round(x; digits = 1)
+map(p -> p.comptime, posttraining) |> x -> reshape(x, :, nprojectorders) .|> x -> round(x; digits = 1)
 
 # ## Plot a-posteriori training history
 
@@ -349,9 +356,6 @@ with_theme(; palette) do
                 ylabel = projectorder == ProjectOrder.First ? "DIF" : "DCF",
                 ylabelvisible = ig == 1,
                 ylabelfont = :bold,
-                # yticksvisible = ig == 1,
-                # yticklabelsvisible = ig == 1,
-                # yscale = log10,
                 titlevisible = iorder == 1,
                 xlabelvisible = iorder == 2,
                 xticksvisible = iorder == 2,
@@ -359,11 +363,11 @@ with_theme(; palette) do
             )
             for (ifil, Φ) in enumerate(params.filters)
                 postfile = Benchmark.getpostfile(outdir, nles, Φ, projectorder)
-                checkfile = join(splitext(postfile), "_checkpoint")
-                check = namedtupleload(checkfile)
-                (; hist) = check.callbackstate
+                check = namedtupleload(postfile)
+                # print the keys of the checkpoint
+                (; lhist_val) = check[1]
                 label = Φ isa FaceAverage ? "FA" : "VA"
-                lines!(ax, hist; color = Cycled(ifil + 1), label)
+                lines!(ax, lhist_val; color = Cycled(ifil + 1), label)
             end
             ig == 4 && iorder == 1 && axislegend(ax)
             push!(axes, ax)

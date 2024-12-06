@@ -16,7 +16,8 @@ using EnumX
 using LinearAlgebra
 using IncompressibleNavierStokes
 using IncompressibleNavierStokes:
-    momentum!, divergence!, project!, apply_bc_u!, kinetic_energy!, scalewithvolume!
+                                  momentum!, divergence!, project!, apply_bc_u!,
+                                  kinetic_energy!, scalewithvolume!
 using JLD2
 using LoggingExtras
 using Lux
@@ -69,13 +70,15 @@ function splatfileparts(args...; kwargs...)
     join(s, "_")
 end
 
-getsetup(; params, nles) = Setup(;
-    x = ntuple(α -> range(params.lims..., nles + 1), params.D),
-    params.Re,
-    params.backend,
-    params.bodyforce,
-    params.issteadybodyforce,
-)
+function getsetup(; params, nles)
+    Setup(;
+        x = ntuple(α -> range(params.lims..., nles + 1), params.D),
+        params.Re,
+        params.backend,
+        params.bodyforce,
+        params.issteadybodyforce
+    )
+end
 
 include("observe.jl")
 include("rk.jl")
