@@ -4,7 +4,7 @@ using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: @save
 using Lux: Lux
 using Optimization: Optimization
-using OptimizationOptimisers: OptimizationOptimisers
+using OptimizationOptimisers: OptimizationOptimisers, Adam, ClipGrad, OptimiserChain
 using Random: Random
 
 T = Float32
@@ -16,12 +16,12 @@ d = D = setups[ig].grid.dimension()
 # * Creation of the model: NN closure
 closure, θ, st = cnn(;
     T = T,
-    D = D,
-    data_ch = D,
-    radii = [3, 3],
-    channels = [2, 2],
-    activations = [tanh, identity],
-    use_bias = [false, false],
+    D = params.D,
+    data_ch = params.D,
+    radii = [2, 2, 2, 2],
+    channels = [8, 8, 8, 2],
+    activations = [tanh, tanh, tanh, identity],
+    use_bias = [true, true, true, false],
     rng
 )
 
@@ -33,13 +33,14 @@ loss_priori_lux(closure, θ, st, train_data_priori)
 
 # * Define the callback
 callbackstate_val, callback_val = create_callback(
-    closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
-    rng = rng, do_plot = true, plot_train = false)
+    closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 64,
+    rng = rng, do_plot = true, plot_train = true)
 
 # * Training (via Lux)
+opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1));
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
-    nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_val)
+    nepochs = 1000, ad_type = Optimization.AutoZygote(),
+    alg = opt, cpu = true, callback = callback_val);
 # the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
 
