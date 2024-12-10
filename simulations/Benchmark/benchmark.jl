@@ -53,7 +53,10 @@ using Adapt
 # using GLMakie
 using CairoMakie
 using CoupledNODE
+using CoupledNODE: loss_priori_lux, create_loss_post_lux
+using CoupledNODE.NavierStokes: create_right_hand_side, create_right_hand_side_with_closure
 using CUDA
+using DifferentialEquations
 using IncompressibleNavierStokes
 using IncompressibleNavierStokes.RKMethods
 using JLD2
@@ -191,6 +194,16 @@ closure, θ_start, st = CoupledNODE.cnn(;
     use_bias = [true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
+# same model structure in INS format
+closure_INS, θ_INS = cnn(;
+    setup = setups[1],
+    radii = [2,2, 2, 2],
+    channels = [8,8,8, 2],
+    activations = [tanh,tanh,tanh, identity],
+    use_bias = [ true,true,true, false],
+    rng = Xoshiro(seeds.θ_start),
+)
+@assert θ_start == θ_INS
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
 
@@ -222,7 +235,7 @@ end
 
 # Train
 let
-    dotrain = true
+    dotrain = false
     nepoch = 200
     dotrain && trainprior(;
         params,
@@ -308,7 +321,7 @@ nprojectorders = length(projectorders)
 
 # Train
 let
-    dotrain = true
+    dotrain = false
     nepoch = 100
     dotrain && trainpost(;
         params,
@@ -405,13 +418,13 @@ let
         setup = getsetup(; params, nles)
         data = map(s -> namedtupleload(getdatafile(outdir, nles, Φ, s)), dns_seeds_test)
         testset = create_io_arrays(data, setup)
-        i = 1:100
+        i = 1:min(1000, size(testset.u, 4))
         u, c = testset.u[:, :, :, i], testset.c[:, :, :, i]
         testset = (u, c) |> device
-        err = create_relerr_prior(closure, testset...)
-        eprior.prior[ig, ifil] = err(device(θ_cnn_prior[ig, ifil]))
+        priori_err(θ) = loss_priori_lux(closure, θ, st, testset)
+        eprior.prior[ig, ifil] = priori_err(device(θ_cnn_prior[ig, ifil]))[1]
         for iorder in eachindex(projectorders)
-            eprior.post[ig, ifil, iorder] = err(device(θ_cnn_post[ig, ifil, iorder]))
+            eprior.post[ig, ifil, iorder] = priori_err(device(θ_cnn_post[ig, ifil, iorder]))[1]
         end
     end
     jldsave(joinpath(outdir, "eprior.jld2"); eprior...)
@@ -452,28 +465,19 @@ let
             u = selectdim(sample.u, ndims(sample.u), it) |> collect |> device,
             t = sample.t[it],
         )
-        nsubstep = 5
-        method = RKProject(params.method, projectorder)
+        dt = T(1e-3)
+        
         ## No model
-        err = create_relerr_post(;
-            data,
-            setup,
-            psolver,
-            method,
-            closure_model = nothing,
-            nsubstep,
-        )
-        epost.nomodel[I] = err(nothing)
-        err = create_relerr_post(;
-            data,
-            setup,
-            psolver,
-            method,
-            closure_model = wrappedclosure(closure, setup),
-            nsubstep,
-        )
-        epost.cnn_prior[I] = err(device(θ_cnn_prior[ig, ifil]))
-        epost.cnn_post[I] = err(device(θ_cnn_post[I]))
+        dudt_nomod = create_right_hand_side(
+            setup, psolver)
+        err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt)
+        epost.nomodel[I] = err_post(closure, θ_cnn_post[I].*0 , st, data)[1]
+        # with closure
+        dudt = create_right_hand_side_with_closure(
+            setup, psolver, closure, st)
+        err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt)
+        epost.cnn_prior[I] = err_post(closure, device(θ_cnn_prior[ig, ifil]), st, data)[1]
+        epost.cnn_post[I] =  err_post(closure, device(θ_cnn_post[I]), st, data)[1]
         clean()
     end
     jldsave(joinpath(outdir, "epost.jld2"); epost...)
@@ -512,8 +516,7 @@ with_theme(; palette) do
         for (e, marker, label, color) in [
             (eprior.nomodel, :circle, "No closure", Cycled(1)),
             (eprior.prior[:, ifil], :utriangle, "CNN (prior)", Cycled(2)),
-            (eprior.post[:, ifil, 1], :rect, "CNN (post, DIF)", Cycled(3)),
-            (eprior.post[:, ifil, 2], :diamond, "CNN (post, DCF)", Cycled(4)),
+            (eprior.post[:, ifil, 1], :diamond, "CNN (post, DCF)", Cycled(3)),
         ]
             scatterlines!(params.nles, e; marker, color, label)
         end
@@ -537,8 +540,9 @@ with_theme(; palette) do
     doplot() || return
     fig = Figure(; size = (800, 300))
     linestyles = [:solid, :dash]
+    linestyles = [:solid]
     for (iorder, projectorder) in enumerate(projectorders)
-        lesmodel = iorder == 1 ? "DIF" : "DCF"
+        lesmodel = iorder == 1 ? "DCF" : "DCF"
         (; nles) = params
         ax = Axis(
             fig[1, iorder];
@@ -570,18 +574,11 @@ with_theme(; palette) do
     Legend(
         g[2, 1],
         map(s -> LineElement(; color = :black, linestyle = s), linestyles),
-        ["FA", "VA"];
+        ["FA"];
         orientation = :horizontal,
         valign = :top,
     )
     rowsize!(g, 1, Relative(1 / 2))
-    # rowgap!(g, 0)
-    # Legend(fig[1, end + 1], filter(x -> x isa Axis, fig.content)[1])
-    # Legend(
-    #     fig[end+1, :],
-    #     filter(x -> x isa Axis, fig.content)[1];
-    #     orientation = :horizontal,
-    # )
     save("$plotdir/epost.pdf", fig)
     display(fig)
 end
@@ -661,8 +658,8 @@ let
 
         for (sym, closure_model, θ) in [
             (:nomodel, nothing, nothing),
-            (:cnn_prior, wrappedclosure(closure, setup), device(θ_cnn_prior[ig, ifil])),
-            (:cnn_post, wrappedclosure(closure, setup), device(θ_cnn_post[I])),
+            (:cnn_prior, wrappedclosure(closure_INS, setup), device(θ_cnn_prior[ig, ifil])),
+            (:cnn_post, wrappedclosure(closure_INS, setup), device(θ_cnn_post[I])),
         ]
             _, results = solve_unsteady(;
                 setup = (; setup..., closure_model),
