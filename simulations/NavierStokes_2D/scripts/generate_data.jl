@@ -2,31 +2,28 @@ using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: jldsave
 using Random: Random
 
-T = Float32
+T = Float64
 rng = Random.Xoshiro(123)
 
-# Generate the data using NeuralClosure
-# Add NeuralClosure from the git repo, until it is added to the public repo
 using Pkg
 Pkg.add(url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git")
 using NeuralClosure: NeuralClosure as NC
 
 # Number of simulations to generate for each grid
-Nsim_train = 3
+Nsim_train = 5
 Nsim_test = 2
 
 # Parameters
 params = (;
     D = 2,
-    Re = T(1e3),
-    lims = (T(0.0), T(1.0)),
-    nles = [16, 32],
-    ndns = 64,
-    filters = (NC.FaceAverage(),),
+    Re = T(1e4),
     tburn = T(5e-2),
     tsim = T(0.5),
-    savefreq = 1,
-    Δt = T(5e-3), create_psolver = INS.psolver_spectral,
+    Δt = T(5e-3),
+    nles = [(64, 64), (128, 128), (256, 256)],
+    ndns = (4096, 4096),
+    filters = (NC.FaceAverage(),),
+    create_psolver = INS.psolver_spectral,
     icfunc = (setup, psolver, rng) -> INS.random_field(
         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
     rng
