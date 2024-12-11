@@ -8,6 +8,20 @@ using OptimizationOptimisers: OptimizationOptimisers
 using Random: Random
 
 T = Float32
+# Use GPU if available
+using CUDA: CUDA
+if CUDA.functional()
+    @info "Running on CUDA"
+    using LuxCUDA
+    CUDA.allowscalar(false)
+    dev = Lux.gpu_device()
+    cpu = false
+else
+    @info "Running on CPU"
+    dev = Lux.cpu_device()
+    cpu = true
+end
+
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 include("preprocess_priori.jl")
@@ -24,22 +38,22 @@ closure, θ, st = cnn(;
     use_bias = [false, false],
     rng
 )
-
+θ, st = (θ, st) .|> dev # move to gpu if available
 # Give the CNN a test run
-Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
+Lux.apply(closure, dev(io_priori[ig].u[:, :, :, 1:1]), θ, st)[1]
 
 # * loss in the Lux format
-loss_priori_lux(closure, θ, st, train_data_priori)
+loss_priori_lux(closure, θ, st, dev(train_data_priori))
 
 # * Define the callback
 callbackstate_val, callback_val = create_callback(
     closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
-    rng = rng, do_plot = true, plot_train = false)
+    rng = rng, do_plot = false, plot_train = false, device = dev)
 
 # * Training (via Lux)
 loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = callback_val)
+    alg = OptimizationOptimisers.Adam(0.1), cpu = cpu, callback = callback_val)
 # the trained parameters at the end of the training are: 
 θ_priori = tstate.parameters
 
