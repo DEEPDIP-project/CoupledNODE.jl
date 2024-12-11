@@ -28,4 +28,5 @@ size(train_data_priori[2]); # c commutator error
 
 # Load the test data
 test_data = load("simulations/NavierStokes_2D/data/data_test.jld2", "data_test")
+
 test_io_post = create_io_arrays_priori(test_data, setups)
