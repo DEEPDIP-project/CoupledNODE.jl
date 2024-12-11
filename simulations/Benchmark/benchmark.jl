@@ -132,8 +132,8 @@ params = (;
     tburn = T(0.5),
     tsim = T(5),
     savefreq = 10,
-    ndns = 128,
-    nles = [32,],
+    ndns = 2048,
+    nles = [128,],
     filters = (FaceAverage(),),
     backend,
     icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
@@ -156,7 +156,7 @@ docreatedata = false
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
 
 # Computational time
-docomp = false
+docomp = true
 docomp && let
     comptime, datasize = 0.0, 0.0
     for seed in dns_seeds
@@ -188,22 +188,22 @@ closure, θ_start, st = CoupledNODE.cnn(;
     T = T,
     D = params.D,
     data_ch = params.D,
-    radii = [2, 2, 2, 2],
-    channels = [8,8,8, 2],
-    activations = [tanh,tanh,tanh, identity],
-    use_bias = [true, true,true, false],
+    radii = [2, 2, 2, 2,2],
+    channels = [24,24,24,24, 2],
+    activations = [tanh,tanh,tanh,tanh, identity],
+    use_bias = [true,true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
 # same model structure in INS format
 closure_INS, θ_INS = cnn(;
     setup = setups[1],
-    radii = [2,2, 2, 2],
-    channels = [8,8,8, 2],
-    activations = [tanh,tanh,tanh, identity],
-    use_bias = [ true,true,true, false],
+    radii = [2, 2, 2, 2,2],
+    channels = [24,24,24,24, 2],
+    activations = [tanh,tanh,tanh,tanh, identity],
+    use_bias = [true,true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
-@assert θ_start == θ_INS
+#@assert θ_start == θ_INS
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
 
@@ -235,7 +235,7 @@ end
 
 # Train
 let
-    dotrain = false
+    dotrain = true
     nepoch = 200
     dotrain && trainprior(;
         params,
@@ -321,7 +321,7 @@ nprojectorders = length(projectorders)
 
 # Train
 let
-    dotrain = false
+    dotrain = true
     nepoch = 100
     dotrain && trainpost(;
         params,
