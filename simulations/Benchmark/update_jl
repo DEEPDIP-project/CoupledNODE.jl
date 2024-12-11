@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --job-name=julia_update
+#SBATCH --partition=gpu
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --gpus-per-node=1
+#SBATCH --output=julia_update.out
+
+
+# Run Julia and update the environment
+julia -e 'using Pkg; Pkg.activate("."); Pkg.add(url="https://github.com/DEEPDIP-project/CoupledNODE.jl.git"); Pkg.add(url="https://github.com/DEEPDIP-project/NeuralClosure.jl.git"); Pkg.update(); Pkg.resolve()'
+

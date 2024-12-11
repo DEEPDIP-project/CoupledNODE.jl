@@ -21,7 +21,7 @@ io_priori = create_io_arrays_priori(data, setups) # original version from syver
 
 # * dataloader priori
 using CoupledNODE.NavierStokes: create_dataloader_prior
-dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 100, rng)
+dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 64, rng)
 train_data_priori = dataloader_prior()
 size(train_data_priori[1]); # bar{u} filtered
 size(train_data_priori[2]); # c commutator error

@@ -16,14 +16,17 @@ Nsim_test = 2
 # Parameters
 params = (;
     D = 2,
-    Re = T(1e4),
-    tburn = T(5e-2),
-    tsim = T(0.5),
-    Δt = T(5e-3),
-    nles = [(64, 64), (128, 128), (256, 256)],
-    ndns = (4096, 4096),
+    Re = T(1e3),
+    lims = (T(0.0), T(1.0)),
+    nles = [32],
+    ndns = 64,
     filters = (NC.FaceAverage(),),
-    create_psolver = INS.psolver_spectral,
+    tburn = T(0.5),
+    tsim = T(5),
+    savefreq = 1,
+    bodyforce = (dim, x, y, t) -> (dim == 1) * 5 * sinpi(8 * y),
+    issteadybodyforce = true,
+    Δt = T(5e-3), create_psolver = INS.psolver_spectral,
     icfunc = (setup, psolver, rng) -> INS.random_field(
         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
     rng
