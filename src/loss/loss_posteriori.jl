@@ -161,7 +161,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kw
     ArrayType = cpu ? Array : CUDA.CuArray
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
-        pred = Array(solve(
         x = dev(u[griddims..., :, 1])
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
