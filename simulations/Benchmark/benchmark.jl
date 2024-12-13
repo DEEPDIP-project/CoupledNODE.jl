@@ -72,6 +72,9 @@ using Random
 using SparseArrays
 
 ########################################################################## #src
+# Read the configuration file
+conf = read_config("test_conf.yaml")
+########################################################################## #src
 
 # ## Random number seeds
 #
@@ -86,19 +89,14 @@ using SparseArrays
 #
 # We define all the seeds here.
 
-seeds = (;
-    dns = 123, # Initial conditions
-    θ_start = 234, # Initial CNN parameters
-    prior = 345, # A-priori training batch selection
-    post = 456, # A-posteriori training batch selection
-)
+seeds = load_seeds(conf)
 
 ########################################################################## #src
 
 # ## Hardware selection
 
 # Precision
-T = Float32
+T = eval(Meta.parse(conf["T"]))
 
 # Device
 if CUDA.functional()
@@ -118,6 +116,9 @@ else
     clean() = nothing
 end
 
+#add backend to conf
+conf["params"]["backend"] = backend
+
 ########################################################################## #src
 
 # ## Data generation
@@ -125,38 +126,21 @@ end
 # Create filtered DNS data for training, validation, and testing.
 
 # Parameters
-params = (;
-    D = 2,
-    lims = (T(0), T(1)),
-    Re = T(6e3),
-    tburn = T(0.5),
-    tsim = T(5),
-    savefreq = 10,
-    ndns = 2048,
-    nles = [128,],
-    filters = (FaceAverage(),),
-    backend,
-    icfunc = (setup, psolver, rng) -> random_field(setup, T(0); kp = 20, psolver, rng),
-    method = RKMethods.Wray3(; T),
-    bodyforce = (dim, x, y, t) -> (dim == 1) * 5 * sinpi(8 * y),
-    issteadybodyforce = true,
-    processors = (; log = timelogger(; nupdate = 100)),
-    Δt = T(1e-3),
-)
+params = load_params(conf)
 
 # DNS seeds
-ntrajectory = 8
+ntrajectory = conf["ntrajectory"]
 dns_seeds = splitseed(seeds.dns, ntrajectory)
 dns_seeds_train = dns_seeds[1:ntrajectory-2]
 dns_seeds_valid = dns_seeds[ntrajectory-1:ntrajectory-1]
 dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
-docreatedata = false
+docreatedata = conf["docreatedata"]
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
 
 # Computational time
-docomp = true
+docomp = conf["docomp"]
 docomp && let
     comptime, datasize = 0.0, 0.0
     for seed in dns_seeds
@@ -184,16 +168,7 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 # All training sessions will start from the same θ₀
 # for a fair comparison.
 
-closure, θ_start, st = CoupledNODE.cnn(;
-    T = T,
-    D = params.D,
-    data_ch = params.D,
-    radii = [2, 2, 2, 2,2],
-    channels = [24,24,24,24, 2],
-    activations = [tanh,tanh,tanh,tanh, identity],
-    use_bias = [true,true, true,true, false],
-    rng = Xoshiro(seeds.θ_start),
-)
+closure, θ_start, st = load_model(conf)
 # same model structure in INS format
 closure_INS, θ_INS = cnn(;
     setup = setups[1],
@@ -235,8 +210,8 @@ end
 
 # Train
 let
-    dotrain = true
-    nepoch = 200
+    dotrain = conf["priori"]["dotrain"]
+    nepoch = conf["priori"]["nepoch"]
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
@@ -248,8 +223,8 @@ let
         closure,
         θ_start,
         st,
-        opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1)),
-        batchsize = 64,
+        opt = eval(Meta.parse(conf["priori"]["opt"])),
+        batchsize = conf["priori"]["batchsize"],
         nepoch,
     )
 end
