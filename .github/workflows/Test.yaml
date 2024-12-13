@@ -10,7 +10,7 @@ on:
 
 jobs:
   test:
-    uses: ./.github/workflows/ReusableTest.yml
+    uses: ./.github/workflows/ReusableTest.yaml
     with:
       os: ${{ matrix.os }}
       version: ${{ matrix.version }}
