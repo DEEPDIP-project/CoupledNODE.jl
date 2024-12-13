@@ -18,6 +18,8 @@ end
 
 # * A posteriori io_arrays 
 using CoupledNODE.NavierStokes: create_io_arrays_posteriori
+@info size(data)
+@assert false
 io_post = create_io_arrays_posteriori(data, setups)
 ig = 1
 # Example of dimensions and how to operate with io_arrays_posteriori
