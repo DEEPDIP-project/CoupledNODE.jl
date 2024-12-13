@@ -4,6 +4,8 @@
 # CoupledNODE
 
 [![Build Status](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/CI.yml)
+[![Test](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/Test.yaml/badge.svg)](https://github.com/DEEPDIP-project/CoupledNODE.jl/actions/workflows/Test.yaml)
+[![Coverage](https://codecov.io/gh/DEEPDIP-project/CoupledNODE.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/DEEPDIP-project/CoupledNODE.jl)
 [![Documentation Status](https://readthedocs.org/projects/gemdat/badge/?version=latest)](https://deepdip-project.github.io/CoupledNODE.jl/stable/)
 [![DOI](https://zenodo.org/badge/760462639.svg)](https://doi.org/10.5281/zenodo.14197271)
 
