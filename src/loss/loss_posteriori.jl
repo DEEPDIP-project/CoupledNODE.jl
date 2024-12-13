@@ -165,12 +165,15 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kw
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         CUDA.allowscalar() do
-            dt = t[2] - t[1]  # needs allowscalar
+            if !(:dt in keys(kwargs))
+                dt = t[2] - t[1]
+                kwargs = (; kwargs..., dt = dt)
+            end
             tspan = [t[1], t[end]] # needs allowscalar
         end
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = ArrayType(solve(
-            prob, sciml_solver; u0 = x, p = ps, dt = dt, adaptive = false, kwargs...))
+            prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /

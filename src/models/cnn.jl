@@ -1,4 +1,5 @@
 using Lux: Lux
+using NNlib: pad_circular
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using ComponentArrays: ComponentArray
@@ -43,17 +44,20 @@ function cnn(;
     # Put the data channels at the beginning
     c = [data_ch; c]
 
+    # Syver uses a padder layer instead of adding padding to the convolutional layers
+    padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
+
     # Create convolutional closure model
     layers = (
         collocate,
+        padder,
         # convolutional layers
         (Lux.Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
              σ[i];
              use_bias = b[i],
-             init_weight = glorot_uniform_T,
-             pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
+             init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
         decollocate

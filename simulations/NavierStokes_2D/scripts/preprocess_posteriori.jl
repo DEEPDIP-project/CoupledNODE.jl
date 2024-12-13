@@ -29,7 +29,6 @@ io_post[ig].t[2, :]
 
 # * Create dataloader containing trajectories with the specified nunroll
 using CoupledNODE.NavierStokes: create_dataloader_posteriori
-nunroll = 5
 dataloader_posteriori = create_dataloader_posteriori(io_post[ig]; nunroll = nunroll, rng)
 
 # Load the test data
