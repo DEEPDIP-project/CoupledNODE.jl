@@ -5,7 +5,7 @@ using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: @save
 using Lux: Lux
 using Optimization: Optimization
-using OptimizationOptimisers: OptimizationOptimisers
+using OptimizationOptimisers: OptimizationOptimisers, Adam, ClipGrad, OptimiserChain
 using Random: Random
 
 T = Float32
@@ -27,6 +27,7 @@ end
 
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
+nunroll = 3
 include("preprocess_posteriori.jl")
 
 using ComponentArrays: ComponentArray
@@ -35,19 +36,16 @@ u = io_post[ig].u[:, :, :, 1, 1:50]
 #T = setups[1].T
 d = D = setups[1].grid.dimension()
 N = size(u, 1)
-emb_size = 8
-patch_size = 3
-n_heads = 2
 
 # * Define the CNN layers
 closure, θ, st = cnn(;
     T = T,
-    D = D,
-    data_ch = D,
-    radii = [3, 3],
-    channels = [2, 2],
-    activations = [tanh, identity],
-    use_bias = [false, false],
+    D = params.D,
+    data_ch = params.D,
+    radii = [2, 2, 2, 2],
+    channels = [8, 8, 8, 2],
+    activations = [tanh, tanh, tanh, identity],
+    use_bias = [true, true, true, false],
     rng
 )
 
@@ -66,15 +64,16 @@ loss_posteriori_lux(closure, θ, st, dev(train_data_posteriori))
 
 # * Callback function
 callbackstate_val, callback_val = create_callback(
-    dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
+    dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 2 * nunroll,
     rng = rng, do_plot = false, plot_train = false, device = dev)
 θ_posteriori = θ
 
 # * training via Lux
+opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1));
 lux_result, lux_t, lux_mem, _ = @timed train(
     closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-    nepochs = 50, ad_type = Optimization.AutoZygote(),
-    alg = OptimizationOptimisers.Adam(0.01), cpu = cpu, callback = callback_val)
+    nepochs = 300, ad_type = Optimization.AutoZygote(),
+    alg = opt, cpu = true, callback = callback_val)
 
 loss, tstate = lux_result
 # the trained params are:
