@@ -1,9 +1,6 @@
-using IncompressibleNavierStokes
 using Random
 using YAML
-using Pkg
-Pkg.add(url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git")
-using NeuralClosure
+using CoupledNODE
 
 function read_config(filename)
     conf = YAML.load_file(filename)

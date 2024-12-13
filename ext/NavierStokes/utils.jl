@@ -2,11 +2,7 @@
 ### Via IncompressibleNavierStokes.jl ####
 ##########################################
 
-module NavierStokes
-
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
-using Lux: Lux
-using Random: shuffle
 
 """
     create_right_hand_side(setup, psolver)
@@ -68,28 +64,6 @@ function create_right_hand_side_inplace(setup, psolver)
         dudt
     end
 end
-
-#"""
-#    NN_padded_to_NN_nopad(u, setup)
-#
-#Creates a view of the input velocity field `u` from the neural network data style `u[n, n, D, batch]`
-#but without boundaries.
-#
-## Arguments
-#- `u`: Velocity field in NN style.
-#- `setup`: IncompressibleNavierStokes.jl setup.
-#
-## Returns
-#- `u`: Velocity field view without boundaries.
-#"""
-#function NN_padded_to_NN_nopad(u, setup)
-#    (; grid, boundary_conditions) = setup
-#    (; Iu) = grid
-#    # Iu has multiple, but similar entries, but there is only one grid. We choose the first one 
-#    Iu = Iu[1]
-#    dimdiff = ((:) for _ in 1:(ndims(u) - ndims(Iu)))
-#    @view u[Iu, dimdiff...]
-#end
 
 """
     create_io_arrays_priori(data, setups)
@@ -225,5 +199,3 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
         (; u = view(io_array.u, n..., dim, isample, it), t = io_array.t[isample, it])
     end
 end
-
-end # module NavierStokes

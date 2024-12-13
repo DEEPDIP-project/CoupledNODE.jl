@@ -1,7 +1,6 @@
 using CairoMakie: CairoMakie
 using Random: Random
 using Statistics: mean
-using CoupledNODE.NavierStokes: create_dataloader_posteriori, create_dataloader_prior
 
 """
     create_callback(model, val_io_data; lhist=[], lhist_train=[], nunroll=10, rng=rng, plot_train=true)

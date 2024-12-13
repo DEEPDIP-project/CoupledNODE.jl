@@ -1,7 +1,6 @@
 using Lux: Lux
 using NNlib: pad_circular
 using Random: Random
-using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using ComponentArrays: ComponentArray
 
 """
