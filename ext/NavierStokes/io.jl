@@ -2,11 +2,33 @@ using Random
 using YAML
 using CoupledNODE
 
+"""
+    read_config(filename::String)
+
+Reads a YAML configuration file and returns the parsed content as a dictionary.
+
+# Arguments
+- `filename::String`: The path to the YAML configuration file.
+
+# Returns
+- `conf::Dict`: The parsed configuration dictionary.
+"""
 function read_config(filename)
     conf = YAML.load_file(filename)
     return conf
 end
 
+"""
+    load_params(conf::Dict)
+
+Loads and evaluates the parameters from the configuration dictionary.
+
+# Arguments
+- `conf::Dict`: The configuration dictionary.
+
+# Returns
+- `params::NamedTuple`: A named tuple containing the evaluated parameters.
+"""
 function load_params(conf)
     data = conf["params"]
     T = eval(Meta.parse(conf["T"]))
@@ -41,6 +63,17 @@ function load_params(conf)
     return params
 end
 
+"""
+    load_seeds(conf::Dict)
+
+Loads the seed values from the configuration dictionary.
+
+# Arguments
+- `conf::Dict`: The configuration dictionary.
+
+# Returns
+- `seeds::NamedTuple`: A named tuple containing the seed values.
+"""
 function load_seeds(conf)
     data = conf["seeds"]
     seeds = (;
@@ -52,6 +85,20 @@ function load_seeds(conf)
     return seeds
 end
 
+"""
+    load_model(conf::Dict)
+
+Loads the model parameters based on the model type specified in the configuration dictionary.
+
+# Arguments
+- `conf::Dict`: The configuration dictionary.
+
+# Returns
+- `model::Any`: The loaded model parameters.
+
+# Throws
+- `Error`: If the model type is not supported.
+"""
 function load_model(conf)
     model_type = conf["closure"]["type"]
     if model_type == "cnn"
@@ -61,6 +108,19 @@ function load_model(conf)
     end
 end
 
+"""
+    load_cnn_params(conf::Dict)
+
+Loads the parameters for a CNN model from the configuration dictionary.
+
+# Arguments
+- `conf::Dict`: The configuration dictionary.
+
+# Returns
+- `closure::Any`: The CNN closure.
+- `θ_start::Any`: The initial parameters for the CNN.
+- `st::Any`: The state of the CNN.
+"""
 function load_cnn_params(conf)
     T = eval(Meta.parse(conf["T"]))
     D = conf["params"]["D"]
