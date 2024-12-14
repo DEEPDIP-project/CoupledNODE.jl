@@ -28,6 +28,7 @@ jobs:
           - '1'
         os:
           - ubuntu-latest
+          - macOS-latest
         arch:
           - x64
     steps:
@@ -39,6 +40,13 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+      - uses: julia-actions/julia-processcoverage@v1
+        if: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}
+      - uses: codecov/codecov-action@v5
+        if: ${{ matrix.version == '1' && matrix.os == 'ubuntu-latest' }}
+        with:
+          file: lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
   docs:
     if: github.event.pull_request.draft == false
     name: Documentation

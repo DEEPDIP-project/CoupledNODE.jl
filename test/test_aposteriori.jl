@@ -2,7 +2,7 @@ using Test
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @save
-using CoupledNODE: cnn, train, create_loss_post_lux, create_callback
+using CoupledNODE: cnn, train, create_loss_post_lux
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using ComponentArrays: ComponentArray

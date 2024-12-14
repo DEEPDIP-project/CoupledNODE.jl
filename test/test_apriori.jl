@@ -2,8 +2,7 @@ using Test
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @save
-using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
-                   create_callback, train
+using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux, train
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using Optimization: Optimization
