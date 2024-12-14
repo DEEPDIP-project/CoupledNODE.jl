@@ -2,9 +2,8 @@ using Test
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @save
-using CoupledNODE.NavierStokes: create_io_arrays_posteriori, create_dataloader_posteriori,
-                                create_right_hand_side_with_closure
-using CoupledNODE: cnn, train, create_loss_post_lux, create_callback
+using CoupledNODE: cnn, train, create_loss_post_lux
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using ComponentArrays: ComponentArray
 using Lux: Lux
@@ -28,7 +27,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     end
 
     # A posteriori io_arrays 
-    io_post = create_io_arrays_posteriori(data, setups)
+    io_post = NS.create_io_arrays_posteriori(data, setups)
 
     # Example of dimensions and how to operate with io_arrays_posteriori
     (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
@@ -39,12 +38,12 @@ using OptimizationOptimisers: OptimizationOptimisers
 
     # Create dataloader containing trajectories with the specified nunroll
     nunroll = 5
-    dataloader_posteriori = create_dataloader_posteriori(
+    dataloader_posteriori = NS.create_dataloader_posteriori(
         io_post[ig]; nunroll = nunroll, rng)
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")
-    test_io_post = create_io_arrays_posteriori(test_data, setups)
+    test_io_post = NS.create_io_arrays_posteriori(test_data, setups)
 
     u = io_post[ig].u[:, :, :, 1, 1:50]
     #T = setups[1].T
@@ -68,7 +67,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test !isnothing(test_output) # Check that the output is not nothing
 
     # Define the right hand side of the ODE
-    dudt_nn2 = create_right_hand_side_with_closure(
+    dudt_nn2 = NS.create_right_hand_side_with_closure(
         setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
     # Define the loss (a-posteriori) 
@@ -78,7 +77,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
     # Callback function
-    callbackstate_val, callback_val = create_callback(
+    callbackstate_val, callback_val = NS.create_callback(
         dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
         rng = rng, do_plot = true, plot_train = false)
     θ_posteriori = θ

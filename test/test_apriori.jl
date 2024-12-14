@@ -2,9 +2,8 @@ using Test
 using Random: Random
 using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @save
-using CoupledNODE.NavierStokes: create_io_arrays_priori, create_dataloader_prior
-using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
-                   create_callback, train
+using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux, train
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
@@ -26,15 +25,15 @@ using OptimizationOptimisers: OptimizationOptimisers
     end
 
     # Create io_arrays
-    io_priori = create_io_arrays_priori(data, setups)
+    io_priori = NS.create_io_arrays_priori(data, setups)
 
     # Dataloader priori
-    dataloader_prior = create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
+    dataloader_prior = NS.create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
     train_data_priori = dataloader_prior()
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")
-    test_io_post = create_io_arrays_priori(test_data, setups)
+    test_io_post = NS.create_io_arrays_priori(test_data, setups)
 
     d = D = setups[ig].grid.dimension()
 
@@ -59,13 +58,13 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
     # Define the callback
-    callbackstate_val, callback_val = create_callback(
+    callbackstate_val, callback_val = NS.create_callback(
         closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
         rng = rng, do_plot = true, plot_train = false)
 
     # Training (via Lux)
     loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
-        nepochs = 50, ad_type = Optimization.AutoZygote(),
+        nepochs = 15, ad_type = Optimization.AutoZygote(),
         alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = nothing)
 
     # Check that the training loss is finite

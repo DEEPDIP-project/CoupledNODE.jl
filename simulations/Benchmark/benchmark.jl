@@ -11,8 +11,9 @@ palette = (; color = ["#3366cc", "#cc0000", "#669900", "#ff9900"])
 # Choose where to put output
 basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
 outdir = joinpath(basedir, "output", "kolmogorov")
-plotdir = joinpath(outdir, "plots")
-logdir = joinpath(outdir, "logs")
+closure_name = conf["closure"]["name"]
+plotdir = joinpath(outdir, closure_name, "plots")
+logdir = joinpath(outdir, closure_name, "logs")
 ispath(outdir) || mkpath(outdir)
 ispath(plotdir) || mkpath(plotdir)
 ispath(logdir) || mkpath(logdir)
@@ -221,6 +222,7 @@ let
         outdir,
         plotdir,
         closure,
+        closure_name,
         θ_start,
         st,
         opt = eval(Meta.parse(conf["priori"]["opt"])),
@@ -230,7 +232,7 @@ let
 end
 
 # Load learned parameters and training times
-priortraining = loadprior(outdir, params.nles, params.filters)
+priortraining = loadprior(outdir, closure_name, params.nles, params.filters)
 θ_cnn_prior = map(p -> copyto!(copy(θ_start), p.θ), priortraining)
 @info "" θ_cnn_prior .|> extrema # Check that parameters are within reasonable bounds
 
