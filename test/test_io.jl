@@ -1,10 +1,11 @@
-using CoupledNODE: read_config, load_params, load_seeds, load_model
+using CoupledNODE
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using IncompressibleNavierStokes
 using NeuralClosure
 using Random
 
 @testset "Read YAML" begin
-    conf = read_config("test_conf.yaml")
+    conf = NS.read_config("test_conf.yaml")
     @test conf isa Dict
 
     T = eval(Meta.parse(conf["T"]))
@@ -31,7 +32,7 @@ using Random
         processors = (; log = timelogger(; nupdate = 100)),
         Δt = T(1e-3)
     )
-    params = load_params(conf)
+    params = NS.load_params(conf)
     @test params.D == ref_params.D
     @test params.lims == ref_params.lims
     @test params.Re == ref_params.Re
@@ -57,7 +58,7 @@ using Random
         prior = 345, # A-priori training batch selection
         post = 456 # A-posteriori training batch selection
     )
-    seeds = load_seeds(conf)
+    seeds = NS.load_seeds(conf)
     @test seeds.dns == ref_seeds.dns
     @test seeds.θ_start == ref_seeds.θ_start
     @test seeds.prior == ref_seeds.prior
@@ -74,7 +75,7 @@ using Random
         use_bias = [true, true, true, true, false],
         rng = Xoshiro(seeds.θ_start)
     )
-    closure, θ_start, st = load_model(conf)
+    closure, θ_start, st = NS.load_model(conf)
     #@test closure == ref_closure
     @test θ_start == ref_θ_start
     @test st == ref_st

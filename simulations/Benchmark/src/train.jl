@@ -28,12 +28,13 @@ createdata(; params, seeds, outdir, taskid) =
     end
 
 function getpriorfile(outdir, nles, filter)
-    joinpath(outdir, "priortraining", splatfileparts(; filter, nles) * ".jld2")
+    joinpath(
+        outdir, "priortraining", closure_name, splatfileparts(; filter, nles) * ".jld2")
 end
 
 "Load a-priori training results from correct file names."
-loadprior(outdir, nles, filters) = map(
-    splat((nles, Φ) -> load_object(getpriorfile(outdir, nles, Φ))),
+loadprior(outdir, closure_name, nles, filters) = map(
+    splat((nles, Φ) -> load_object(getpriorfile(outdir, closure_name, nles, Φ))),
     Iterators.product(nles, filters)
 )
 
@@ -47,6 +48,7 @@ function trainprior(;
         outdir,
         plotdir,
         closure,
+        closure_name,
         θ_start,
         st,
         opt,
@@ -66,7 +68,7 @@ function trainprior(;
             continue
         end
         starttime = time()
-        priorfile = getpriorfile(outdir, nles, Φ)
+        priorfile = getpriorfile(outdir, closure_name, nles, Φ)
         priordir = dirname(priorfile)
         ispath(priordir) || mkpath(priordir)
         figdir = joinpath(plotdir, "priortraining")
