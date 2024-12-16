@@ -216,7 +216,6 @@ end
 let
     dotrain = conf["priori"]["dotrain"]
     nepoch = conf["priori"]["nepoch"]
-    nepoch = 350
     dotrain && trainprior(;
         params,
         priorseed = seeds.prior,
