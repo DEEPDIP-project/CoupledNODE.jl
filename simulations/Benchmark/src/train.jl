@@ -53,7 +53,7 @@ function trainprior(;
         st,
         opt,
         batchsize,
-        loadcheckpoint = false,
+        loadcheckpoint = true,
         nepoch
 )
     device(x) = adapt(params.backend, x)
@@ -107,14 +107,29 @@ function trainprior(;
         loss_priori_lux(closure, θ, st, train_data_priori)
         loss = loss_priori_lux
 
+        if loadcheckpoint && isfile(checkfile)
+            callbackstate, trainstate, epochs_trained = CoupledNODE.load_checkpoint(checkfile)
+            nepochs_left = nepoch - epochs_trained
+        else
+            callbackstate = trainstate = nothing
+            nepochs_left = nepoch
+        end
+
         callbackstate, callback = NS.create_callback(
-            closure, θ, io_valid[itotal], loss, st, batch_size = batchsize,
+            closure, θ, io_valid[itotal], loss, st;
+            callbackstate = callbackstate, batch_size = batchsize,
             rng = Xoshiro(batchseed), do_plot = true, plot_train = true, figfile = figfile)
 
-        l, trainstate = CoupledNODE.train(
-            closure, θ, st, dataloader_prior, loss; nepochs = nepoch,
-            alg = opt, cpu = params.backend == CPU(), callback = callback)
-        # TODO CoupledNODE has no checkpoints yet, but here it should save them
+        if nepochs_left <= 0
+            @info "No epochs left to train."
+            continue
+        else
+            l, trainstate = CoupledNODE.train(
+                closure, θ, st, dataloader_prior, loss; tstate = trainstate,
+                nepochs = nepochs_left,
+                alg = opt, cpu = params.backend == CPU(), callback = callback)
+        end
+        save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
         θ = callbackstate.θmin # Use best θ instead of last θ
         results = (; θ = Array(θ), comptime = time() - starttime,

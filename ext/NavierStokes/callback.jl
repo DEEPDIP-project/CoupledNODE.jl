@@ -38,11 +38,21 @@ The callback function is used during training to compute and log validation and 
 """
 function create_callback(
         model, θ, val_io_data, loss_function, st;
-        callbackstate = (;
-            θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
-            lhist_train = [], lhist_nomodel = []),
-        nunroll = nothing, batch_size = nothing, rng = Random.Xoshiro(123), do_plot = true,
-        plot_train = true, plot_every = 10, average_window = 25, device = identity, figfile=nothing)
+        callbackstate = nothing,
+        nunroll = nothing,
+        batch_size = nothing,
+        rng = Random.Xoshiro(123),
+        do_plot = true,
+        plot_train = true,
+        plot_every = 10,
+        average_window = 25,
+        device = identity,
+        figfile = nothing)
+    if callbackstate === nothing
+        # Initialize the callback state
+        callbackstate = (; θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
+            lhist_train = [], lhist_nomodel = [])
+    end
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")
     elseif nunroll !== nothing

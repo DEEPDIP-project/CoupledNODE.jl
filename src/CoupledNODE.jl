@@ -7,6 +7,7 @@ include("models/cnn.jl")
 include("loss/loss_priori.jl")
 include("loss/loss_posteriori.jl")
 
+include("checkpoints.jl")
 include("train.jl")
 
 end # module CoupledNODE
