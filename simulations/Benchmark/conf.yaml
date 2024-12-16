@@ -9,8 +9,10 @@ params:
   tburn: 0.5
   tsim: 5.0
   savefreq: 10
-  ndns: 2048
-  nles: [128]
+  #ndns: 2048
+  #nles: [128]
+  ndns: 64
+  nles: [16]
   filters: ["FaceAverage()"]
   icfunc: "(setup, psolver, rng) -> random_field(setup, T(0); kp=20, psolver, rng)"
   method: "RKMethods.Wray3(; T)"
@@ -24,7 +26,7 @@ seeds:
   prior: 345
   post: 456
 closure:
-  name: "CNN0"
+  name: "cnn_0"
   type: cnn
   radii: [2, 2, 2, 2, 2]
   channels: [24, 24, 24, 24, 2]

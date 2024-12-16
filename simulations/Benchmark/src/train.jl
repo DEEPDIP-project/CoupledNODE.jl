@@ -27,7 +27,7 @@ createdata(; params, seeds, outdir, taskid) =
             Base.summarysize(data)*1e-9,)
     end
 
-function getpriorfile(outdir, nles, filter)
+function getpriorfile(outdir, closure_name, nles, filter)
     joinpath(
         outdir, "priortraining", closure_name, splatfileparts(; filter, nles) * ".jld2")
 end
@@ -96,25 +96,25 @@ function trainprior(;
             data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
             push!(data_valid, hcat(data_i))
         end
-        io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
-        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
+        NS = Base.get_extension(CoupledNODE, :NavierStokes)
+        io_train = NS.create_io_arrays_priori(data_train, setup)
+        io_valid = NS.create_io_arrays_priori(data_valid, setup)
         θ = device(copy(θ_start))
-        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(
+        dataloader_prior = NS.create_dataloader_prior(
             io_train[itotal]; batchsize = batchsize,
             rng = Random.Xoshiro(dns_seeds_train[itotal]))
         train_data_priori = dataloader_prior()
         loss_priori_lux(closure, θ, st, train_data_priori)
         loss = loss_priori_lux
 
-        callbackstate, callback = CoupledNODE.create_callback(
+        callbackstate, callback = NS.create_callback(
             closure, θ, io_valid[itotal], loss, st, batch_size = batchsize,
-            rng = Xoshiro(batchseed), do_plot = true, plot_train = true)
+            rng = Xoshiro(batchseed), do_plot = true, plot_train = true, figfile = figfile)
 
         l, trainstate = CoupledNODE.train(
             closure, θ, st, dataloader_prior, loss; nepochs = nepoch,
             alg = opt, cpu = params.backend == CPU(), callback = callback)
         # TODO CoupledNODE has no checkpoints yet, but here it should save them
-        # TODO CoupledNODE should also save some figures
 
         θ = callbackstate.θmin # Use best θ instead of last θ
         results = (; θ = Array(θ), comptime = time() - starttime,

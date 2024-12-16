@@ -4,6 +4,7 @@ using Juno: Juno
 using Zygote: Zygote
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
+using CairoMakie: save
 
 function train(model, ps, st, train_dataloader, loss_function;
         nepochs = 100, ad_type = Optimization.AutoZygote(),

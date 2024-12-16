@@ -42,7 +42,7 @@ function create_callback(
             θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = []),
         nunroll = nothing, batch_size = nothing, rng = Random.Xoshiro(123), do_plot = true,
-        plot_train = true, plot_every = 10, average_window = 25, device = identity)
+        plot_train = true, plot_every = 10, average_window = 25, device = identity, figfile=nothing)
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")
     elseif nunroll !== nothing
@@ -95,6 +95,10 @@ function create_callback(
 
                 CairoMakie.axislegend(ax)
                 display(fig)
+
+                if figfile !== nothing
+                    CairoMakie.save(figfile, fig)
+                end
             end
         end
         callbackstate

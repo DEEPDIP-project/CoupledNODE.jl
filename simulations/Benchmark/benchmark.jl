@@ -8,6 +8,15 @@ end                           #src
 # Color palette for consistent theme throughout paper
 palette = (; color = ["#3366cc", "#cc0000", "#669900", "#ff9900"])
 
+########################################################################## #src
+# Read the configuration file
+using IncompressibleNavierStokes
+using NeuralClosure
+using CoupledNODE
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
+conf = NS.read_config("conf.yaml")
+########################################################################## #src
+
 # Choose where to put output
 basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
 outdir = joinpath(basedir, "output", "kolmogorov")
@@ -55,27 +64,21 @@ using Adapt
 using CairoMakie
 using CoupledNODE
 using CoupledNODE: loss_priori_lux, create_loss_post_lux
-using CoupledNODE.NavierStokes: create_right_hand_side, create_right_hand_side_with_closure
+using CoupledNODE: create_right_hand_side, create_right_hand_side_with_closure
 using CUDA
 using DifferentialEquations
-using IncompressibleNavierStokes
 using IncompressibleNavierStokes.RKMethods
 using JLD2
 using LaTeXStrings
 using LinearAlgebra
 using Lux
 using LuxCUDA
-using NeuralClosure
 using NNlib
 using Optimisers
 using ParameterSchedulers
 using Random
 using SparseArrays
 
-########################################################################## #src
-# Read the configuration file
-conf = read_config("test_conf.yaml")
-########################################################################## #src
 
 # ## Random number seeds
 #
@@ -90,7 +93,7 @@ conf = read_config("test_conf.yaml")
 #
 # We define all the seeds here.
 
-seeds = load_seeds(conf)
+seeds = NS.load_seeds(conf)
 
 ########################################################################## #src
 
@@ -127,7 +130,7 @@ conf["params"]["backend"] = backend
 # Create filtered DNS data for training, validation, and testing.
 
 # Parameters
-params = load_params(conf)
+params = NS.load_params(conf)
 
 # DNS seeds
 ntrajectory = conf["ntrajectory"]
@@ -169,7 +172,7 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 # All training sessions will start from the same θ₀
 # for a fair comparison.
 
-closure, θ_start, st = load_model(conf)
+closure, θ_start, st = NS.load_model(conf)
 # same model structure in INS format
 closure_INS, θ_INS = cnn(;
     setup = setups[1],
@@ -179,7 +182,7 @@ closure_INS, θ_INS = cnn(;
     use_bias = [true,true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
-#@assert θ_start == θ_INS
+@assert θ_start == θ_INS
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
 
