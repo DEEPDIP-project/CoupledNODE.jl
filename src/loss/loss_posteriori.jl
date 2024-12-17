@@ -170,23 +170,12 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kw
         x = dev(u[griddims..., :, 1])
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
-        Zygote.ignore() do
-            if !isnothing(Cuda_ext)
-                Cuda_ext.allowscalar(true)
-                if !(:dt in keys(kwargs))
-                    dt = t[2] - t[1]
-                    kwargs = (; kwargs..., dt = dt)
-                end
-                tspan = [t[1], t[end]]
-                Cuda_ext.allowscalar(false)
-            else
-                if !(:dt in keys(kwargs))
-                    dt = t[2] - t[1]
-                    kwargs = (; kwargs..., dt = dt)
-                end
-                tspan = [t[1], t[end]]
-            end
+        if !(:dt in keys(kwargs))
+            dt = @views t[2:2] .- t[1:1]
+            dt = only(Array(dt))
+            kwargs = (; kwargs..., dt = dt)
         end
+        tspan = @views [t[1:1]; t[end:end]]
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...))

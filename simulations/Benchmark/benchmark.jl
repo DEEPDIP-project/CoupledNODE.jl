@@ -14,13 +14,20 @@ using IncompressibleNavierStokes
 using NeuralClosure
 using CoupledNODE
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
-conf = NS.read_config("conf.yaml")
+#conf = NS.read_config("conf.yaml")
+@info ENV["CONF_FILE"]
+conf = NS.read_config(ENV["CONF_FILE"])
+@show conf
 ########################################################################## #src
+
+exit 
+@assert false
 
 # Choose where to put output
 basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
 outdir = joinpath(basedir, "output", "kolmogorov")
 closure_name = conf["closure"]["name"]
+outdir_model = joinpath(outdir, closure_name)
 plotdir = joinpath(outdir, closure_name, "plots")
 logdir = joinpath(outdir, closure_name, "logs")
 ispath(outdir) || mkpath(outdir)
@@ -301,7 +308,7 @@ nprojectorders = length(projectorders)
 let
     dotrain = conf["posteriori"]["dotrain"]
     nepoch = conf["posteriori"]["nepoch"]
-    nepoch = 30
+    nepoch = 40
     dotrain && trainpost(;
         params,
         projectorders,
@@ -322,12 +329,6 @@ let
     )
 end
 
-Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-Cuda_ext.ArrayType()
-Cuda_ext.allowscalar(false)
-pp=deepcopy(CUDA.allowscalar)
-pp(false)
-CUDA.allowscalar(false)
 # Load learned parameters and training times
 
 posttraining = loadpost(outdir, params.nles, params.filters, projectorders)
@@ -412,11 +413,11 @@ let
             eprior.post[ig, ifil, iorder] = priori_err(device(θ_cnn_post[ig, ifil, iorder]))[1]
         end
     end
-    jldsave(joinpath(outdir, "eprior.jld2"); eprior...)
+    jldsave(joinpath(outdir_model, "eprior.jld2"); eprior...)
 end
 clean()
 
-eprior = namedtupleload(joinpath(outdir, "eprior.jld2"))
+eprior = namedtupleload(joinpath(outdir_model, "eprior.jld2"))
 
 ########################################################################## #src
 
@@ -453,26 +454,23 @@ let
         dt = T(1e-3)
         
         ## No model
-        dudt_nomod = create_right_hand_side(
+        dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
         err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt)
         epost.nomodel[I] = err_post(closure, θ_cnn_post[I].*0 , st, data)[1]
         # with closure
-        dudt = create_right_hand_side_with_closure(
+        dudt = NS.create_right_hand_side_with_closure(
             setup, psolver, closure, st)
         err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt)
         epost.cnn_prior[I] = err_post(closure, device(θ_cnn_prior[ig, ifil]), st, data)[1]
         epost.cnn_post[I] =  err_post(closure, device(θ_cnn_post[I]), st, data)[1]
         clean()
     end
-    jldsave(joinpath(outdir, "epost.jld2"); epost...)
+    jldsave(joinpath(outdir_model, "epost.jld2"); epost...)
 end
 
-epost = namedtupleload(joinpath(outdir, "epost.jld2"))
+epost = namedtupleload(joinpath(outdir_model, "epost.jld2"))
 
-epost.nomodel
-epost.cnn_prior
-epost.cnn_post
 
 ########################################################################## #src
 

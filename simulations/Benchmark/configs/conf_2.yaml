@@ -11,8 +11,8 @@ params:
   savefreq: 10
   #ndns: 2048
   #nles: [128]
-  ndns: 64
-  nles: [16]
+  ndns: 256
+  nles: [64]
   filters: ["FaceAverage()"]
   icfunc: "(setup, psolver, rng) -> random_field(setup, T(0); kp=20, psolver, rng)"
   method: "RKMethods.Wray3(; T)"
@@ -26,22 +26,22 @@ seeds:
   prior: 345
   post: 456
 closure:
-  name: "cnn_0"
+  name: "cnn_1"
   type: cnn
   radii: [2, 2, 2, 2, 2]
   channels: [24, 24, 24, 24, 2]
-  activations: ["tanh", "tanh", "tanh", "tanh", "identity"]
+  activations: ["relu", "relu", "relu", "relu", "identity"]
   use_bias: [true, true, true, true, false]
   rng: "Xoshiro(seeds.θ_start)"
 priori:
-  dotrain: false
-  nepoch: 100
+  dotrain: true
+  nepoch: 500
   batchsize: 32
   opt: "OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1))"
 posteriori:
-  projectorders: "(ProjectOrder.Last, )"
   dotrain: true
-  nepoch: 20
+  projectorders: "(ProjectOrder.Last, )"
+  nepoch: 200
   opt: "OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1))"
   nunroll: 5
   nunroll_valid: 10

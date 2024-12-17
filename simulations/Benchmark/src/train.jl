@@ -241,7 +241,7 @@ function trainpost(;
             continue
         else
             l, trainstate = CoupledNODE.train(
-                closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepoch,
+                closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepochs_left,
                 alg = opt, cpu = params.backend == CPU(), callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
