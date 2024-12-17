@@ -43,7 +43,7 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
 
 [extensions]
-CoupledNODECUDA = ["CUDA", "cuDNN", "LuxCUDA"]
+CoupledNODECUDA = ["CUDA"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
 
 [compat]

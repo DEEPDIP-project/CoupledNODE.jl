@@ -157,33 +157,25 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kwargs...)
-    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
-    ext = Base.get_extension(@__MODULE__, :CoupledNODECUDA)
-    if !isnothing(ext)
-        ArrayType = cpu ? Array : CUDA.CuArray
+    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
+    if !isnothing(Cuda_ext)
+        ArrayType = Cuda_ext.ArrayType()
+        dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
     else
         ArrayType = Array
+        dev = Lux.cpu_device()
     end
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
-        if !isnothing(ext)
-            CUDA.allowscalar() do
-                if !(:dt in keys(kwargs))
-                    dt = t[2] - t[1]
-                    kwargs = (; kwargs..., dt = dt)
-                end
-                tspan = [t[1], t[end]]
-            end
-        else
-            if !(:dt in keys(kwargs))
-                dt = t[2] - t[1]
-                kwargs = (; kwargs..., dt = dt)
-            end
-            tspan = [t[1], t[end]]
+        if !(:dt in keys(kwargs))
+            dt = @views t[2:2] .- t[1:1]
+            dt = only(Array(dt))
+            kwargs = (; kwargs..., dt = dt)
         end
+        tspan = @views [t[1:1]; t[end:end]]
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...))
