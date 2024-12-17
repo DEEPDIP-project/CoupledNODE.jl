@@ -1,4 +1,4 @@
-docreatedata: false
+docreatedata: true
 docomp: true
 ntrajectory: 8
 T: "Float32"

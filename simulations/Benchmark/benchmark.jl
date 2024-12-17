@@ -14,7 +14,7 @@ using IncompressibleNavierStokes
 using NeuralClosure
 using CoupledNODE
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
-#conf = NS.read_config("conf.yaml")
+#conf = NS.read_config("configs/conf.yaml")
 conf = NS.read_config(ENV["CONF_FILE"])
 ########################################################################## #src
 
@@ -62,10 +62,8 @@ setsnelliuslogger(logfile)
 
 using Accessors
 using Adapt
-# using GLMakie
 using CairoMakie
 using CoupledNODE: loss_priori_lux, create_loss_post_lux
-using CoupledNODE: create_right_hand_side, create_right_hand_side_with_closure
 using CUDA
 using DifferentialEquations
 using IncompressibleNavierStokes.RKMethods
@@ -120,9 +118,8 @@ else
     device = identity
     clean() = nothing
 end
+conf["params"]["backend"] = deepcopy(backend)
 
-#add backend to conf
-conf["params"]["backend"] = backend
 
 ########################################################################## #src
 
@@ -132,6 +129,7 @@ conf["params"]["backend"] = backend
 
 # Parameters
 params = NS.load_params(conf)
+@info params
 
 # DNS seeds
 ntrajectory = conf["ntrajectory"]
@@ -143,6 +141,7 @@ dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 # Create data
 docreatedata = conf["docreatedata"]
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
+@info "Data generated"
 
 # Computational time
 docomp = conf["docomp"]

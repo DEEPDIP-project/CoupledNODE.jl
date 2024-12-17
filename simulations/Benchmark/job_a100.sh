@@ -7,8 +7,9 @@
 #SBATCH --partition=gpu_a100
 #SBATCH --time=05:00:00
 #SBATCH --mail-type=BEGIN,END
-#SBATCH --mail-user=s.ciarella@esciencecenter.nl
-#SBATCH --array=1-8
+# #SBATCH --mail-user=s.ciarella@esciencecenter.nl
+#SBATCH --array=1-1
+# #SBATCH --array=1-8
 
 # Note:
 # - gpu_a100: 18 cores
@@ -25,7 +26,7 @@ export CONF_FILE=$1
 
 cd $HOME/CoupledNODE.jl/simulations/Benchmark
 
-julia --project -t auto -e 'using Pkg; Pkg.update()'
+#julia --project -t auto -e 'using Pkg; Pkg.update()'
 
 julia --project -t auto benchmark.jl
 
