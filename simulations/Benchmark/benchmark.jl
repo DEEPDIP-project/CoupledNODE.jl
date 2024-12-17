@@ -15,13 +15,8 @@ using NeuralClosure
 using CoupledNODE
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 #conf = NS.read_config("conf.yaml")
-@info ENV["CONF_FILE"]
 conf = NS.read_config(ENV["CONF_FILE"])
-@show conf
 ########################################################################## #src
-
-exit 
-@assert false
 
 # Choose where to put output
 basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
