@@ -62,7 +62,6 @@ using Accessors
 using Adapt
 # using GLMakie
 using CairoMakie
-using CoupledNODE
 using CoupledNODE: loss_priori_lux, create_loss_post_lux
 using CoupledNODE: create_right_hand_side, create_right_hand_side_with_closure
 using CUDA
@@ -291,18 +290,18 @@ end
 # Save parameters to disk after each combination.
 # Plot training progress (for a validation data batch).
 #
-# The time stepper `RKProject` allows for choosing when to project.
+# [INS] The time stepper `RKProject` allows for choosing when to project.
+# [CNODE] Only DCF (last) is supported since it appears to be the best one.
 
-# First = DIF (Bad!)
-# Last = DCF
-projectorders = (ProjectOrder.Last, )
-# I think that in practice we can only do DCF 
+projectorders = eval(Meta.parse(conf["posteriori"]["projectorders"]))
 nprojectorders = length(projectorders)
+@assert nprojectorders == 1 "Only DCF should be done"
 
 # Train
 let
-    dotrain = true
-    nepoch = 100
+    dotrain = conf["posteriori"]["dotrain"]
+    nepoch = conf["posteriori"]["nepoch"]
+    nepoch = 30
     dotrain && trainpost(;
         params,
         projectorders,
@@ -312,17 +311,23 @@ let
         postseed = seeds.post,
         dns_seeds_train,
         dns_seeds_valid,
-        nunroll = 5,
+        nunroll = conf["posteriori"]["nunroll"],
         closure,
         θ_start = θ_cnn_prior,
         st,
-        opt = ClipAdam = OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1)),
-        nunroll_valid = 10,
+        opt = eval(Meta.parse(conf["posteriori"]["opt"])),
+        nunroll_valid = conf["posteriori"]["nunroll_valid"],
         nepoch,
-        dt = T(1e-3),
+        dt = eval(Meta.parse(conf["posteriori"]["dt"])),
     )
 end
 
+Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
+Cuda_ext.ArrayType()
+Cuda_ext.allowscalar(false)
+pp=deepcopy(CUDA.allowscalar)
+pp(false)
+CUDA.allowscalar(false)
 # Load learned parameters and training times
 
 posttraining = loadpost(outdir, params.nles, params.filters, projectorders)

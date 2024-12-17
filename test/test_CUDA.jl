@@ -1,0 +1,13 @@
+using Test
+using CoupledNODE
+
+@testset "CUDA" begin
+    using Pkg
+    Pkg.add("CUDA")
+    using CUDA
+    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
+    ArrayType = Cuda_ext.ArrayType()
+    @test ArrayType == CUDA.CuArray || ArrayType == Array
+    @test Cuda_ext.allowscalar(false)
+    @test Cuda_ext.allowscalar(true)
+end
