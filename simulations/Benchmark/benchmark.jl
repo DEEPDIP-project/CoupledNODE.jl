@@ -4,6 +4,10 @@ if false                      #src
 end                           #src
 
 @info "Script started"
+@info VERSION
+
+using Pkg
+@info Pkg.status()
 
 # Color palette for consistent theme throughout paper
 palette = (; color = ["#3366cc", "#cc0000", "#669900", "#ff9900"])
@@ -119,6 +123,8 @@ else
     clean() = nothing
 end
 conf["params"]["backend"] = deepcopy(backend)
+@info backend
+@info CUDA.versioninfo()
 
 
 ########################################################################## #src

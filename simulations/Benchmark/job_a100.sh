@@ -16,17 +16,19 @@
 # - gpu_h100: 16 cores
 # https://servicedesk.surf.nl/wiki/display/WIKI/Snellius+partitions+and+accounting
 
+nvidia-smi
+
 mkdir -p /scratch-shared/$USER
 
 echo "Slurm job ID: $SLURM_JOB_ID"
 echo "Slurm array task ID: $SLURM_ARRAY_TASK_ID"
 
-export JULIA_DEPOT_PATH=/scratch-shared/$USER/.julia_a100:
+export JULIA_DEPOT_PATH=/scratch-shared/$USER/.julia_a100
 export CONF_FILE=$1
 
 cd $HOME/CoupledNODE.jl/simulations/Benchmark
 
-#julia --project -t auto -e 'using Pkg; Pkg.update()'
+julia --project -t auto -e 'using Pkg; Pkg.update()'
 
 julia --project -t auto benchmark.jl
 
