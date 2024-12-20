@@ -20,6 +20,10 @@ createdata(; params, seeds, outdir, taskid) =
             ispath(datadir) || mkpath(datadir)
             push!(filenames, f)
         end
+        if isfile(filenames[1])
+            @info "Data file $(filenames[1]) already exists. Skipping."
+            continue
+        end
         data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt)
         @info("Trajectory info:",
             data[1].comptime/60,
@@ -102,7 +106,7 @@ function trainprior(;
         θ = device(copy(θ_start))
         dataloader_prior = NS.create_dataloader_prior(
             io_train[itotal]; batchsize = batchsize,
-            rng = Random.Xoshiro(dns_seeds_train[itotal]))
+            rng = Random.Xoshiro(dns_seeds_train[itotal]), device = device)
         train_data_priori = dataloader_prior()
         loss_priori_lux(closure, θ, st, train_data_priori)
         loss = loss_priori_lux
@@ -218,7 +222,7 @@ function trainpost(;
         θ = device(copy(θ_start[itotal]))
         dataloader_post = NS.create_dataloader_posteriori(
             io_train[itotal]; nunroll = nunroll,
-            rng = Random.Xoshiro(dns_seeds_train[itotal]))
+            rng = Random.Xoshiro(dns_seeds_train[itotal]), device = device)
 
         dudt_nn = NS.create_right_hand_side_with_closure(
             setup[1], psolver, closure, st)
