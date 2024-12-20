@@ -122,7 +122,7 @@ function trainprior(;
         callbackstate, callback = NS.create_callback(
             closure, θ, io_valid[itotal], loss, st;
             callbackstate = callbackstate, batch_size = batchsize,
-            rng = Xoshiro(batchseed), do_plot = true, plot_train = true, figfile = figfile)
+            rng = Xoshiro(batchseed), do_plot = true, plot_train = true, figfile = figfile, device = device)
 
         if nepochs_left <= 0
             @info "No epochs left to train."
@@ -173,7 +173,7 @@ function trainpost(;
         nepoch,
         dt
 )
-    device(x) = adapt(params.backend, x)
+    device(x) = CUDA.functional ? adapt(params.backend, x) : x
     itotal = 0
     for projectorder in projectorders,
         (ifil, Φ) in enumerate(params.filters),
@@ -239,7 +239,7 @@ function trainpost(;
         callbackstate, callback = NS.create_callback(
             closure, θ, io_valid[itotal], loss, st;
             callbackstate = callbackstate, nunroll = nunroll_valid,
-            rng = Xoshiro(postseed), do_plot = true, plot_train = true, figfile = figfile)
+            rng = Xoshiro(postseed), do_plot = true, plot_train = true, figfile = figfile, device = device)
         if nepochs_left <= 0
             @info "No epochs left to train."
             continue

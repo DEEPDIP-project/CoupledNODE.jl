@@ -12,7 +12,6 @@ FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 Glob = "c27321d9-0574-5035-807b-f59d2c89b15c"
 JLD2 = "033835bb-8acc-5ee8-8aae-3f567f8a3819"
 JuliaFormatter = "98e50ef6-434e-11e9-1051-2b60c6c9e899"
-Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 Lux = "b2108857-7c20-44ae-9111-449ecde12c47"
@@ -38,6 +37,7 @@ LuxCUDA = "d0bbae9a-e099-4d5b-a835-1c6931763bda"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
+Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
 
 [sources]
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}

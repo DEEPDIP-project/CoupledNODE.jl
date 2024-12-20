@@ -8,6 +8,7 @@ using Adapt
 using ComponentArrays
 using CoupledNODE
 using CoupledNODE: loss_priori_lux, create_loss_post_lux
+using CUDA
 using Dates
 using DifferentialEquations
 using DocStringExtensions

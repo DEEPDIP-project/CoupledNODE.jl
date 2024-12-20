@@ -9,10 +9,8 @@ params:
   tburn: 0.5
   tsim: 5.0
   savefreq: 10
-  #ndns: 2048
-  #nles: [128]
-  ndns: 256
-  nles: [64]
+  ndns: 2048
+  nles: [128]
   filters: ["FaceAverage()"]
   icfunc: "(setup, psolver, rng) -> random_field(setup, T(0); kp=20, psolver, rng)"
   method: "RKMethods.Wray3(; T)"

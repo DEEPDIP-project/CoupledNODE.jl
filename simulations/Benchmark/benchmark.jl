@@ -18,7 +18,7 @@ using IncompressibleNavierStokes
 using NeuralClosure
 using CoupledNODE
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
-conf =nothing
+global conf
 try
     conf = NS.read_config(ENV["CONF_FILE"])
     @info "Reading configuration file from ENV"
@@ -221,8 +221,6 @@ end
 # Use the same batch selection random seed for each training setup.
 # Save parameters to disk after each run.
 # Plot training progress (for a validation data batch).
-
-# Parameter save files
 
 # Train
 let

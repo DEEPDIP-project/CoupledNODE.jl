@@ -16,8 +16,6 @@
 # - gpu_h100: 16 cores
 # https://servicedesk.surf.nl/wiki/display/WIKI/Snellius+partitions+and+accounting
 
-nvidia-smi
-
 mkdir -p /scratch-shared/$USER
 
 echo "Slurm job ID: $SLURM_JOB_ID"
