@@ -1,7 +1,7 @@
 using CoupledNODE
-NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using IncompressibleNavierStokes
 using NeuralClosure
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Random
 
 @testset "Read YAML" begin
@@ -46,10 +46,23 @@ using Random
     @test params.issteadybodyforce == ref_params.issteadybodyforce
     @test params.processors == ref_params.processors
     @test params.Δt == ref_params.Δt
-    # TODO: I do not know how to test those 3
-    #@test params.icfunc == ref_params.icfunc
+    # test icfunc
+    setups = map(params.nles) do nles
+        x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+        Setup(; x = x, Re = params.Re)
+    end
+    setup = setups[1]
+    psolver = psolver_spectral(setup)
+    @test params.icfunc(setup, psolver, Xoshiro(123)) ==
+          ref_params.icfunc(setup, psolver, Xoshiro(123))
+    # test bodyforce 
+    x = rand(1)[1]
+    y = rand(1)[1]
+    t = 0.0
+    dim = 1
+    @test params.bodyforce(dim, x, y, t) == ref_params.bodyforce(dim, x, y, t)
+    # TODO: test method
     #@test params.method == ref_params.method
-    #@test params.bodyforce == ref_params.bodyforce
 
     # test seeds
     ref_seeds = (;

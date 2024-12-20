@@ -4,14 +4,35 @@ if false                      #src
 end                           #src
 
 @info "Script started"
+@info VERSION
+
+using Pkg
+@info Pkg.status()
 
 # Color palette for consistent theme throughout paper
 palette = (; color = ["#3366cc", "#cc0000", "#669900", "#ff9900"])
+
+########################################################################## #src
+# Read the configuration file
+using IncompressibleNavierStokes
+using NeuralClosure
+using CoupledNODE
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
+global conf
+try
+    conf = NS.read_config(ENV["CONF_FILE"])
+    @info "Reading configuration file from ENV"
+catch
+    @info "Reading configuration file from default"
+    conf = NS.read_config("configs/conf.yaml")
+end
+########################################################################## #src
 
 # Choose where to put output
 basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
 outdir = joinpath(basedir, "output", "kolmogorov")
 closure_name = conf["closure"]["name"]
+outdir_model = joinpath(outdir, closure_name)
 plotdir = joinpath(outdir, closure_name, "plots")
 logdir = joinpath(outdir, closure_name, "logs")
 ispath(outdir) || mkpath(outdir)
@@ -51,31 +72,22 @@ setsnelliuslogger(logfile)
 
 using Accessors
 using Adapt
-# using GLMakie
 using CairoMakie
-using CoupledNODE
 using CoupledNODE: loss_priori_lux, create_loss_post_lux
-using CoupledNODE.NavierStokes: create_right_hand_side, create_right_hand_side_with_closure
 using CUDA
 using DifferentialEquations
-using IncompressibleNavierStokes
 using IncompressibleNavierStokes.RKMethods
 using JLD2
 using LaTeXStrings
 using LinearAlgebra
 using Lux
 using LuxCUDA
-using NeuralClosure
 using NNlib
 using Optimisers
 using ParameterSchedulers
 using Random
 using SparseArrays
 
-########################################################################## #src
-# Read the configuration file
-conf = read_config("test_conf.yaml")
-########################################################################## #src
 
 # ## Random number seeds
 #
@@ -90,7 +102,7 @@ conf = read_config("test_conf.yaml")
 #
 # We define all the seeds here.
 
-seeds = load_seeds(conf)
+seeds = NS.load_seeds(conf)
 
 ########################################################################## #src
 
@@ -116,9 +128,10 @@ else
     device = identity
     clean() = nothing
 end
+conf["params"]["backend"] = deepcopy(backend)
+@info backend
+@info CUDA.versioninfo()
 
-#add backend to conf
-conf["params"]["backend"] = backend
 
 ########################################################################## #src
 
@@ -127,7 +140,8 @@ conf["params"]["backend"] = backend
 # Create filtered DNS data for training, validation, and testing.
 
 # Parameters
-params = load_params(conf)
+params = NS.load_params(conf)
+@info params
 
 # DNS seeds
 ntrajectory = conf["ntrajectory"]
@@ -139,6 +153,7 @@ dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 # Create data
 docreatedata = conf["docreatedata"]
 docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
+@info "Data generated"
 
 # Computational time
 docomp = conf["docomp"]
@@ -169,7 +184,7 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 # All training sessions will start from the same θ₀
 # for a fair comparison.
 
-closure, θ_start, st = load_model(conf)
+closure, θ_start, st = NS.load_model(conf)
 # same model structure in INS format
 closure_INS, θ_INS = cnn(;
     setup = setups[1],
@@ -179,7 +194,7 @@ closure_INS, θ_INS = cnn(;
     use_bias = [true,true, true,true, false],
     rng = Xoshiro(seeds.θ_start),
 )
-#@assert θ_start == θ_INS
+@assert θ_start == θ_INS
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
 
@@ -206,8 +221,6 @@ end
 # Use the same batch selection random seed for each training setup.
 # Save parameters to disk after each run.
 # Plot training progress (for a validation data batch).
-
-# Parameter save files
 
 # Train
 let
@@ -288,18 +301,18 @@ end
 # Save parameters to disk after each combination.
 # Plot training progress (for a validation data batch).
 #
-# The time stepper `RKProject` allows for choosing when to project.
+# [INS] The time stepper `RKProject` allows for choosing when to project.
+# [CNODE] Only DCF (last) is supported since it appears to be the best one.
 
-# First = DIF (Bad!)
-# Last = DCF
-projectorders = (ProjectOrder.Last, )
-# I think that in practice we can only do DCF 
+projectorders = eval(Meta.parse(conf["posteriori"]["projectorders"]))
 nprojectorders = length(projectorders)
+@assert nprojectorders == 1 "Only DCF should be done"
 
 # Train
 let
-    dotrain = true
-    nepoch = 100
+    dotrain = conf["posteriori"]["dotrain"]
+    nepoch = conf["posteriori"]["nepoch"]
+    nepoch = 40
     dotrain && trainpost(;
         params,
         projectorders,
@@ -309,14 +322,14 @@ let
         postseed = seeds.post,
         dns_seeds_train,
         dns_seeds_valid,
-        nunroll = 5,
+        nunroll = conf["posteriori"]["nunroll"],
         closure,
         θ_start = θ_cnn_prior,
         st,
-        opt = ClipAdam = OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1)),
-        nunroll_valid = 10,
+        opt = eval(Meta.parse(conf["posteriori"]["opt"])),
+        nunroll_valid = conf["posteriori"]["nunroll_valid"],
         nepoch,
-        dt = T(1e-3),
+        dt = eval(Meta.parse(conf["posteriori"]["dt"])),
     )
 end
 
@@ -404,11 +417,11 @@ let
             eprior.post[ig, ifil, iorder] = priori_err(device(θ_cnn_post[ig, ifil, iorder]))[1]
         end
     end
-    jldsave(joinpath(outdir, "eprior.jld2"); eprior...)
+    jldsave(joinpath(outdir_model, "eprior.jld2"); eprior...)
 end
 clean()
 
-eprior = namedtupleload(joinpath(outdir, "eprior.jld2"))
+eprior = namedtupleload(joinpath(outdir_model, "eprior.jld2"))
 
 ########################################################################## #src
 
@@ -445,26 +458,23 @@ let
         dt = T(1e-3)
         
         ## No model
-        dudt_nomod = create_right_hand_side(
+        dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
         err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt)
         epost.nomodel[I] = err_post(closure, θ_cnn_post[I].*0 , st, data)[1]
         # with closure
-        dudt = create_right_hand_side_with_closure(
+        dudt = NS.create_right_hand_side_with_closure(
             setup, psolver, closure, st)
         err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt)
         epost.cnn_prior[I] = err_post(closure, device(θ_cnn_prior[ig, ifil]), st, data)[1]
         epost.cnn_post[I] =  err_post(closure, device(θ_cnn_post[I]), st, data)[1]
         clean()
     end
-    jldsave(joinpath(outdir, "epost.jld2"); epost...)
+    jldsave(joinpath(outdir_model, "epost.jld2"); epost...)
 end
 
-epost = namedtupleload(joinpath(outdir, "epost.jld2"))
+epost = namedtupleload(joinpath(outdir_model, "epost.jld2"))
 
-epost.nomodel
-epost.cnn_prior
-epost.cnn_post
 
 ########################################################################## #src
 

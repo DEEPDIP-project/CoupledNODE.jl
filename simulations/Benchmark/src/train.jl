@@ -20,6 +20,10 @@ createdata(; params, seeds, outdir, taskid) =
             ispath(datadir) || mkpath(datadir)
             push!(filenames, f)
         end
+        if isfile(filenames[1])
+            @info "Data file $(filenames[1]) already exists. Skipping."
+            continue
+        end
         data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt)
         @info("Trajectory info:",
             data[1].comptime/60,
@@ -27,7 +31,7 @@ createdata(; params, seeds, outdir, taskid) =
             Base.summarysize(data)*1e-9,)
     end
 
-function getpriorfile(outdir, nles, filter)
+function getpriorfile(outdir, closure_name, nles, filter)
     joinpath(
         outdir, "priortraining", closure_name, splatfileparts(; filter, nles) * ".jld2")
 end
@@ -53,7 +57,7 @@ function trainprior(;
         st,
         opt,
         batchsize,
-        loadcheckpoint = false,
+        loadcheckpoint = true,
         nepoch
 )
     device(x) = adapt(params.backend, x)
@@ -96,25 +100,40 @@ function trainprior(;
             data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
             push!(data_valid, hcat(data_i))
         end
-        io_train = CoupledNODE.NavierStokes.create_io_arrays_priori(data_train, setup)
-        io_valid = CoupledNODE.NavierStokes.create_io_arrays_priori(data_valid, setup)
+        NS = Base.get_extension(CoupledNODE, :NavierStokes)
+        io_train = NS.create_io_arrays_priori(data_train, setup)
+        io_valid = NS.create_io_arrays_priori(data_valid, setup)
         θ = device(copy(θ_start))
-        dataloader_prior = CoupledNODE.NavierStokes.create_dataloader_prior(
+        dataloader_prior = NS.create_dataloader_prior(
             io_train[itotal]; batchsize = batchsize,
-            rng = Random.Xoshiro(dns_seeds_train[itotal]))
+            rng = Random.Xoshiro(dns_seeds_train[itotal]), device = device)
         train_data_priori = dataloader_prior()
         loss_priori_lux(closure, θ, st, train_data_priori)
         loss = loss_priori_lux
 
-        callbackstate, callback = CoupledNODE.create_callback(
-            closure, θ, io_valid[itotal], loss, st, batch_size = batchsize,
-            rng = Xoshiro(batchseed), do_plot = true, plot_train = true)
+        if loadcheckpoint && isfile(checkfile)
+            callbackstate, trainstate, epochs_trained = CoupledNODE.load_checkpoint(checkfile)
+            nepochs_left = nepoch - epochs_trained
+        else
+            callbackstate = trainstate = nothing
+            nepochs_left = nepoch
+        end
 
-        l, trainstate = CoupledNODE.train(
-            closure, θ, st, dataloader_prior, loss; nepochs = nepoch,
-            alg = opt, cpu = params.backend == CPU(), callback = callback)
-        # TODO CoupledNODE has no checkpoints yet, but here it should save them
-        # TODO CoupledNODE should also save some figures
+        callbackstate, callback = NS.create_callback(
+            closure, θ, io_valid[itotal], loss, st;
+            callbackstate = callbackstate, batch_size = batchsize,
+            rng = Xoshiro(batchseed), do_plot = true, plot_train = true, figfile = figfile, device = device)
+
+        if nepochs_left <= 0
+            @info "No epochs left to train."
+            continue
+        else
+            l, trainstate = CoupledNODE.train(
+                closure, θ, st, dataloader_prior, loss; tstate = trainstate,
+                nepochs = nepochs_left,
+                alg = opt, cpu = params.backend == CPU(), callback = callback)
+        end
+        save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
         θ = callbackstate.θmin # Use best θ instead of last θ
         results = (; θ = Array(θ), comptime = time() - starttime,
@@ -147,13 +166,14 @@ function trainpost(;
         nunroll,
         closure,
         θ_start,
+        loadcheckpoint = true,
         st,
         opt,
         nunroll_valid,
         nepoch,
         dt
 )
-    device(x) = adapt(params.backend, x)
+    device(x) = CUDA.functional ? adapt(params.backend, x) : x
     itotal = 0
     for projectorder in projectorders,
         (ifil, Φ) in enumerate(params.filters),
@@ -195,28 +215,40 @@ function trainpost(;
             data_i = namedtupleload(getdatafile(outdir, nles, Φ, s))
             push!(data_valid, hcat(data_i))
         end
-        io_train = CoupledNODE.NavierStokes.create_io_arrays_posteriori(data_train, setup)
-        io_valid = CoupledNODE.NavierStokes.create_io_arrays_posteriori(data_valid, setup)
 
-        #θ = copy(θ_start)
+        NS = Base.get_extension(CoupledNODE, :NavierStokes)
+        io_train = NS.create_io_arrays_posteriori(data_train, setup)
+        io_valid = NS.create_io_arrays_posteriori(data_valid, setup)
         θ = device(copy(θ_start[itotal]))
-        dataloader_post = CoupledNODE.NavierStokes.create_dataloader_posteriori(
+        dataloader_post = NS.create_dataloader_posteriori(
             io_train[itotal]; nunroll = nunroll,
-            rng = Random.Xoshiro(dns_seeds_train[itotal]))
+            rng = Random.Xoshiro(dns_seeds_train[itotal]), device = device)
 
-        dudt_nn = create_right_hand_side_with_closure(
+        dudt_nn = NS.create_right_hand_side_with_closure(
             setup[1], psolver, closure, st)
         loss = create_loss_post_lux(dudt_nn; sciml_solver = Tsit5(), dt = dt)
 
-        callbackstate, callback = CoupledNODE.create_callback(
-            closure, θ, io_valid[itotal], loss, st, nunroll = nunroll_valid,
-            rng = Xoshiro(postseed), do_plot = true, plot_train = true)
+        if loadcheckpoint && isfile(checkfile)
+            callbackstate, trainstate, epochs_trained = CoupledNODE.load_checkpoint(checkfile)
+            nepochs_left = nepoch - epochs_trained
+        else
+            callbackstate = trainstate = nothing
+            nepochs_left = nepoch
+        end
 
-        l, trainstate = CoupledNODE.train(
-            closure, θ, st, dataloader_post, loss; nepochs = nepoch,
-            alg = opt, cpu = params.backend == CPU(), callback = callback)
-        # TODO CoupledNODE has no checkpoints yet, but here it should save them
-        # TODO CoupledNODE should also save some figures
+        callbackstate, callback = NS.create_callback(
+            closure, θ, io_valid[itotal], loss, st;
+            callbackstate = callbackstate, nunroll = nunroll_valid,
+            rng = Xoshiro(postseed), do_plot = true, plot_train = true, figfile = figfile, device = device)
+        if nepochs_left <= 0
+            @info "No epochs left to train."
+            continue
+        else
+            l, trainstate = CoupledNODE.train(
+                closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepochs_left,
+                alg = opt, cpu = params.backend == CPU(), callback = callback)
+        end
+        save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
         θ = callbackstate.θmin # Use best θ instead of last θ
         results = (; θ = Array(θ), comptime = time() - starttime,
