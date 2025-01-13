@@ -18,14 +18,26 @@ using IncompressibleNavierStokes
 using NeuralClosure
 using CoupledNODE
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
-global conf
-try
-    conf = NS.read_config(ENV["CONF_FILE"])
-    @info "Reading configuration file from ENV"
-catch
-    @info "Reading configuration file from default"
-    conf = NS.read_config("configs/conf.yaml")
+function load_config()
+    try
+        @info "Reading configuration file from ENV"
+        return NS.read_config(ENV["CONF_FILE"])
+    catch
+        @info "Reading configuration file from default"
+        return NS.read_config("configs/conf.yaml")
+    end
 end
+conf = load_config()
+
+#global conf
+#conf = nothing
+#try
+#    conf = NS.read_config(ENV["CONF_FILE"])
+#    @info "Reading configuration file from ENV"
+#catch
+#    @info "Reading configuration file from default"
+#    conf = NS.read_config("configs/conf.yaml")
+#end
 ########################################################################## #src
 
 # Choose where to put output
