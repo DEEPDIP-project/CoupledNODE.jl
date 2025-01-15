@@ -15,7 +15,6 @@ Reads a YAML configuration file and returns the parsed content as a dictionary.
 """
 function read_config(filename)
     conf = YAML.load_file(filename)
-    print(conf)
     return conf
 end
 

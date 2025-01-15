@@ -58,7 +58,7 @@ doplot() = true
 
 ########################################################################## #src
 
-# ## Configure logger
+# ## Configure logger ``
 
 using Benchmark
 using Dates
