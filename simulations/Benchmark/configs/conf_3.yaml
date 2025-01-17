@@ -1,0 +1,50 @@
+docreatedata: false
+docomp: true
+ntrajectory: 8
+T: "Float32"
+params:
+  D: 2
+  lims: [0.0, 1.0]
+  Re: 6000.0
+  tburn: 0.5
+  tsim: 2.0
+  savefreq: 100
+  ndns: 64
+  nles: [32]
+  filters: ["FaceAverage()"]
+  icfunc: "(setup, psolver, rng) -> random_field(setup, T(0); kp=20, psolver, rng)"
+  method: "RKMethods.Wray3(; T)"
+  bodyforce: "(dim, x, y, t) -> (dim == 1) * 5 * sinpi(8 * y)"
+  issteadybodyforce: true
+  processors: "(; log = timelogger(; nupdate=100))"
+  Δt: 0.0001
+seeds:
+  dns: 123
+  θ_start: 234
+  prior: 345
+  post: 456
+closure:
+  name: "cnn_3"
+  type: cnn
+  radii: [2, 2, 2, 2, 2]
+  channels: [24, 24, 24, 24, 2]
+  activations: ["tanh", "tanh", "tanh", "tanh", "identity"]
+  use_bias: [true, true, true, true, false]
+  rng: "Xoshiro(seeds.θ_start)"
+priori:
+  dotrain: true
+  nepoch: 200
+  batchsize: 32
+  opt: "OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1))"
+  do_plot: false
+  plot_train: false
+posteriori:
+  dotrain: true
+  projectorders: "(ProjectOrder.Last, )"
+  nepoch: 20
+  opt: "OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1))"
+  nunroll: 3
+  nunroll_valid: 5
+  dt: T(1e-4)
+  do_plot: false
+  plot_train: false
