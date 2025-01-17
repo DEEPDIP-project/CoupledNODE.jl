@@ -45,8 +45,8 @@ basedir = haskey(ENV, "DEEPDIP") ? ENV["DEEPDIP"] : @__DIR__
 outdir = joinpath(basedir, "output", "kolmogorov")
 closure_name = conf["closure"]["name"]
 outdir_model = joinpath(outdir, closure_name)
-plotdir = joinpath(outdir, closure_name, "plots")
-logdir = joinpath(outdir, closure_name, "logs")
+plotdir = joinpath(outdir, "plots", closure_name)
+logdir = joinpath(outdir, "logs", closure_name)
 ispath(outdir) || mkpath(outdir)
 ispath(plotdir) || mkpath(plotdir)
 ispath(logdir) || mkpath(logdir)
@@ -196,14 +196,15 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 # All training sessions will start from the same θ₀
 # for a fair comparison.
 
+using Lux:relu
 closure, θ_start, st = NS.load_model(conf)
-# same model structure in INS format
+# Get the same model structure in INS format
 closure_INS, θ_INS = cnn(;
     setup = setups[1],
-    radii = [2, 2, 2, 2,2],
-    channels = [24,24,24,24, 2],
-    activations = [tanh,tanh,tanh,tanh, identity],
-    use_bias = [true,true, true,true, false],
+    radii = conf["closure"]["radii"],
+    channels = conf["closure"]["channels"],
+    activations = conf["closure"]["activations"],
+    use_bias = conf["closure"]["use_bias"],
     rng = Xoshiro(seeds.θ_start),
 )
 @assert θ_start == θ_INS
@@ -252,6 +253,8 @@ let
         st,
         opt = eval(Meta.parse(conf["priori"]["opt"])),
         batchsize = conf["priori"]["batchsize"],
+        do_plot = conf["priori"]["do_plot"],
+        plot_train = conf["priori"]["plot_train"],
         nepoch,
     )
 end
@@ -342,6 +345,8 @@ let
         nunroll_valid = conf["posteriori"]["nunroll_valid"],
         nepoch,
         dt = eval(Meta.parse(conf["posteriori"]["dt"])),
+        do_plot = conf["posteriori"]["do_plot"],
+        plot_train = conf["posteriori"]["plot_train"],
     )
 end
 
