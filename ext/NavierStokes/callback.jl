@@ -74,7 +74,7 @@ function create_callback(
         push!(callbackstate.lhist_train, l_train)
 
         if step % plot_every == 0
-            y1, y2 = dataloader()
+            y1, y2 = device(dataloader())
             l_val = loss_function(model, p, st, (y1, y2))[1]
             # check if this set of p produces a lower validation loss
             l_val < callbackstate.loss_min &&
