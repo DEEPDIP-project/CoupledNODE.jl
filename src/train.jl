@@ -12,6 +12,7 @@ function train(model, ps, st, train_dataloader, loss_function;
         cpu::Bool = false,
         kwargs...)
     dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
+    @warn "Using $dev"
     ps, st = (ps, st) .|> dev
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)
