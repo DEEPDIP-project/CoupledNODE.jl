@@ -28,7 +28,8 @@ closure:
   type: cnn
   radii: [2, 2, 2, 2, 2]
   channels: [24, 24, 24, 24, 2]
-  activations: ["Lux.relu", "Lux.relu", "Lux.relu", "Lux.relu", "identity"]
+  activations: ["tanh", "tanh", "tanh", "tanh", "identity"]
+    #activations: ["Lux.relu", "Lux.relu", "Lux.relu", "Lux.relu", "identity"]
   use_bias: [true, true, true, true, false]
   rng: "Xoshiro(seeds.θ_start)"
 priori:

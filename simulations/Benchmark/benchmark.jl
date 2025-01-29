@@ -17,6 +17,8 @@ palette = (; color = ["#3366cc", "#cc0000", "#669900", "#ff9900"])
 using IncompressibleNavierStokes
 using NeuralClosure
 using CoupledNODE
+using Lux
+using LuxCUDA
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 function load_config()
     try

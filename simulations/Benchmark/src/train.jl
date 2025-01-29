@@ -110,6 +110,8 @@ function trainprior(;
             io_train[itotal]; batchsize = batchsize,
             rng = Random.Xoshiro(dns_seeds_train[itotal]), device = device)
         train_data_priori = dataloader_prior()
+	@info device
+	@info typeof(train_data_priori)
         loss_priori_lux(closure, θ, st, train_data_priori)
         loss = loss_priori_lux
 

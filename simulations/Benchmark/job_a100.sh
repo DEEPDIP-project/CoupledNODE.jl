@@ -8,9 +8,10 @@
 #SBATCH --time=05:00:00
 #SBATCH --mail-type=BEGIN,END
 # #SBATCH --mail-user=s.ciarella@esciencecenter.nl
-#SBATCH --array=1-1
-# #SBATCH --array=1-8
+#SBATCH --array=1-8
 
+module load 2023
+module load juliaup/1.14.5-GCCcore-12.3.0
 # Note:
 # - gpu_a100: 18 cores
 # - gpu_h100: 16 cores
@@ -21,7 +22,6 @@ mkdir -p /scratch-shared/$USER
 echo "Slurm job ID: $SLURM_JOB_ID"
 echo "Slurm array task ID: $SLURM_ARRAY_TASK_ID"
 
-export JULIA_DEPOT_PATH=/scratch-shared/$USER/.julia_a100
 export CONF_FILE=$1
 
 cd $HOME/CoupledNODE.jl/simulations/Benchmark
