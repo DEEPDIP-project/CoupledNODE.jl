@@ -27,7 +27,7 @@ for (root, dirs, files) in walkdir(@__DIR__)
         if isnothing(match(r"^test_.*\.jl$", file))
             continue
         end
-        if !gpu_available && match(r"^test_gpu_.*\.jl$", file)
+        if !gpu_available && !isnothing(match(r"^test_gpu_.*\.jl$", file))
             continue
         end
         title = titlecase(replace(splitext(file[6:end])[1], "-" => " "))

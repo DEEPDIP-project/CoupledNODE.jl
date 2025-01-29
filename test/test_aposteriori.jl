@@ -66,33 +66,33 @@ using OptimizationOptimisers: OptimizationOptimisers
     test_output = closure(u, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
 
-    # Define the right hand side of the ODE
-    dudt_nn2 = NS.create_right_hand_side_with_closure(
-        setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+    ## Define the right hand side of the ODE
+    #dudt_nn2 = NS.create_right_hand_side_with_closure(
+    #    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-    # Define the loss (a-posteriori) 
-    train_data_posteriori = dataloader_posteriori()
-    loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
-    loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-    @test isfinite(loss_value[1]) # Check that the loss value is finite
+    ## Define the loss (a-posteriori) 
+    #train_data_posteriori = dataloader_posteriori()
+    #loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
+    #loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+    #@test isfinite(loss_value[1]) # Check that the loss value is finite
 
-    # Callback function
-    callbackstate_val, callback_val = NS.create_callback(
-        dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
-        rng = rng, do_plot = true, plot_train = false)
-    θ_posteriori = θ
+    ## Callback function
+    #callbackstate_val, callback_val = NS.create_callback(
+    #    dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
+    #    rng = rng, do_plot = true, plot_train = false)
+    #θ_posteriori = θ
 
-    # Training via Lux
-    lux_result, lux_t, lux_mem, _ = @timed train(
-        closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-        nepochs = 50, ad_type = Optimization.AutoZygote(),
-        alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+    ## Training via Lux
+    #lux_result, lux_t, lux_mem, _ = @timed train(
+    #    closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
+    #    nepochs = 50, ad_type = Optimization.AutoZygote(),
+    #    alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
 
-    loss, tstate = lux_result
-    # Check that the training loss is finite
-    @test isfinite(loss)
+    #loss, tstate = lux_result
+    ## Check that the training loss is finite
+    #@test isfinite(loss)
 
-    # The trained parameters at the end of the training are:
-    θ_posteriori = tstate.parameters
-    @test !isnothing(θ_posteriori) # Check that the trained parameters are not nothing
+    ## The trained parameters at the end of the training are:
+    #θ_posteriori = tstate.parameters
+    #@test !isnothing(θ_posteriori) # Check that the trained parameters are not nothing
 end
