@@ -1,9 +1,18 @@
 using CoupledNODE
 using Test
+using CUDA
 
 # Needs to be run before tests
 @testset "generate test data" begin
     include("generate_test_data.jl")
+end
+
+# Check if a GPU device is available
+gpu_available = CUDA.functional()
+if gpu_available
+    @warn "GPU device available"
+else
+    @warn "No GPU device available"
 end
 
 #=
@@ -16,6 +25,9 @@ The file will be automatically included inside a `@testset` with title "Title Fo
 for (root, dirs, files) in walkdir(@__DIR__)
     for file in files
         if isnothing(match(r"^test_.*\.jl$", file))
+            continue
+        end
+        if gpu_available && isnothing(match(r"^test_gpu_.*\.jl$", file))
             continue
         end
         title = titlecase(replace(splitext(file[6:end])[1], "-" => " "))
