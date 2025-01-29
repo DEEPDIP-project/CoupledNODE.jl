@@ -36,6 +36,8 @@ priori:
   nepoch: 500
   batchsize: 32
   opt: "OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1))"
+  do_plot: false
+  plot_train: false
 posteriori:
   dotrain: true
   projectorders: "(ProjectOrder.Last, )"
@@ -44,3 +46,5 @@ posteriori:
   nunroll: 5
   nunroll_valid: 10
   dt: T(1e-3)
+  do_plot: false
+  plot_train: false
