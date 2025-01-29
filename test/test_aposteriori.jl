@@ -66,15 +66,15 @@ using OptimizationOptimisers: OptimizationOptimisers
     test_output = closure(u, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
 
-    ## Define the right hand side of the ODE
-    #dudt_nn2 = NS.create_right_hand_side_with_closure(
-    #    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+    # Define the right hand side of the ODE
+    dudt_nn2 = NS.create_right_hand_side_with_closure(
+        setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-    ## Define the loss (a-posteriori) 
-    #train_data_posteriori = dataloader_posteriori()
-    #loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
-    #loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-    #@test isfinite(loss_value[1]) # Check that the loss value is finite
+    # Define the loss (a-posteriori) 
+    train_data_posteriori = dataloader_posteriori()
+    loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
+    loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+    @test isfinite(loss_value[1]) # Check that the loss value is finite
 
     ## Callback function
     #callbackstate_val, callback_val = NS.create_callback(
