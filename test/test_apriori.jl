@@ -70,7 +70,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Check that the training loss is finite
     @test isfinite(loss)
 
-    ## The trained parameters at the end of the training are:
-    #θ_priori = tstate.parameters
-    #@test !isnothing(θ_priori) # Check that the trained parameters are not nothing
+    # The trained parameters at the end of the training are:
+    θ_priori = tstate.parameters
+    @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
 end
