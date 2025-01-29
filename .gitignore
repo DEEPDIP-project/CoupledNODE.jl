@@ -12,3 +12,7 @@ test/test_data/*.jld2
 # Benchmarking
 simulations/Benchmark/output
 simulations/Benchmark/Manifest.toml
+
+# Testing
+test_on_snellius.out
+slurm-*

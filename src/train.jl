@@ -13,6 +13,7 @@ function train(model, ps, st, train_dataloader, loss_function;
         kwargs...)
     dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
     ps, st = (ps, st) .|> dev
+    @info "Training on" dev
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)
     # Retrieve the training state from kwargs, otherwise create a new one
