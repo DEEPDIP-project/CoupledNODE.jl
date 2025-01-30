@@ -156,15 +156,22 @@ normalized by the sum of squared actual data values.
 - `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
 This makes it compatible with the Lux ecosystem.
 """
-function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = false, kwargs...)
+function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwargs...)
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if !isnothing(Cuda_ext)
+    if CUDA.functional() && !cpu
         ArrayType = Cuda_ext.ArrayType()
-        dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
+        dev = Cuda_ext.get_device()
     else
         ArrayType = Array
-        dev = Lux.cpu_device()
+        dev = cpu 
     end
+    #if !isnothing(Cuda_ext)
+    #    ArrayType = Cuda_ext.ArrayType()
+    #    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
+    #else
+    #    ArrayType = Array
+    #    dev = Lux.cpu_device()
+    #end
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
