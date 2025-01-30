@@ -27,7 +27,7 @@ using Adapt
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
     clean() = (GC.gc(); CUDA.reclaim())
-    data = device(data)
+    #data = device(data)
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles

@@ -166,7 +166,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         dev = Lux.cpu_device()
     end
     @warn "A-posteriori loss function is using $dev device."
-    
+
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
