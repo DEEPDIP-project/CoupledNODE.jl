@@ -158,7 +158,7 @@ This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwargs...)
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if CUDA.functional() && !cpu
+    if !isnothing(Cuda_ext) && CUDA.functional() && !cpu
         ArrayType = Cuda_ext.ArrayType()
         dev = Cuda_ext.get_device()
     else
