@@ -7,6 +7,7 @@ NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
+using CUDA: CUDA
 
 # Define the test set
 @testset "A-priori" begin
@@ -14,13 +15,14 @@ using OptimizationOptimisers: OptimizationOptimisers
     rng = Random.Xoshiro(123)
     ig = 1 # index of the LES grid to use.
 
-    # Use gpu device
-    device(x) = adapt(params.backend, x)
+    @test CUDA.functional() # Check that CUDA is available
 
     # Load the data
     data = load("test_data/data_train.jld2", "data_train")
     params = load("test_data/params_data.jld2", "params")
-    # and put them on the device
+
+    # Use gpu device
+    device(x) = adapt(params.backend, x)
     data = device(data)
 
     # Build LES setups and assemble operators
@@ -59,6 +61,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Give the CNN a test run
     test_output = Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
     @test !isnothing(test_output) # Check that the output is not nothing
+    # check that the output is on the device
+    @test device(test_output) == device(θ)
 
     # Loss in the Lux format
     loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
@@ -72,12 +76,14 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Training (via Lux)
     loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
         nepochs = 15, ad_type = Optimization.AutoZygote(),
-        alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = nothing)
+        alg = OptimizationOptimisers.Adam(0.1), cpu = false, callback = nothing)
 
     # Check that the training loss is finite
     @test isfinite(loss)
+    @test device(loss) == device(θ)
 
     # The trained parameters at the end of the training are:
     θ_priori = tstate.parameters
     @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
+    @test device(θ_priori) == device(θ)
 end
