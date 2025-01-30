@@ -159,7 +159,6 @@ create_dataloader_prior(io_array; batchsize = 50, device = identity, rng) = func
     nsample = size(x)[end]
     d = ndims(x)
     i = sort(shuffle(rng, 1:nsample)[1:batchsize])
-    @warn "Dataloader is using device: $device"
     xuse = device(Array(selectdim(x, d, i)))
     yuse = device(Array(selectdim(y, d, i)))
     xuse, yuse
