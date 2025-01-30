@@ -32,6 +32,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 [weakdeps]
 IncompressibleNavierStokes = "5e318141-6589-402b-868d-77d7df8c442e"
 NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 LuxCUDA = "d0bbae9a-e099-4d5b-a835-1c6931763bda"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
@@ -43,10 +44,11 @@ Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
 
 [extensions]
-CoupledNODECUDA = ["CUDA"]
+CoupledNODECUDA = ["CUDA", "Adapt"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
 
 [compat]
+Adapt = "4"
 CUDA = "5"
 CairoMakie = "0.12"
 ChainRules = "1"
@@ -83,4 +85,5 @@ NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
 IncompressibleNavierStokes = "5e318141-6589-402b-868d-77d7df8c442e"
 
 [targets]
-test = ["Test", "CUDA", "IncompressibleNavierStokes", "NeuralClosure"]
+test = ["Test", "CUDA", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
+

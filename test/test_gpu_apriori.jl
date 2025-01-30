@@ -8,9 +8,10 @@ using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using CUDA: CUDA
+using Adapt
 
 # Define the test set
-@testset "A-priori" begin
+@testset "GPU A-priori" begin
     T = Float32
     rng = Random.Xoshiro(123)
     ig = 1 # index of the LES grid to use.
@@ -22,7 +23,10 @@ using CUDA: CUDA
     params = load("test_data/params_data.jld2", "params")
 
     # Use gpu device
-    device(x) = adapt(params.backend, x)
+    backend = CUDABackend()
+    CUDA.allowscalar(false)
+    device = x -> adapt(CuArray, x)
+    clean() = (GC.gc(); CUDA.reclaim())
     data = device(data)
 
     # Build LES setups and assemble operators
