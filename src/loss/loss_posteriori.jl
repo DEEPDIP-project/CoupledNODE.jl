@@ -158,20 +158,15 @@ This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwargs...)
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if !isnothing(Cuda_ext) && CUDA.functional() && !cpu
+    if !isnothing(Cuda_ext) && !cpu
         ArrayType = Cuda_ext.ArrayType()
         dev = Cuda_ext.get_device()
     else
         ArrayType = Array
-        dev = cpu 
+        dev = Lux.cpu_device()
     end
-    #if !isnothing(Cuda_ext)
-    #    ArrayType = Cuda_ext.ArrayType()
-    #    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
-    #else
-    #    ArrayType = Array
-    #    dev = Lux.cpu_device()
-    #end
+    @warn "A-posteriori loss function is using $dev device."
+    
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
@@ -179,7 +174,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             dt = @views t[2:2] .- t[1:1]
-            dt = only(Array(dt))
+            dt = only(ArrayType(dt))
             kwargs = (; kwargs..., dt = dt)
         end
         tspan = @views [t[1:1]; t[end:end]]
