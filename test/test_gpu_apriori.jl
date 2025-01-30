@@ -46,7 +46,7 @@ using Adapt
     dataloader_prior = NS.create_dataloader_prior(
         io_priori[ig]; batchsize = 10, rng = rng, device = device)
     train_data_priori = dataloader_prior()
-    @assert is_on_gpu(train_data_priori) # Check that the training data is on the GPU
+    @test is_on_gpu(train_data_priori) # Check that the training data is on the GPU
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")
@@ -66,12 +66,12 @@ using Adapt
         rng
     )
     θ = device(θ)
-    @assert is_on_gpu(θ) # Check that the parameters are on the GPU
+    @test is_on_gpu(θ) # Check that the parameters are on the GPU
 
     # Give the CNN a test run
     test_output = Lux.apply(closure, io_priori[ig].u[:, :, :, 1:1], θ, st)[1]
     @test !isnothing(test_output) # Check that the output is not nothing
-    @assert is_on_gpu(test_output) # Check that the output is on the GPU
+    @test is_on_gpu(test_output) # Check that the output is on the GPU
 
 
 #    # Loss in the Lux format
