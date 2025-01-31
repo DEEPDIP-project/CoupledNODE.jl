@@ -69,8 +69,8 @@ using ComponentArrays
         use_bias = [false, false],
         rng
     )
-    #θ = device(θ)
-    θ, st = θ, st |> Lux.gpu_device()
+    θ = device(θ)
+    st = device(st)
     #@info θ
     @info typeof(θ)
     #@test is_componentvector_on_gpu(θ) # Check that the parameters are on the GPU
