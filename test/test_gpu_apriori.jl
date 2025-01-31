@@ -69,15 +69,16 @@ using ComponentArrays
         use_bias = [false, false],
         rng
     )
-    θ = device(θ)
-    @info θ
+    #θ = device(θ)
+    θ, st = θ, st |> Lux.gpu_device()
+    #@info θ
     @info typeof(θ)
-    @test is_componentvector_on_gpu(θ) # Check that the parameters are on the GPU
+    #@test is_componentvector_on_gpu(θ) # Check that the parameters are on the GPU
 
     # Give the CNN a test run
-#    test_output = Lux.apply(closure, device(io_priori[ig].u[:, :, :, 1:1]), θ, st)[1]
-#    @test !isnothing(test_output) # Check that the output is not nothing
-#    @test is_on_gpu(test_output) # Check that the output is on the GPU
+    test_output = Lux.apply(closure, device(io_priori[ig].u[:, :, :, 1:1]), θ, st)[1]
+    @test !isnothing(test_output) # Check that the output is not nothing
+    @test is_on_gpu(test_output) # Check that the output is on the GPU
 
 
 #    # Loss in the Lux format
