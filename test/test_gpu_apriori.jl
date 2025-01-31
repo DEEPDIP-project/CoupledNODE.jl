@@ -9,6 +9,7 @@ using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using CUDA: CUDA
 using Adapt
+using ComponentArrays
 
 # Define the test set
 @testset "GPU A-priori" begin
