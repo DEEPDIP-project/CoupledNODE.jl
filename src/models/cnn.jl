@@ -48,8 +48,8 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-        collocate,
-        padder,
+        #collocate,
+        #padder,
         # convolutional layers
         (Lux.Conv(
              ntuple(α -> 2r[i] + 1, D),
@@ -59,7 +59,7 @@ function cnn(;
              init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
-        decollocate
+        #decollocate
     )
     chain = Lux.Chain(layers...)
     params, state = Lux.setup(rng, chain)
