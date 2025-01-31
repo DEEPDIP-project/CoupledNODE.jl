@@ -5,6 +5,7 @@ using JLD2: load, @save
 using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux, train
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
+using LuxCUDA
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using CUDA: CUDA
@@ -77,7 +78,7 @@ using ComponentArrays
 
     # Give the CNN a test run
     test_in = device(io_priori[ig].u[:, :, :, 1:1])
-    #test_output = Lux.apply(closure, test_in, θ, st)[1]
+    test_output = Lux.apply(closure, test_in, θ, st)[1]
     #@test !isnothing(test_output) # Check that the output is not nothing
     #@test is_on_gpu(test_output) # Check that the output is on the GPU
 
