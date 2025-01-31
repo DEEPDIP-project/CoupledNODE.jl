@@ -15,17 +15,10 @@ using ComponentArrays
 @testset "GPU A-priori" begin
     # Helper function to check if a variable is on the GPU
     function is_on_gpu(x)
-        if x isa CuArray
-            return true
-        elseif x isa ComponentArray
-            return all(is_on_gpu, x.data)  # Recursively check underlying data
-        elseif x isa NamedTuple
-            return all(is_on_gpu, values(x))
-        elseif x isa Tuple
-            return all(is_on_gpu, x)
-        else
-            return false
-        end
+        return x isa CuArray
+    end
+    function is_componentvector_on_gpu(cv)
+        return cv.data isa CuArray
     end
     T = Float32
     rng = Random.Xoshiro(123)
@@ -79,7 +72,7 @@ using ComponentArrays
     θ = device(θ)
     @info θ
     @info typeof(θ)
-    @test is_on_gpu(θ) # Check that the parameters are on the GPU
+    @test is_componentvector_on_gpu(θ) # Check that the parameters are on the GPU
 
     # Give the CNN a test run
 #    test_output = Lux.apply(closure, device(io_priori[ig].u[:, :, :, 1:1]), θ, st)[1]
