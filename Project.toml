@@ -44,7 +44,7 @@ Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
 
 [extensions]
-CoupledNODECUDA = ["CUDA", "Adapt"]
+CoupledNODECUDA = ["CUDA", "LuxCUDA", "Adapt"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
 
 [compat]
@@ -85,5 +85,5 @@ NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
 IncompressibleNavierStokes = "5e318141-6589-402b-868d-77d7df8c442e"
 
 [targets]
-test = ["Test", "CUDA", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
+test = ["Test", "CUDA", "LuxCUDA", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
 
