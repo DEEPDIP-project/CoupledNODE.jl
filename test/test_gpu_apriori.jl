@@ -10,7 +10,6 @@ using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using CUDA: CUDA
 using Adapt
-using ComponentArrays
 
 # Define the test set
 @testset "GPU A-priori" begin
@@ -18,9 +17,7 @@ using ComponentArrays
     function is_on_gpu(x)
         return x isa CuArray
     end
-    function is_componentvector_on_gpu(cv)
-        return cv.data isa CuArray
-    end
+
     T = Float32
     rng = Random.Xoshiro(123)
     ig = 1 # index of the LES grid to use.
@@ -35,7 +32,6 @@ using ComponentArrays
     backend = CUDABackend()
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
-    #data = device(data)
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
@@ -72,8 +68,6 @@ using ComponentArrays
     )
     θ = device(θ)
     st = device(st)
-    @info typeof(θ)
-    @test is_componentvector_on_gpu(θ) # Check that the parameters are on the GPU
 
     # Give the CNN a test run
     test_in = device(io_priori[ig].u[:, :, :, 1:1])
@@ -84,6 +78,7 @@ using ComponentArrays
     # Loss in the Lux format
     loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
+    @test is_on_gpu(loss_value[1]) # Check that the loss value is on the GPU
 
     # Define the callback
     callbackstate_val, callback_val = NS.create_callback(
