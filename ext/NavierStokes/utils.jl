@@ -110,7 +110,7 @@ Main differences between this function and NeuralClosure.create_io_arrays
 A named tuple with fields `u` and `t`.
 `u` is a matrix without padding and shape (nless..., D, sample, t)
 """
-function create_io_arrays_posteriori(data, setups)
+function create_io_arrays_posteriori(data, setups, device=identity)
     nsample = length(data)
     ngrid, nfilter = size(data[1])
     nt = length(data[1][1].t) - 1
@@ -134,7 +134,7 @@ function create_io_arrays_posteriori(data, setups)
                 data[is][1, 1].t
             )
         end
-        (; u = u, t = t)
+        (; u = device(u), t = t)
     end
 end
 
@@ -196,6 +196,6 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
         it = istart:(istart + nunroll)
         # select the sample
         isample = rand(rng, 1:samples)
-        (; u = device(view(io_array.u, n..., dim, isample, it)), t = device(io_array.t[isample, it]))
+        (; u = view(io_array.u, n..., dim, isample, it), t = device(io_array.t[isample, it]))
     end
 end

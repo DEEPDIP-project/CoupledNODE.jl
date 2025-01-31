@@ -40,7 +40,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     end
 
     # A posteriori io_arrays 
-    io_post = NS.create_io_arrays_posteriori(data, setups)
+    io_post = NS.create_io_arrays_posteriori(data, setups, device)
 
     # Example of dimensions and how to operate with io_arrays_posteriori
     (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
@@ -83,6 +83,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Test and trigger the model
     test_output = Lux.apply(closure,u, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
+    @test is_on_gpu(u) # Check that the output is on the GPU
     @test is_on_gpu(test_output) # Check that the output is on the GPU
 
     # Define the right hand side of the ODE
