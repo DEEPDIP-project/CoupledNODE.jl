@@ -14,7 +14,17 @@ using Adapt
 @testset "GPU A-priori" begin
     # Helper function to check if a variable is on the GPU
     function is_on_gpu(x)
-        return x isa CuArray
+        if x isa CuArray
+            return true
+        elseif x isa ComponentArray
+            return all(is_on_gpu, x.data)  # Recursively check underlying data
+        elseif x isa NamedTuple
+            return all(is_on_gpu, values(x))
+        elseif x isa Tuple
+            return all(is_on_gpu, x)
+        else
+            return false
+        end
     end
     T = Float32
     rng = Random.Xoshiro(123)
