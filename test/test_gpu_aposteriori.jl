@@ -13,7 +13,7 @@ using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 
 # Define the test set
-@testset "A-posteriori" begin
+@testset "GPU A-posteriori" begin
     # Helper function to check if a variable is on the GPU
     function is_on_gpu(x)
         return x isa CuArray
