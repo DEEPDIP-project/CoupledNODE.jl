@@ -54,7 +54,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     dataloader_posteriori = NS.create_dataloader_posteriori(
         io_post[ig]; nunroll = nunroll, rng = rng, device = device)
     train_data_post = dataloader_posteriori()
-    #@test is_on_gpu(train_data_post[1]) # Check that the training data is on the GPU
+    @test is_on_gpu(train_data_post[1]) # Check that the training data is on the GPU
     @test is_on_gpu(train_data_post[2]) # Check that the training data is on the GPU
 
     ## Load the test data

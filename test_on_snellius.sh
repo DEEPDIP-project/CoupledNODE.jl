@@ -11,5 +11,5 @@
 module load 2023
 module load juliaup/1.14.5-GCCcore-12.3.0
 
-julia --project -t auto -e 'using Pkg; Pkg.update(); Pkg.resolve(); Pkg.test()'
+julia --project -t auto -e 'using Pkg; Pkg.resolve(); Pkg.test()'
 
