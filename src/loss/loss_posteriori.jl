@@ -170,7 +170,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
-        @warn "x is on device: $(dev(x))"
+        @warn "***** ---> typeof(x): $(typeof(x))"
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
@@ -191,9 +191,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             return (Array(t)[1], Array(t)[end])
         end
         tspan = get_tspan(t)
-        @info "--------------"
-        @warn tspan
-        @info tspan
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = Array(t), kwargs...)))
