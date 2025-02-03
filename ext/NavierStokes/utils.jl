@@ -200,7 +200,8 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
             u = view(io_array.u, n..., dim, isample, it)
             t = io_array.t[isample, it]
         else
-            u = device(view(io_array.u, n..., dim, isample, it))
+            @info "Using device"
+            u = device(collect(view(io_array.u, n..., dim, isample, it)))
             t = device(io_array.t[isample, it])
         end
         (; u = u, t = t)
