@@ -30,7 +30,8 @@ function cnn(;
         channels,
         activations,
         use_bias,
-        rng = Random.default_rng()
+        rng = Random.default_rng(),
+        device = identity,
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
@@ -48,6 +49,7 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
+        device,
         collocate,
         padder,
         # convolutional layers

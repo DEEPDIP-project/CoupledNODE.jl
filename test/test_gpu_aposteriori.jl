@@ -75,7 +75,8 @@ using OptimizationOptimisers: OptimizationOptimisers
         channels = [2, 2],
         activations = [tanh, identity],
         use_bias = [false, false],
-        rng
+        rng = rng,
+        device = device
     )
     θ = device(θ)
     @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
@@ -100,7 +101,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Callback function
     callbackstate_val, callback_val = NS.create_callback(
         dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
-        rng = rng, do_plot = false, plot_train = false, device=device)
+        rng = rng, do_plot = false, plot_train = false, device = device)
     θ_posteriori = θ
 
     # Training via Lux

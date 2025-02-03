@@ -170,13 +170,14 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
+        @warn "x is on device: $(dev(x))"
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             if !isnothing(Cuda_ext) && !cpu
                 dt = @views t[2] .- t[1]
-                dt = dev(Cuda_ext.allowscalar() do 
-                    ArrayType(dt) 
+                dt = dev(Cuda_ext.allowscalar() do
+                    ArrayType(dt)
                 end)
             else
                 dt = @views t[2:2] .- t[1:1]
@@ -184,16 +185,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             end
             kwargs = (; kwargs..., dt = dt)
         end
-        #if !isnothing(Cuda_ext) && !cpu
-        #    function get_tspan(t)
-        #        return (t[1], t[end])
-        #    end
-        #else
-        #    function get_tspan(t)
-        #        return (t[1], t[end])
-        #    end
-        #    tspan = @views [t[1:1]; t[end:end]]
-        #end
         function get_tspan(t)
             # To avoid problems with SciMLBase.promote_tspan, 
             # we have to return t_span as a tuple on the CPU
@@ -206,6 +197,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = Array(t), kwargs...)))
+        #prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = collect(t), kwargs...)))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
