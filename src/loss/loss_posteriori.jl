@@ -188,10 +188,11 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             #tspan = dev(Cuda_ext.allowscalar() do
             #    ArrayType([t[1], t[end]]) 
             #end)
-            tspan = @views [tspan[1]; tspan[end]]
+            tspan = [tspan[1]; tspan[end]]
         else
             tspan = @views [t[1:1]; t[end:end]]
         end
+        @info tspan
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...)))
