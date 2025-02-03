@@ -78,10 +78,11 @@ using OptimizationOptimisers: OptimizationOptimisers
         rng
     )
     θ = device(θ)
+    @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     st = device(st)
 
     # Test and trigger the model
-    test_output = Lux.apply(closure, u, θ, st)
+    test_output = Lux.apply(closure, u, θ, st)[1]
     @test !isnothing(test_output) # Check that the output is not nothing
     @test is_on_gpu(u) # Check that the output is on the GPU
     @test is_on_gpu(test_output) # Check that the output is on the GPU
