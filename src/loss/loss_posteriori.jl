@@ -174,7 +174,13 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             dt = @views t[2:2] .- t[1:1]
-            dt = dev(only(ArrayType(dt)))
+            if !isnothing(Cuda_ext) && !cpu
+                dt = dev(Cuda_ext.allowscalar() do 
+                    ArrayType(dt)  # Move to CPU safely
+                end)
+            else
+                dt = only(ArrayType(dt))
+            end
             kwargs = (; kwargs..., dt = dt)
         end
         tspan = @views [t[1:1]; t[end:end]]
