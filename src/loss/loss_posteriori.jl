@@ -197,7 +197,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         function get_tspan(t)
             # To avoid problems with SciMLBase.promote_tspan, 
             # we have to return t_span as a tuple on the CPU
-            return (t[1], t[end])
+            return (Array(t)[1], Array(t)[end])
         end
         tspan = get_tspan(t)
         @info "--------------"
