@@ -184,14 +184,20 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             end
             kwargs = (; kwargs..., dt = dt)
         end
-        if !isnothing(Cuda_ext) && !cpu
-            #tspan = dev(Cuda_ext.allowscalar() do
-            #    ArrayType([t[1], t[end]]) 
-            #end)
-            tspan = [tspan[1]; tspan[end]]
-        else
-            tspan = @views [t[1:1]; t[end:end]]
+        #if !isnothing(Cuda_ext) && !cpu
+        #    function get_tspan(t)
+        #        return (t[1], t[end])
+        #    end
+        #else
+        #    function get_tspan(t)
+        #        return (t[1], t[end])
+        #    end
+        #    tspan = @views [t[1:1]; t[end:end]]
+        #end
+        function get_tspan(t)
+            return (t[1], t[end])
         end
+        tspan = get_tspan(t)
         @info tspan
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
