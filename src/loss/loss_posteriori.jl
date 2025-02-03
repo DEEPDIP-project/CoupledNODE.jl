@@ -205,7 +205,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         @info tspan
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
-            prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...)))
+            prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = Array(t), kwargs...)))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
