@@ -194,11 +194,12 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         #    end
         #    tspan = @views [t[1:1]; t[end:end]]
         #end
-        function get_tspan(t)
+        function tspan()
             return (t[1], t[end])
         end
-        tspan = get_tspan(t)
-        @info tspan
+        #tspan = get_tspan(t)
+        @info "--------------"
+        @warn tspan
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...)))
