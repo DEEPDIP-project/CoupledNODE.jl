@@ -173,17 +173,24 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
-            dt = @views t[2:2] .- t[1:1]
             if !isnothing(Cuda_ext) && !cpu
+                dt = @views t[2] .- t[1]
                 dt = dev(Cuda_ext.allowscalar() do 
                     ArrayType(dt)  # Move to CPU safely
                 end)
             else
+                dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))
             end
             kwargs = (; kwargs..., dt = dt)
         end
-        tspan = @views [t[1:1]; t[end:end]]
+        if !isnothing(Cuda_ext) && !cpu
+            tspan = dev(Cuda_ext.allowscalar() do
+                ArrayType([t[1], t[end]])  # Convert to CPU array in a controlled block
+            end)
+        else
+            tspan = @views [t[1:1]; t[end:end]]
+        end
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = t, kwargs...)))
