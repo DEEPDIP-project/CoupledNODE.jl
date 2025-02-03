@@ -50,7 +50,7 @@ NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
 [compat]
 Adapt = "4"
 CUDA = "5"
-CairoMakie = "0.12"
+CairoMakie = "0.13"
 ChainRules = "1"
 ComponentArrays = "0.15"
 DifferentialEquations = "7"
