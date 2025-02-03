@@ -55,6 +55,7 @@ using OptimizationOptimisers: OptimizationOptimisers
         io_post[ig]; nunroll = nunroll, rng = rng, device = device)
     train_data_post = dataloader_posteriori()
     @test is_on_gpu(train_data_post[1]) # Check that the training data is on the GPU
+    @test is_on_gpu(train_data_post[2]) # Check that the training data is on the GPU
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")

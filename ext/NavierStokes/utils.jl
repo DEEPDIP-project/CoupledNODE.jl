@@ -202,7 +202,7 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
         else
             # TODO: check if this is the correct way to move the data to the device
             u = device(collect(view(io_array.u, n..., dim, isample, it)))
-            t = io_array.t[isample, it]
+            t = device(io_array.t[isample, it])
         end
         (; u = u, t = t)
     end
