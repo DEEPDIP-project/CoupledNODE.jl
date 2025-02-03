@@ -176,7 +176,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             if !isnothing(Cuda_ext) && !cpu
                 dt = @views t[2] .- t[1]
                 dt = dev(Cuda_ext.allowscalar() do 
-                    ArrayType(dt)  # Move to CPU safely
+                    ArrayType(dt) 
                 end)
             else
                 dt = @views t[2:2] .- t[1:1]
@@ -185,9 +185,10 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
             kwargs = (; kwargs..., dt = dt)
         end
         if !isnothing(Cuda_ext) && !cpu
-            tspan = dev(Cuda_ext.allowscalar() do
-                ArrayType([t[1], t[end]])  # Convert to CPU array in a controlled block
-            end)
+            #tspan = dev(Cuda_ext.allowscalar() do
+            #    ArrayType([t[1], t[end]]) 
+            #end)
+            tspan = @views [tspan[1]; tspan[end]]
         else
             tspan = @views [t[1:1]; t[end:end]]
         end
