@@ -182,7 +182,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
                 dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))
             end
-            kwargs = (; kwargs..., dt = Array(dt))
+            kwargs = (; kwargs..., dt = dt)
         end
         #if !isnothing(Cuda_ext) && !cpu
         #    function get_tspan(t)
