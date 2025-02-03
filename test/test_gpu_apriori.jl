@@ -78,7 +78,6 @@ using Adapt
     # Loss in the Lux format
     loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
-    @test is_on_gpu(loss_value[1]) # Check that the loss value is on the GPU
 
     # Define the callback
     callbackstate_val, callback_val = NS.create_callback(
@@ -96,4 +95,6 @@ using Adapt
     # The trained parameters at the end of the training are:
     θ_priori = tstate.parameters
     @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
+    @test is_on_gpu(θ_priori) # Check that the trained parameters are on the GPU
+    @info θ_priori
 end
