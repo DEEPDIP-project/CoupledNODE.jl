@@ -131,7 +131,7 @@ Format of function signature and outputs are compatible with the Lux ecosystem.
 - `st_`: The updated state of the model.
 - `(; y_pred = y_pred)`: Named tuple containing the predicted values `y_pred`.
 """
-function loss_priori_lux(model, ps, st, (x, y), device=identity)
+function loss_priori_lux(model, ps, st, (x, y), device = identity)
     y_pred, st_ = model(x, ps, st)
     loss = device(sum(abs2, y_pred .- y) / sum(abs2, y))
     return loss, st_, (; y_pred = y_pred)

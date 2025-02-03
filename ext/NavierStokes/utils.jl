@@ -110,7 +110,7 @@ Main differences between this function and NeuralClosure.create_io_arrays
 A named tuple with fields `u` and `t`.
 `u` is a matrix without padding and shape (nless..., D, sample, t)
 """
-function create_io_arrays_posteriori(data, setups, device=identity)
+function create_io_arrays_posteriori(data, setups, device = identity)
     nsample = length(data)
     ngrid, nfilter = size(data[1])
     nt = length(data[1][1].t) - 1
