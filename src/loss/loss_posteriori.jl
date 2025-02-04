@@ -171,7 +171,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
-        #        @warn "***** ---> typeof(x): $(typeof(x))"
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
@@ -180,9 +179,6 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
                     t[2] .- t[1]
                 end
                 @warn "***** ---> dt: $(dt) $(typeof(dt))"
-                #                dt = dev(Cuda_ext.allowscalar() do
-                #                    ArrayType(dt)
-                #                end)
             else
                 dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))

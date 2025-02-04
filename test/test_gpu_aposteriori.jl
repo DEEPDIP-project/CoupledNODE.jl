@@ -47,9 +47,6 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Example of dimensions and how to operate with io_arrays_posteriori
     (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
     (samples, nsteps) = size(io_post[ig].t)
-    # Example: how to select a random sample
-    random_sample = io_post[ig].u[:, :, :, rand(1:samples), :]
-    random_time = io_post[ig].t[2, :]
 
     # Create dataloader containing trajectories with the specified nunroll
     nunroll = 5
