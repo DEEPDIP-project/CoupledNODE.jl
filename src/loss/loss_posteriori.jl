@@ -167,21 +167,19 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         dev = Lux.cpu_device()
     end
     @warn "A-posteriori loss function is using $dev device."
-    @warn "A-posteriori loss function is using $dev device."
-    @warn "A-posteriori loss function is using $dev device."
 
     function loss_function(model, ps, st, (u, t))
         griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
         x = dev(u[griddims..., :, 1])
-        @warn "***** ---> typeof(x): $(typeof(x))"
+#        @warn "***** ---> typeof(x): $(typeof(x))"
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             if !isnothing(Cuda_ext) && !cpu
-                dt = @views t[2] .- t[1]
-                dt = dev(Cuda_ext.allowscalar() do
-                    ArrayType(dt)
-                end)
+                dt = t[2] .- t[1]
+#                dt = dev(Cuda_ext.allowscalar() do
+#                    ArrayType(dt)
+#                end)
             else
                 dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))
