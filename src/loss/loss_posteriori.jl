@@ -161,10 +161,13 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
     if !isnothing(Cuda_ext) && !cpu
         ArrayType = Cuda_ext.ArrayType()
         dev = Cuda_ext.get_device()
+        dev = Lux.gpu_device()
     else
         ArrayType = Array
         dev = Lux.cpu_device()
     end
+    @warn "A-posteriori loss function is using $dev device."
+    @warn "A-posteriori loss function is using $dev device."
     @warn "A-posteriori loss function is using $dev device."
 
     function loss_function(model, ps, st, (u, t))
