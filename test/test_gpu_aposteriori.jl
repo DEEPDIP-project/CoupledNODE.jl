@@ -7,6 +7,8 @@ NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using ComponentArrays: ComponentArray
 using Lux: Lux
+using CUDA
+using CUDSS
 using LuxCUDA
 using Adapt
 using Optimization: Optimization
@@ -36,7 +38,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
         x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
-        INS.Setup(; x = x, Re = params.Re)
+        INS.Setup(; x = x, Re = params.Re, backend = backend)
     end
 
     # A posteriori io_arrays 
