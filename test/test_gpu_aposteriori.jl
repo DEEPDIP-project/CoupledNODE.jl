@@ -95,7 +95,7 @@ using OptimizationOptimisers: OptimizationOptimisers
 
     # Define the loss (a-posteriori) 
     train_data_posteriori = dataloader_posteriori()
-    loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
+    loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5(), cpu=false)
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 

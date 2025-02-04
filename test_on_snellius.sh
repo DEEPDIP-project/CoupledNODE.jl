@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=julia_test
 #SBATCH --partition=gpu
-#SBATCH --time=00:30:00
+#SBATCH --time=00:10:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
