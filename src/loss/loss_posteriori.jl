@@ -3,6 +3,7 @@ using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using Lux: Lux
+using LuxCUDA
 
 """
 [DEPRECATED]
