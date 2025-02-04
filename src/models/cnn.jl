@@ -31,7 +31,7 @@ function cnn(;
         activations,
         use_bias,
         rng = Random.default_rng(),
-        device = identity,
+        device = identity
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
