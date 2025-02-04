@@ -176,7 +176,10 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             if !isnothing(Cuda_ext) && !cpu
-                dt = t[2] .- t[1]
+                dt = CUDA.allowscalar() do 
+                    ArrayType(t[2] .- t[1])
+                end
+                @warn "***** ---> dt: $(dt) $(typeof(dt))"
 #                dt = dev(Cuda_ext.allowscalar() do
 #                    ArrayType(dt)
 #                end)
