@@ -177,7 +177,7 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         if !(:dt in keys(kwargs))
             if !isnothing(Cuda_ext) && !cpu
                 dt = Cuda_ext.allowscalar() do 
-                    ArrayType(t[2] .- t[1])
+                    t[2] .- t[1]
                 end
                 @warn "***** ---> dt: $(dt) $(typeof(dt))"
 #                dt = dev(Cuda_ext.allowscalar() do
