@@ -2,6 +2,7 @@ module CoupledNODECUDA
 
 using CoupledNODE
 using CUDA: CUDA
+using CUDSS
 using Lux: Lux
 using LuxCUDA
 function ArrayType()
