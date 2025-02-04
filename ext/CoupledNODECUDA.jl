@@ -3,6 +3,7 @@ module CoupledNODECUDA
 using CoupledNODE
 using CUDA: CUDA
 using Lux: Lux
+using LuxCUDA
 function ArrayType()
     return CUDA.functional() ? CUDA.CuArray : Array
 end
