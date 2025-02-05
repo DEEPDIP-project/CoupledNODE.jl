@@ -49,7 +49,6 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-        #device,
         collocate,
         padder,
         # convolutional layers
