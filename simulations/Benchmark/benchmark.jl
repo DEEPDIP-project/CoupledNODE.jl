@@ -330,7 +330,6 @@ nprojectorders = length(projectorders)
 let
     dotrain = conf["posteriori"]["dotrain"]
     nepoch = conf["posteriori"]["nepoch"]
-    nepoch = 40
     dotrain && trainpost(;
         params,
         projectorders,
