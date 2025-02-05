@@ -130,6 +130,7 @@ T = eval(Meta.parse(conf["T"]))
 if CUDA.functional()
     ## For running on a CUDA compatible GPU
     @info "Running on CUDA"
+    @info CUDA.versioninfo()
     backend = CUDABackend()
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
@@ -145,8 +146,6 @@ else
 end
 conf["params"]["backend"] = deepcopy(backend)
 @info backend
-@info CUDA.versioninfo()
-
 
 ########################################################################## #src
 
