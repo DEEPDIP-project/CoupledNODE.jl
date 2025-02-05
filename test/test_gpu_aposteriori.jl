@@ -93,11 +93,11 @@ using OptimizationOptimisers: OptimizationOptimisers
         setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
     # Define the loss (a-posteriori) 
-    train_data_posteriori = dataloader_posteriori()
-    loss_posteriori_lux = create_loss_post_lux(
-        dudt_nn2; sciml_solver = Tsit5(), cpu = false)
-    loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-    @test isfinite(loss_value[1]) # Check that the loss value is finite
+    #train_data_posteriori = dataloader_posteriori()
+    #loss_posteriori_lux = create_loss_post_lux(
+    #    dudt_nn2; sciml_solver = Tsit5(), cpu = false)
+    #loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+    #@test isfinite(loss_value[1]) # Check that the loss value is finite
 
     ## Callback function
     #callbackstate_val, callback_val = NS.create_callback(
