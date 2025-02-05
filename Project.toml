@@ -41,8 +41,9 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
-[sources]
-NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
+[sources.NeuralClosure]
+rev = "main"
+url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"
 
 [extensions]
 CoupledNODECUDA = ["CUDA", "CUDSS", "LuxCUDA", "Adapt"]
@@ -51,7 +52,7 @@ NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
 [compat]
 Adapt = "4"
 CUDA = "5"
-CUDSS = "0.3.2"
+CUDSS = "0.3.2, 0.4"
 CairoMakie = "0.12"
 ChainRules = "1"
 ComponentArrays = "0.15"
