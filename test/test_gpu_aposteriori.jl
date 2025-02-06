@@ -62,7 +62,6 @@ using OptimizationOptimisers: OptimizationOptimisers
 
     u = train_data_post[1]
     @warn "*** -> typeof(u): $(typeof(u))"
-    #T = setups[1].T
     d = D = setups[1].grid.dimension()
     N = size(u, 1)
 
@@ -83,15 +82,15 @@ using OptimizationOptimisers: OptimizationOptimisers
     @warn "*** -> typeof(θ): $(typeof(θ))"
     st = device(st)
 
-    ## Test and trigger the model
-    #test_output = Lux.apply(closure, u, θ, st)[1]
-    #@test !isnothing(test_output) # Check that the output is not nothing
-    #@test is_on_gpu(u) # Check that the output is on the GPU
-    #@test is_on_gpu(test_output) # Check that the output is on the GPU
+    # Test and trigger the model
+    test_output = Lux.apply(closure, u, θ, st)[1]
+    @test !isnothing(test_output) # Check that the output is not nothing
+    @test is_on_gpu(u) # Check that the output is on the GPU
+    @test is_on_gpu(test_output) # Check that the output is on the GPU
 
-    ## Define the right hand side of the ODE
-    #dudt_nn2 = NS.create_right_hand_side_with_closure(
-    #    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+    # Define the right hand side of the ODE
+    dudt_nn2 = NS.create_right_hand_side_with_closure(
+        setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
     # Define the loss (a-posteriori) 
     #train_data_posteriori = dataloader_posteriori()
