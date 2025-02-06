@@ -42,7 +42,7 @@ CoupledNODE = {rev = "main", url = "https://github.com/DEEPDIP-project/CoupledNO
 Accessors = "0.1"
 Adapt = "4"
 CUDA = "5"
-CUDSS = "0.3.2"
+CUDSS = "0.4"
 CairoMakie = "0.12"
 ComponentArrays = "0.15.19"
 CoupledNODE = "0.0.2"
