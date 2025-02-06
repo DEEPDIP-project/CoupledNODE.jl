@@ -60,7 +60,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     test_data = load("test_data/data_test.jld2", "data_test")
     test_io_post = NS.create_io_arrays_posteriori(test_data, setups)
 
-    u = device(io_post[ig].u[:, :, :, 1, 1:10])
+    u = train_data_post[1]
+    @warn "*** -> typeof(u): $(typeof(u))"
     #T = setups[1].T
     d = D = setups[1].grid.dimension()
     N = size(u, 1)
