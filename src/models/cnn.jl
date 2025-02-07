@@ -72,28 +72,103 @@ Interpolate velocity components to volume centers.
 
 TODO, D and dir can be parameters istead of arguments I think
 """
-function interpolate(A, D, dir)
-    (i, a) = A
-    if i > D
-        return a
-    end # Nothing to interpolate for extra layers
-    staggered = a .+ circshift(a, ntuple(x -> x == i ? dir : 0, D))
-    staggered ./ 2
-end
-
+#function interpolate(A, D, dir)
+#    (i, a) = A
+#    if i > D
+#        return a
+#    end # Nothing to interpolate for extra layers
+#    staggered = a .+ circshift(a, ntuple(x -> x == i ? dir : 0, D))
+#    staggered ./ 2
+#end
+#
+#function collocate(u)
+#    D = ndims(u) - 2
+#    slices = eachslice(u; dims = D + 1)
+#    staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
+#    stack(staggered_slices; dims = D + 1)
+#end
+#
+#"""
+#Interpolate closure force from volume centers to volume faces.
+#"""
+#function decollocate(u)
+#    D = ndims(u) - 2
+#    slices = eachslice(u; dims = D + 1)
+#    staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
+#    stack(staggered_slices; dims = D + 1)
+#end
+#
+"""
+Interpolate velocity components to volume centers.
+"""
 function collocate(u)
-    D = ndims(u) - 2
-    slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
-    stack(staggered_slices; dims = D + 1)
+    sz..., D, _ = size(u)
+    # for α = 1:D
+    #     v = selectdim(u, D + 1, α)
+    #     v = (v + circshift(v, ntuple(β -> α == β ? -1 : 0, D + 1))) / 2
+    # end
+    if D == 2
+        # TODO: Check if this is more efficient as
+        #   a convolution with the two channel kernels
+        #   [1 1; 0 0] / 2
+        #   and
+        #   [0 1; 0 1] / 2
+        # TODO: Maybe skip this step entirely and learn the
+        #   collocation function subject to the skewness
+        #   constraint (left-skewed kernel from staggered right face to center)
+        a = selectdim(u, 3, 1)
+        b = selectdim(u, 3, 2)
+        a = (a .+ circshift(a, (1, 0, 0))) ./ 2
+        b = (b .+ circshift(b, (0, 1, 0))) ./ 2
+        a = reshape(a, sz..., 1, :)
+        b = reshape(b, sz..., 1, :)
+        cat(a, b; dims = 3)
+    elseif D == 3
+        a = selectdim(u, 4, 1)
+        b = selectdim(u, 4, 2)
+        c = selectdim(u, 4, 3)
+        a = (a .+ circshift(a, (1, 0, 0, 0))) ./ 2
+        b = (b .+ circshift(b, (0, 1, 0, 0))) ./ 2
+        c = (c .+ circshift(c, (0, 0, 1, 0))) ./ 2
+        a = reshape(a, sz..., 1, :)
+        b = reshape(b, sz..., 1, :)
+        c = reshape(c, sz..., 1, :)
+        cat(a, b, c; dims = 4)
+    end
 end
 
 """
 Interpolate closure force from volume centers to volume faces.
 """
 function decollocate(u)
-    D = ndims(u) - 2
-    slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
-    stack(staggered_slices; dims = D + 1)
+    sz..., D, _ = size(u)
+    # for α = 1:D
+    #     v = selectdim(u, D + 1, α)
+    #     v = (v + circshift(v, ntuple(β -> α == β ? -1 : 0, D + 1))) / 2
+    # end
+    if D == 2
+        a = selectdim(u, 3, 1)
+        b = selectdim(u, 3, 2)
+        a = (a .+ circshift(a, (-1, 0, 0))) ./ 2
+        b = (b .+ circshift(b, (0, -1, 0))) ./ 2
+        # a = circshift(a, (1, 0, 0)) .- a
+        # b = circshift(b, (0, 1, 0)) .- b
+        a = reshape(a, sz..., 1, :)
+        b = reshape(b, sz..., 1, :)
+        cat(a, b; dims = 3)
+    elseif D == 3
+        a = selectdim(u, 4, 1)
+        b = selectdim(u, 4, 2)
+        c = selectdim(u, 4, 3)
+        a = (a .+ circshift(a, (-1, 0, 0, 0))) ./ 2
+        b = (b .+ circshift(b, (0, -1, 0, 0))) ./ 2
+        c = (c .+ circshift(c, (0, 0, -1, 0))) ./ 2
+        # a = circshift(a, (1, 0, 0, 0)) .- a
+        # b = circshift(b, (0, 1, 0, 0)) .- b
+        # c = circshift(c, (0, 0, 1, 0)) .- c
+        a = reshape(a, sz..., 1, :)
+        b = reshape(b, sz..., 1, :)
+        c = reshape(c, sz..., 1, :)
+        cat(a, b, c; dims = 4)
+    end
 end
