@@ -64,7 +64,7 @@ using Adapt
         data_ch = D,
         radii = [3, 3],
         channels = [2, 2],
-        activations = [relu, identity],
+        activations = [identity, identity],
         use_bias = [false, false],
         rng = rng,
         use_cuda = true
