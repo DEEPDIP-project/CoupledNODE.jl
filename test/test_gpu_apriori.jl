@@ -64,14 +64,14 @@ using Adapt
         data_ch = D,
         radii = [3, 3],
         channels = [2, 2],
-        activations = [identity, identity],
+        activations = [tanh, identity],
         use_bias = [false, false],
         rng = rng,
         use_cuda = true
     )
     θ = device(θ)
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
-    st = device(st)
+    #st = device(st)
 
     # Give the CNN a test run
     test_in = device(io_priori[ig].u[:, :, :, 1:1])
