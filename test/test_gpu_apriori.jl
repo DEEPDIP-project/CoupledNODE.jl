@@ -74,7 +74,7 @@ using Adapt
     st = device(st)
 
     # Give the CNN a test run
-    test_in = device(io_priori[ig].u[:, :, :, 1:1])
+    test_in = collect(device(io_priori[ig].u[:, :, :, 1:1]))
     test_output = Lux.apply(closure, test_in, θ, st)[1]
     @test !isnothing(test_output) # Check that the output is not nothing
     @test is_on_gpu(test_output) # Check that the output is on the GPU
