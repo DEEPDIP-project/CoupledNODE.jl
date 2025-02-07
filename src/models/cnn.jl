@@ -30,7 +30,7 @@ function cnn(;
         channels,
         activations,
         use_bias,
-        rng = Random.default_rng(),
+        rng = Random.default_rng()
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
@@ -71,7 +71,7 @@ Interpolate velocity components to volume centers.
 
 TODO, D and dir can be parameters istead of arguments I think
 """
-function interpolate(A::Tuple{Int, Array}, D::Int, dir::Int)
+function interpolate(A, D, dir)
     @warn "Using CPU version of interpolate"
     (i, a) = A
     if i > D

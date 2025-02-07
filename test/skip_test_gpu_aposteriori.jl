@@ -9,6 +9,7 @@ using ComponentArrays: ComponentArray
 using Lux: Lux
 using CUDA
 using CUDSS
+using cuDNN
 using LuxCUDA
 using Adapt
 using Optimization: Optimization
@@ -74,8 +75,7 @@ using OptimizationOptimisers: OptimizationOptimisers
         channels = [2, 2],
         activations = [tanh, identity],
         use_bias = [false, false],
-        rng = rng,
-        #device = device
+        rng = rng        #device = device
     )
     θ = θ |> device
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU

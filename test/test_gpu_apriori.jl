@@ -6,9 +6,11 @@ using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using LuxCUDA
+using CUDA
+using CUDSS
+using cuDNN
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
-using CUDA: CUDA
 using Adapt
 
 # Define the test set
