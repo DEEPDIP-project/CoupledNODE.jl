@@ -1,4 +1,5 @@
-module CoupledNODECUDA
+#module CoupledNODECUDA
+__precompile__(false)
 
 using CoupledNODE
 using CUDA: CUDA
@@ -37,4 +38,4 @@ function CoupledNODE.interpolate(A, D, dir)
     staggered ./ 2
 end
 
-end
+#end
