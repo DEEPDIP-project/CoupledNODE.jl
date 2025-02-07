@@ -75,9 +75,9 @@ using OptimizationOptimisers: OptimizationOptimisers
         activations = [tanh, identity],
         use_bias = [false, false],
         rng = rng,
-        device = device
+        #device = device
     )
-    θ = device(θ)
+    #θ = device(θ)
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     @warn "*** -> typeof(θ): $(typeof(θ))"
     st = device(st)
