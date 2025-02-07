@@ -45,7 +45,7 @@ function cnn(;
     c = [data_ch; c]
 
     # Syver uses a padder layer instead of adding padding to the convolutional layers
-    const padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
+    padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
 
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
     if !isnothing(Cuda_ext) && use_cuda
@@ -57,7 +57,7 @@ function cnn(;
     # Create convolutional closure model
     layers = (
         #u -> collocate(u, interpolate_fn),
-        padder,
+        #padder,
         # convolutional layers
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
