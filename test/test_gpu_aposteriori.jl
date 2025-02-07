@@ -80,7 +80,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     θ = θ |> device
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     @warn "*** -> typeof(θ): $(typeof(θ))"
-    #st = device(st)
+    st = device(st)
 
     # Test and trigger the model
     test_output = Lux.apply(closure, u, θ, st)[1]
@@ -89,8 +89,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test is_on_gpu(test_output) # Check that the output is on the GPU
 
     # Define the right hand side of the ODE
-    dudt_nn2 = NS.create_right_hand_side_with_closure(
-        setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+    #dudt_nn2 = NS.create_right_hand_side_with_closure(
+    #    setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
     # Define the loss (a-posteriori) 
     #train_data_posteriori = dataloader_posteriori()
