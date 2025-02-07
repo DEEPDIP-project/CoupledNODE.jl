@@ -57,7 +57,7 @@ function cnn(;
     # Create convolutional closure model
     layers = (
         #u -> collocate(u, interpolate_fn),
-        #padder,
+        padder,
         # convolutional layers
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
