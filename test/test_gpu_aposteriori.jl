@@ -33,7 +33,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Use gpu device
     backend = CUDABackend()
     CUDA.allowscalar(false)
-    device = x -> adapt(CuArray, x)
+    device = x -> adapt(CuArray{T}, x)
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
