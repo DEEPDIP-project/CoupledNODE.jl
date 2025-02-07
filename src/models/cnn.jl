@@ -70,7 +70,7 @@ function cnn(;
         #u -> decollocate(u, interpolate_fn)
     )
     chain = Chain(layers...)
-    params, state = setup(rng, chain)
+    params, state = Lux.setup(rng, chain)
     (chain, ComponentArray(params), state)
 end
 
