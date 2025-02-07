@@ -30,7 +30,8 @@ function cnn(;
         channels,
         activations,
         use_bias,
-        rng = Random.default_rng()
+        rng = Random.default_rng(),
+        use_cuda = false
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
@@ -46,9 +47,16 @@ function cnn(;
     # Syver uses a padder layer instead of adding padding to the convolutional layers
     padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
 
+    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
+    if !isnothing(Cuda_ext) && use_cuda
+        interpolate_fn = Cuda_ext.gpu_interpolate
+    else
+        interpolate_fn = cpu_interpolate
+    end
+
     # Create convolutional closure model
     layers = (
-        collocate,
+        u -> collocate(u, interpolate_fn),
         padder,
         # convolutional layers
         (Lux.Conv(
@@ -59,7 +67,7 @@ function cnn(;
              init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
-        decollocate
+        u -> decollocate(u, interpolate_fn)
     )
     chain = Lux.Chain(layers...)
     params, state = Lux.setup(rng, chain)
@@ -71,7 +79,7 @@ Interpolate velocity components to volume centers.
 
 TODO, D and dir can be parameters istead of arguments I think
 """
-function interpolate(A, D, dir)
+function cpu_interpolate(A, D, dir)
     @warn "Using CPU version of interpolate"
     (i, a) = A
     if i > D
@@ -81,19 +89,19 @@ function interpolate(A, D, dir)
     staggered ./ 2
 end
 
-function collocate(u)
+function collocate(u, interpolate_fn=cpu_interpolate)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
+    staggered_slices = map(x -> interpolate_fn(x, D, 1), enumerate(slices))
     stack(staggered_slices; dims = D + 1)
 end
 
 """
 Interpolate closure force from volume centers to volume faces.
 """
-function decollocate(u)
+function decollocate(u, interpolate_fn=cpu_interpolate)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
+    staggered_slices = map(x -> interpolate_fn(x, D, -1), enumerate(slices))
     stack(staggered_slices; dims = D + 1)
 end

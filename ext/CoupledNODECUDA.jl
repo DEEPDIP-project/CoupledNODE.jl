@@ -1,5 +1,4 @@
-#module CoupledNODECUDA
-__precompile__(false)
+module CoupledNODECUDA
 
 using CoupledNODE
 using CUDA: CUDA
@@ -16,7 +15,7 @@ end
 allowscalar = deepcopy(CUDA.allowscalar)
 
 # GPU version of interpolate without circshift
-function CoupledNODE.interpolate(A, D, dir)
+function gpu_interpolate(A, D, dir)
     @warn "Using GPU version of interpolate"
     (i, a) = A
     if i > D
@@ -27,9 +26,9 @@ function CoupledNODE.interpolate(A, D, dir)
     shifted = similar(a)  # Create an array of the same size as `a`
 
     if shift_amount > 0
-        shifted[(shift_amount + 1):end, :] .= a[1:(end - shift_amount), :]
+        shifted[shift_amount+1:end, :] .= a[1:end-shift_amount, :]
     elseif shift_amount < 0
-        shifted[1:(end + shift_amount), :] .= a[(1 - shift_amount):end, :]
+        shifted[1:end+shift_amount, :] .= a[1-shift_amount:end, :]
     else
         shifted .= a
     end
@@ -38,4 +37,4 @@ function CoupledNODE.interpolate(A, D, dir)
     staggered ./ 2
 end
 
-#end
+end
