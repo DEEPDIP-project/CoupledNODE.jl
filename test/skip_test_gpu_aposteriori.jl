@@ -75,7 +75,8 @@ using OptimizationOptimisers: OptimizationOptimisers
         channels = [2, 2],
         activations = [tanh, identity],
         use_bias = [false, false],
-        rng = rng        #device = device
+        rng = rng,
+        use_cuda = true        
     )
     θ = θ |> device
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU

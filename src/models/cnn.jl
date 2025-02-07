@@ -1,4 +1,4 @@
-using Lux: Lux
+using Lux
 using NNlib: pad_circular
 using Random: Random
 using ComponentArrays: ComponentArray
@@ -36,7 +36,7 @@ function cnn(;
     r, c, σ, b = radii, channels, activations, use_bias
 
     # Weight initializer
-    glorot_uniform_T(rng::Random.AbstractRNG, dims...) = Lux.glorot_uniform(rng, T, dims...)
+    glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
 
     @assert length(c)==length(r)==length(σ)==length(b) "The number of channels, radii, activations, and use_bias must match"
     @assert c[end]==D "The number of output channels must match the data dimension"
@@ -56,10 +56,10 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-        u -> collocate(u, interpolate_fn),
-        padder,
+        #u -> collocate(u, interpolate_fn),
+        #padder,
         # convolutional layers
-        (Lux.Conv(
+        (Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
              σ[i];
@@ -67,10 +67,10 @@ function cnn(;
              init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
-        u -> decollocate(u, interpolate_fn)
+        #u -> decollocate(u, interpolate_fn)
     )
-    chain = Lux.Chain(layers...)
-    params, state = Lux.setup(rng, chain)
+    chain = Chain(layers...)
+    params, state = setup(rng, chain)
     (chain, ComponentArray(params), state)
 end
 
