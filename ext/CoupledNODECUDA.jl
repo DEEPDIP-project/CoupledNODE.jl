@@ -9,7 +9,7 @@ function ArrayType()
     return CUDA.functional() ? CUDA.CuArray : Array
 end
 function get_device()
-    return CUDA.functional() ? Lux.cpu_device() : Lux.gpu_device()
+    return CUDA.functional() ? Lux.gpu_device() : Lux.cpu_device()
 end
 
 allowscalar = deepcopy(CUDA.allowscalar)
