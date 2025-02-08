@@ -44,7 +44,7 @@ function cnn(;
         dev = Lux.cpu_device()
     end
 
-    # Weight initializer
+    # Weight initializer (does NOT work on GPU)
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
 
     @assert length(c)==length(r)==length(σ)==length(b) "The number of channels, radii, activations, and use_bias must match"
@@ -59,18 +59,18 @@ function cnn(;
 
     # Create convolutional closure model
     layers = (
-        #u -> collocate(u, interpolate_fn),
-        #padder,
+        u -> collocate(u, interpolate_fn),
+        padder,
         # convolutional layers
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
              σ[i];
              use_bias = b[i],
-             #init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
+             #init_weight = glorot_uniform_T            
          ) for i in eachindex(r)
         )...,
-        #u -> decollocate(u, interpolate_fn)
+        u -> decollocate(u, interpolate_fn)
     )
     chain = Chain(layers...)
     params, state = Lux.setup(rng, chain) |> dev
