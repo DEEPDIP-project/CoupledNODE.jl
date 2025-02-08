@@ -44,6 +44,14 @@ function cnn(;
         dev = Lux.cpu_device()
     end
 
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+    @warn "*******Using $(dev) "
+
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
 
@@ -65,16 +73,18 @@ function cnn(;
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
-             #σ[i];
+             σ[i];
              use_bias = b[i],
-             init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
+             #init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
         #u -> decollocate(u, interpolate_fn)
     )
     chain = Chain(layers...)
-    params, state = Lux.setup(rng, chain) |> dev
-    (chain, ComponentArray(params), state)
+    params, state = Lux.setup(rng, chain) 
+    state = state |> dev
+    params = ComponentArray(params) |> dev
+    (chain, params, state)
 end
 
 """
