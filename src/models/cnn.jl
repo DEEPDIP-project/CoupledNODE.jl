@@ -65,8 +65,8 @@ function cnn(;
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
-             #σ[i];
-             #use_bias = b[i],
+             σ[i];
+             use_bias = b[i],
              #init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,

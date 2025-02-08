@@ -74,13 +74,14 @@ using Adapt
     #st = device(st)
 
     # Give the CNN a test run
-    #test_in = device(io_priori[ig].u[:, :, :, 1:1])
+    test_in = device(io_priori[ig].u[:, :, :, 1:1])
     # generate a random tensor of the same size as the input on the GPU
-    test_in = CUDA.rand(T, size(io_priori[ig].u[:, :, :, 1:1]))
-    #test_output = Lux.apply(closure, test_in, θ, st)[1]
-    test_output = closure(test_in, θ, st)
+    #test_in = CUDA.rand(T, size(io_priori[ig].u[:, :, :, 1:1]))
+    test_output = Lux.apply(closure, test_in, θ, st)[1]
+    #test_output = closure(test_in, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
     @test is_on_gpu(test_output) # Check that the output is on the GPU
+    @warn "Test output : $(typeof(test_output))"
 
     ## Loss in the Lux format
     #loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
