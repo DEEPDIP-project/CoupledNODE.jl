@@ -38,8 +38,10 @@ function cnn(;
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
     if !isnothing(Cuda_ext) && use_cuda
         interpolate_fn = Cuda_ext.gpu_interpolate
+        dev = Cuda_ext.get_device()
     else
         interpolate_fn = cpu_interpolate
+        dev = Lux.cpu_device()
     end
 
     # Weight initializer
@@ -71,7 +73,7 @@ function cnn(;
         #u -> decollocate(u, interpolate_fn)
     )
     chain = Chain(layers...)
-    params, state = Lux.setup(rng, chain)
+    params, state = Lux.setup(rng, chain) |> dev
     (chain, ComponentArray(params), state)
 end
 
