@@ -69,7 +69,7 @@ using Adapt
         rng = rng,
         use_cuda = true
     )
-    θ = device(θ)
+    CUDA.@allowscalar θ = device(θ)
     #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     #st = device(st)
 

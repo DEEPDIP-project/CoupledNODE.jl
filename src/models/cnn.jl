@@ -37,7 +37,6 @@ function cnn(;
 
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
     if !isnothing(Cuda_ext) && use_cuda
-        using LuxCUDA
         interpolate_fn = Cuda_ext.gpu_interpolate
     else
         interpolate_fn = cpu_interpolate
