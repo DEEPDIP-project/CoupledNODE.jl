@@ -35,6 +35,14 @@ function cnn(;
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
+    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
+    if !isnothing(Cuda_ext) && use_cuda
+        using LuxCUDA
+        interpolate_fn = Cuda_ext.gpu_interpolate
+    else
+        interpolate_fn = cpu_interpolate
+    end
+
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
 
@@ -47,12 +55,6 @@ function cnn(;
     # Syver uses a padder layer instead of adding padding to the convolutional layers
     padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
 
-    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if !isnothing(Cuda_ext) && use_cuda
-        interpolate_fn = Cuda_ext.gpu_interpolate
-    else
-        interpolate_fn = cpu_interpolate
-    end
 
     # Create convolutional closure model
     layers = (
