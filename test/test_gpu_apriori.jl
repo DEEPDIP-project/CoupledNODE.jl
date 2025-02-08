@@ -76,7 +76,8 @@ using Adapt
     # Give the CNN a test run
     #test_in = device(io_priori[ig].u[:, :, :, 1:1])
     # generate a random tensor of the same size as the input on the GPU
-    test_in = CUDA.rand(T, size(io_priori[ig].u[:, :, :, 1:1]))
+    test_in = rand(T, size(io_priori[ig].u[:, :, :, 1:1])...) |> Lux.gpu_device()
+    @warn "Test input : $(typeof(test_in))"
     #test_output = Lux.apply(closure, test_in, θ, st)[1]
     test_output = closure(test_in, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing

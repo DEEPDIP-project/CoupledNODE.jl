@@ -45,12 +45,6 @@ function cnn(;
     end
 
     @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
-    @warn "*******Using $(dev) "
 
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
