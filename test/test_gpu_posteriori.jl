@@ -75,7 +75,7 @@ using OptimizationOptimisers: OptimizationOptimisers
         activations = [tanh, identity],
         use_bias = [false, false],
         rng = rng,
-        use_cuda = true        
+        use_cuda = true
     )
     @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
 
@@ -92,7 +92,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Define the loss (a-posteriori) 
     train_data_posteriori = dataloader_posteriori()
     loss_posteriori_lux = create_loss_post_lux(
-        dudt_nn2; sciml_solver = Tsit5(), use_cuda=true)
+        dudt_nn2; sciml_solver = Tsit5(), use_cuda = true)
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 

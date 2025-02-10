@@ -13,7 +13,7 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
             channels,
             activations,
             use_bias,
-            rng = Random.default_rng(),
+            rng = Random.default_rng()
     )
         r, c, σ, b = radii, channels, activations, use_bias
 
@@ -43,13 +43,13 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
                  c[i] => c[i + 1],
                  σ[i];
                  use_bias = b[i],
-                 init_weight = glorot_uniform_T 
+                 init_weight = glorot_uniform_T
              ) for i in eachindex(r)
             )...,
             decollocate
         )
         chain = Lux.Chain(layers...)
-        params, state = Lux.setup(rng, chain) 
+        params, state = Lux.setup(rng, chain)
         state = state |> dev
         params = ComponentArray(params) |> dev
         (chain, params, state)
@@ -81,11 +81,10 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
         stack(staggered_slices; dims = D + 1)
     end
 
-
     # Parameters for the CNN
     T = Float32
     rng = Random.Xoshiro(123)
-    D = 2   
+    D = 2
 
     # Initialize the CNN model
     chain, params, state = cnn(;
@@ -96,7 +95,7 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
         channels = [2, 2],
         activations = [tanh, identity],
         use_bias = [false, false],
-        rng = rng,
+        rng = rng
     )
 
     # Example input data

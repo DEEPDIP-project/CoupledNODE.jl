@@ -1,4 +1,5 @@
 using Zygote: Zygote
+using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
@@ -156,7 +157,8 @@ normalized by the sum of squared actual data values.
 - `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
 This makes it compatible with the Lux ecosystem.
 """
-function create_loss_post_lux(rhs; sciml_solver = Tsit5(), use_cuda::Bool = false, kwargs...)
+function create_loss_post_lux(
+        rhs; sciml_solver = Tsit5(), use_cuda::Bool = false, kwargs...)
     if use_cuda
         ArrayType = CUDA.CuArray
         dev = Lux.gpu_device()

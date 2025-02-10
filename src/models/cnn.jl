@@ -71,7 +71,7 @@ function cnn(;
         decollocate
     )
     chain = Chain(layers...)
-    params, state = Lux.setup(rng, chain) 
+    params, state = Lux.setup(rng, chain)
     state = state |> dev
     params = ComponentArray(params) |> dev
     (chain, params, state)
