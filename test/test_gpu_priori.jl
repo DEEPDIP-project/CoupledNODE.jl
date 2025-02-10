@@ -70,7 +70,8 @@ using Adapt
         use_cuda = true
     )
     #CUDA.@allowscalar θ = device(θ)
-    #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
+    @warn "*******θ : $(typeof(θ))"
+    @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     #st = device(st)
 
     # Give the CNN a test run
@@ -82,29 +83,29 @@ using Adapt
     test_output = Lux.apply(closure, test_in, θ, st)[1]
     #test_output = closure(test_in, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
-    @test is_on_gpu(test_output[1]) # Check that the output is on the GPU
+    @test is_on_gpu(test_output) # Check that the output is on the GPU
     @warn "Test output : $(typeof(test_output))"
 
-    ## Loss in the Lux format
-    #loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
-    #@test isfinite(loss_value[1]) # Check that the loss value is finite
+    # Loss in the Lux format
+    loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
+    @test isfinite(loss_value[1]) # Check that the loss value is finite
 
-    ## Define the callback
-    #callbackstate_val, callback_val = NS.create_callback(
-    #    closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
-    #    rng = rng, do_plot = true, plot_train = false, device = device)
+    # Define the callback
+    callbackstate_val, callback_val = NS.create_callback(
+        closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
+        rng = rng, do_plot = true, plot_train = false, device = device)
 
-    ## Training (via Lux)
-    #loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
-    #    nepochs = 15, ad_type = Optimization.AutoZygote(),
-    #    alg = OptimizationOptimisers.Adam(0.1), cpu = false, callback = nothing)
+    # Training (via Lux)
+    loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
+        nepochs = 15, ad_type = Optimization.AutoZygote(),
+        alg = OptimizationOptimisers.Adam(0.1), cpu = false, callback = nothing)
 
-    ## Check that the training loss is finite
-    #@test isfinite(loss)
+    # Check that the training loss is finite
+    @test isfinite(loss)
 
-    ## The trained parameters at the end of the training are:
-    #θ_priori = tstate.parameters
-    #@test !isnothing(θ_priori) # Check that the trained parameters are not nothing
-    #@test is_on_gpu(θ_priori.layer_4.weight) # Check that the trained parameters are on the GPU
-    #@info θ_priori
+    # The trained parameters at the end of the training are:
+    θ_priori = tstate.parameters
+    @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
+    @test is_on_gpu(θ_priori.layer_4.weight) # Check that the trained parameters are on the GPU
+    @info θ_priori
 end
