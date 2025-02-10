@@ -7,6 +7,8 @@ using CoupledNODE
     using CUDA
     Pkg.add("CUDSS")
     using CUDSS
+    Pkg.add("cuDNN")
+    using cuDNN
     Pkg.add("LuxCUDA")
     using LuxCUDA
     Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
