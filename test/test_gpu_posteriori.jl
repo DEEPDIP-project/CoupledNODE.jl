@@ -78,10 +78,8 @@ using OptimizationOptimisers: OptimizationOptimisers
         rng = rng,
         use_cuda = true        
     )
-    θ = θ |> device
-    #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
     @warn "*** -> typeof(θ): $(typeof(θ))"
-    st = device(st)
+    @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
 
     # Test and trigger the model
     test_output = Lux.apply(closure, u, θ, st)[1]

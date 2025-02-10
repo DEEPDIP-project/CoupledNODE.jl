@@ -41,7 +41,7 @@ function cnn(;
         dev = Lux.cpu_device()
     end
 
-    @warn "*******Using $(dev) "
+    @warn "*** CNN is using the following device: $(dev) "
 
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
