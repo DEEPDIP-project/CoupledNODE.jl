@@ -8,7 +8,7 @@ using DifferentialEquations: ODEProblem, solve, Tsit5
 using ComponentArrays: ComponentArray
 using Lux: Lux
 using CUDA
-using CUDSS
+#using CUDSS # Warning: loading CUDSS without a CUDA device breaks the CI
 using cuDNN
 using LuxCUDA
 using Adapt

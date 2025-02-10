@@ -87,5 +87,4 @@ NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "CUDA", "LuxCUDA", "cuDNN", "CUDSS", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
-#test = ["Test", "CUDA", "LuxCUDA", "cuDNN", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
+test = ["Test", "CUDA", "LuxCUDA", "cuDNN", "Adapt", "IncompressibleNavierStokes", "NeuralClosure"]
