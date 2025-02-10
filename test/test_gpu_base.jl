@@ -101,12 +101,11 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
 
     # Example input data
     input_data = rand(Float32, 32, 32, 2, 1) |> gpu
-    @info typeof(input_data)
 
     # Apply the chain
     output = chain(input_data, params, state)
-    @info typeof(output)
 
+    # Test
     @test !isnothing(output)
     @test eltype(output[1]) == Float32
     @test typeof(input_data) == typeof(output[1])

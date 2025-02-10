@@ -69,22 +69,13 @@ using Adapt
         rng = rng,
         use_cuda = true
     )
-    #CUDA.@allowscalar θ = device(θ)
-    @warn "*******θ : $(typeof(θ))"
     @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
-    #st = device(st)
 
     # Give the CNN a test run
     test_in = device(io_priori[ig].u[:, :, :, 1:1])
-    # generate a random tensor of the same size as the input on the GPU
-    #test_in = rand(T, size(io_priori[ig].u[:, :, :, 1:1])...) |> Lux.gpu_device()
-    # maybe the dataloader has to behave like this ^
-    @warn "Test input : $(typeof(test_in))"
     test_output = Lux.apply(closure, test_in, θ, st)[1]
-    #test_output = closure(test_in, θ, st)
     @test !isnothing(test_output) # Check that the output is not nothing
     @test is_on_gpu(test_output) # Check that the output is on the GPU
-    @warn "Test output : $(typeof(test_output))"
 
     # Loss in the Lux format
     loss_value = loss_priori_lux(closure, θ, st, train_data_priori)
@@ -107,5 +98,4 @@ using Adapt
     θ_priori = tstate.parameters
     @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
     @test is_on_gpu(θ_priori.layer_4.weight) # Check that the trained parameters are on the GPU
-    @info θ_priori
 end
