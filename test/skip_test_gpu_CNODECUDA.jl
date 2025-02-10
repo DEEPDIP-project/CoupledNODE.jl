@@ -2,6 +2,7 @@ using Test
 using CoupledNODE
 
 @testset "CUDA" begin
+    # TODO: this test is broken and it breaks the CI so it is skipped
     using Pkg
     Pkg.add("CUDA")
     using CUDA

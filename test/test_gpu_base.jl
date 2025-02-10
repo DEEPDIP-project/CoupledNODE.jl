@@ -105,7 +105,10 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
 
     # Apply the chain
     output = chain(input_data, params, state)
-
     @info typeof(output)
 
+    @test !isnothing(output)
+    @test size(output) == (32, 32, 2, 1)
+    @test eltype(output) == Float32
+    @test CUDA.iscuda(output)
 end
