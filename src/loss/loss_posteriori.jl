@@ -178,7 +178,6 @@ function create_loss_post_lux(
                 dt = CUDA.allowscalar() do
                     t[2] .- t[1]
                 end
-                @warn "***** ---> dt: $(dt) $(typeof(dt))"
             else
                 dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))

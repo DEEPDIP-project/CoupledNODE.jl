@@ -26,7 +26,7 @@ function load_config()
         return NS.read_config(ENV["CONF_FILE"])
     catch
         @info "Reading configuration file from default"
-        return NS.read_config("configs/conf.yaml")
+        return NS.read_config("configs/conf_2.yaml")
     end
 end
 conf = load_config()
