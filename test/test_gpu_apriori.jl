@@ -77,6 +77,7 @@ using Adapt
     #test_in = device(io_priori[ig].u[:, :, :, 1:1])
     # generate a random tensor of the same size as the input on the GPU
     test_in = rand(T, size(io_priori[ig].u[:, :, :, 1:1])...) |> Lux.gpu_device()
+    # maybe the dataloader has to behave like this ^
     @warn "Test input : $(typeof(test_in))"
     #test_output = Lux.apply(closure, test_in, θ, st)[1]
     test_output = closure(test_in, θ, st)
