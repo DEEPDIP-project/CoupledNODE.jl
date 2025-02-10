@@ -1,4 +1,4 @@
-module CoupledNODECUDA
+module CoupledNODECUDA_ext
 
 using CoupledNODE
 using CUDA: CUDA
