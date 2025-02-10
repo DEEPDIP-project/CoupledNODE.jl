@@ -17,14 +17,20 @@ julia> Pkg.instantiate()
 juila> Pkg.include("benchmark.jl")
 ```
 
-To install the dependecies and run the benchmark script, you can also run the
+To install the dependecies, you can also run the
 following command in the terminal:
 
 ```bash
-julia --project -e 'using Pkg; Pkg.instantiate(); include("benchmark.jl")'
+julia --project -e 'using Pkg; Pkg.instantiate()'
 ```
 
 The `-e` flag allows you to execute the commands without opening the Julia REPL.
+
+To run the script:
+
+```bash
+julia --project benchmark.jl
+```
 
 ### Setting the number of CPU cores
 
@@ -32,7 +38,7 @@ To set the number of CPU cores to be used by julia, you can set the argument `-p
 followed by the number of cores to be used. For example:
 
 ```bash
-julia --project -p 4 -e 'using Pkg; Pkg.instantiate(); include("benchmark.jl")'
+julia --project -p 4 benchmark.jl
 ```
 
 To set number of cores for the number of threads for multithreading, you can set
@@ -40,7 +46,7 @@ the argument `-t` followed by the number of threads to be used. For example,
 `auto` will use all available threads:
 
 ```bash
-julia --project -t auto -e 'using Pkg; Pkg.instantiate(); include("benchmark.jl")'
+julia --project -t auto benchmark.jl
 ```
 
 ## Development
