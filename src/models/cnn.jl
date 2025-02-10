@@ -35,9 +35,8 @@ function cnn(;
 )
     r, c, σ, b = radii, channels, activations, use_bias
 
-    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if !isnothing(Cuda_ext) && use_cuda
-        dev = Cuda_ext.get_device()
+    if use_cuda
+        dev = Lux.gpu_device()
     else
         dev = Lux.cpu_device()
     end
