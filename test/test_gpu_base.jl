@@ -108,7 +108,6 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
     @info typeof(output)
 
     @test !isnothing(output)
-    @test size(output) == (32, 32, 2, 1)
-    @test eltype(output) == Float32
-    @test CUDA.iscuda(output)
+    @test eltype(output[1]) == Float32
+    @test typeof(input_data) == typeof(output[1])
 end

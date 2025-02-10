@@ -58,21 +58,20 @@ function cnn(;
     # Syver uses a padder layer instead of adding padding to the convolutional layers
     padder = ntuple(α -> (u -> pad_circular(u, sum(r); dims = α)), D)
 
-
     # Create convolutional closure model
     layers = (
-        #u -> collocate(u, interpolate_fn),
-        #padder,
+        collocate,
+        padder,
         # convolutional layers
         (Conv(
              ntuple(α -> 2r[i] + 1, D),
              c[i] => c[i + 1],
              σ[i];
              use_bias = b[i],
-             #init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
+             init_weight = glorot_uniform_T             #pad = (ntuple(α -> 2r[i] + 1, D) .- 1) .÷ 2
          ) for i in eachindex(r)
         )...,
-        #u -> decollocate(u, interpolate_fn)
+        decollocate
     )
     chain = Chain(layers...)
     params, state = Lux.setup(rng, chain) 
@@ -86,8 +85,7 @@ Interpolate velocity components to volume centers.
 
 TODO, D and dir can be parameters istead of arguments I think
 """
-function cpu_interpolate(A, D, dir)
-    @warn "Using CPU version of interpolate"
+function interpolate(A, D, dir)
     (i, a) = A
     if i > D
         return a  # Nothing to interpolate for extra layers
@@ -96,19 +94,19 @@ function cpu_interpolate(A, D, dir)
     staggered ./ 2
 end
 
-function collocate(u, interpolate_fn=cpu_interpolate)
+function collocate(u)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate_fn(x, D, 1), enumerate(slices))
+    staggered_slices = map(x -> interpolate(x, D, 1), enumerate(slices))
     stack(staggered_slices; dims = D + 1)
 end
 
 """
 Interpolate closure force from volume centers to volume faces.
 """
-function decollocate(u, interpolate_fn=cpu_interpolate)
+function decollocate(u)
     D = ndims(u) - 2
     slices = eachslice(u; dims = D + 1)
-    staggered_slices = map(x -> interpolate_fn(x, D, -1), enumerate(slices))
+    staggered_slices = map(x -> interpolate(x, D, -1), enumerate(slices))
     stack(staggered_slices; dims = D + 1)
 end
