@@ -207,7 +207,7 @@ function trainpost(;
         setup = []
         for nl in nles
             x = ntuple(α -> LinRange(T(0.0), T(1.0), nl + 1), params.D)
-            push!(setup, Setup(; x = x, Re = params.Re))
+            push!(setup, Setup(; x = x, Re = params.Re, params.backend))
         end
 
         # Read the data in the format expected by the CoupledNODE
