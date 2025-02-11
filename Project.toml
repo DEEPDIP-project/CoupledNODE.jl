@@ -1,7 +1,7 @@
 name = "CoupledNODE"
 uuid = "88291d29-22ea-41b1-bc0b-03785bffce48"
 authors = ["Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com> , Luisa Orozco <l.orozco@esciencecenter.nl>, Simone Ciarella <s.ciarella@esciencecenter.nl>, Aron Jansen <a.p.jansen@esciencecenter.nl>, Victor Azizi <v.azizi@esciencecenter.nl>"]
-version = "0.0.2"
+version = "0.0.3"
 
 [deps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
