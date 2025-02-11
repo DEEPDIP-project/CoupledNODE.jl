@@ -57,7 +57,8 @@ function load_params(conf)
         bodyforce = eval_field(data["bodyforce"], T),
         processors = eval_field(data["processors"], T),
         issteadybodyforce = data["issteadybodyforce"],
-        Δt = T(data["Δt"])
+        Δt = T(data["Δt"]),
+        backend = data["backend"],
     )
 
     return params
@@ -148,8 +149,7 @@ function load_cnn_params(conf)
         channels = data["channels"],
         activations = map(eval_field, data["activations"]),
         use_bias = data["use_bias"],
-        rng = eval_field(data["rng"], seeds),
-        use_cuda = CUDA.functional() ? true : false
+        rng = eval_field(data["rng"], seeds)
     )
 
     return closure, θ_start, st
