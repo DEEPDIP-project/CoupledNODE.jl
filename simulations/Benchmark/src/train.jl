@@ -135,7 +135,7 @@ function trainprior(;
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_prior, loss; tstate = trainstate,
                 nepochs = nepochs_left,
-                alg = opt, cpu = CUDA.functional() ? false : true, callback = callback)
+                alg = opt, cpu = !CUDA.functional(), callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
@@ -179,7 +179,7 @@ function trainpost(;
         do_plot = false,
         plot_train = false
 )
-    device(x) = CUDA.functional() ? adapt(params.backend, x) : x
+    device(x) = adapt(params.backend, x)
     itotal = 0
     for projectorder in projectorders,
         (ifil, Φ) in enumerate(params.filters),
@@ -232,7 +232,7 @@ function trainpost(;
 
         dudt_nn = NS.create_right_hand_side_with_closure(
             setup[1], psolver, closure, st)
-        loss = create_loss_post_lux(dudt_nn; sciml_solver = Tsit5(), dt = dt)
+        loss = create_loss_post_lux(dudt_nn; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
 
         if loadcheckpoint && isfile(checkfile)
             callbackstate, trainstate, epochs_trained = CoupledNODE.load_checkpoint(checkfile)
@@ -252,7 +252,7 @@ function trainpost(;
         else
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepochs_left,
-                alg = opt, cpu = CUDA.functional() ? false : true, callback = callback)
+                alg = opt, cpu = !CUDA.functional(), callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
