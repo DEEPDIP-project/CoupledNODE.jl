@@ -4,7 +4,7 @@ function getdatafile(outdir, nles, filter, seed)
 end
 
 "Create data files."
-createdata(; params, seeds, outdir, taskid) =
+createdata(; params, seeds, outdir, taskid, backend) =
     for (iseed, seed) in enumerate(seeds)
         if isnothing(taskid) || iseed == taskid
             @info "Creating DNS trajectory for seed $(repr(seed))"
@@ -24,7 +24,7 @@ createdata(; params, seeds, outdir, taskid) =
             @info "Data file $(filenames[1]) already exists. Skipping."
             continue
         end
-        data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt)
+        data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt, backend = backend)
         @info("Trajectory info:",
             data[1].comptime/60,
             length(data[1].t),

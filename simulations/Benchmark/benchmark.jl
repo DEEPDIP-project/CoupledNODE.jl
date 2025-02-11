@@ -168,7 +168,7 @@ dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
 docreatedata = conf["docreatedata"]
-docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
+docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid, backend)
 @info "Data generated"
 
 # Computational time

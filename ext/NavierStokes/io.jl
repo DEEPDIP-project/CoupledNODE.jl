@@ -57,7 +57,8 @@ function load_params(conf)
         bodyforce = eval_field(data["bodyforce"], T),
         processors = eval_field(data["processors"], T),
         issteadybodyforce = data["issteadybodyforce"],
-        Δt = T(data["Δt"])
+        Δt = T(data["Δt"]),
+        backend = data["backend"],
     )
 
     return params
