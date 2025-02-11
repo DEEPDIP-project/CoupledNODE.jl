@@ -135,7 +135,7 @@ function trainprior(;
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_prior, loss; tstate = trainstate,
                 nepochs = nepochs_left,
-                alg = opt, cpu = params.backend == CPU(), callback = callback)
+                alg = opt, cpu = CUDA.functional() ? false : true, callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
@@ -252,7 +252,7 @@ function trainpost(;
         else
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepochs_left,
-                alg = opt, cpu = params.backend == CPU(), callback = callback)
+                alg = opt, cpu = CUDA.functional() ? false : true, callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 

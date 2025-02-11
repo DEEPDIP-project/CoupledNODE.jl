@@ -129,6 +129,7 @@ T = eval(Meta.parse(conf["T"]))
 if CUDA.functional()
     ## For running on a CUDA compatible GPU
     @info "Running on CUDA"
+    cuda_active = true
     backend = CUDABackend()
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
@@ -138,6 +139,7 @@ else
     ## Consider reducing the sizes of DNS, LES, and CNN layers if
     ## you want to test run on a laptop.
     @warn "Running on CPU"
+    cuda_active = false
     backend = CPU()
     device = identity
     clean() = nothing
@@ -329,7 +331,7 @@ nprojectorders = length(projectorders)
 let
     dotrain = conf["posteriori"]["dotrain"]
     nepoch = conf["posteriori"]["nepoch"]
-    nepoch = 40
+    nepoch = 20
     dotrain && trainpost(;
         params,
         projectorders,
