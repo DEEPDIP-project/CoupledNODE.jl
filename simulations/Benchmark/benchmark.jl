@@ -209,7 +209,7 @@ closure_INS, θ_INS = cnn(;
     activations = conf["closure"]["activations"],
     use_bias = conf["closure"]["use_bias"],
     rng = Xoshiro(seeds.θ_start),
-    use_cuda = CUDA.functional()
+    use_cuda = CUDA.functional() ? true : false,
 )
 @assert device(θ_start) == device(θ_INS)
 
