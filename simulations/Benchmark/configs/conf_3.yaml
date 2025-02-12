@@ -33,7 +33,7 @@ closure:
   rng: "Xoshiro(seeds.θ_start)"
 priori:
   dotrain: true
-  nepoch: 200
+  nepoch: 210
   batchsize: 32
   opt: "OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1))"
   do_plot: false
