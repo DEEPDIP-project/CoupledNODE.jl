@@ -1,4 +1,4 @@
-#! format: off 
+#! format: off
 if false                      #src
     include("src/Benchmark.jl") #src
 end                           #src
@@ -50,6 +50,7 @@ outdir_model = joinpath(outdir, closure_name)
 plotdir = joinpath(outdir, "plots", closure_name)
 logdir = joinpath(outdir, "logs", closure_name)
 ispath(outdir) || mkpath(outdir)
+ispath(outdir_model) || mkpath(outdir_model)
 ispath(plotdir) || mkpath(plotdir)
 ispath(logdir) || mkpath(logdir)
 
@@ -129,6 +130,7 @@ T = eval(Meta.parse(conf["T"]))
 if CUDA.functional()
     ## For running on a CUDA compatible GPU
     @info "Running on CUDA"
+    @info CUDA.versioninfo()
     backend = CUDABackend()
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
@@ -144,8 +146,6 @@ else
 end
 conf["params"]["backend"] = deepcopy(backend)
 @info backend
-@info CUDA.versioninfo()
-
 
 ########################################################################## #src
 
@@ -329,7 +329,6 @@ nprojectorders = length(projectorders)
 let
     dotrain = conf["posteriori"]["dotrain"]
     nepoch = conf["posteriori"]["nepoch"]
-    nepoch = 40
     dotrain && trainpost(;
         params,
         projectorders,
@@ -475,7 +474,7 @@ let
             t = sample.t[it],
         )
         dt = T(1e-3)
-        
+
         ## No model
         dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
