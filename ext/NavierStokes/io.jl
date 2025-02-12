@@ -51,13 +51,13 @@ function load_params(conf)
         ndns = data["ndns"],
         nles = data["nles"],
         filters = tuple(map(f -> eval_field(f, T), data["filters"])...),
-        backend = eval_field(data["backend"], T),
         icfunc = eval_field(data["icfunc"], T),
         method = eval_field(data["method"], T),
         bodyforce = eval_field(data["bodyforce"], T),
         processors = eval_field(data["processors"], T),
         issteadybodyforce = data["issteadybodyforce"],
-        Δt = T(data["Δt"])
+        Δt = T(data["Δt"]),
+        backend = data["backend"],
     )
 
     return params

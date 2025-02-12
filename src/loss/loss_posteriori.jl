@@ -1,4 +1,5 @@
 using Zygote: Zygote
+using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
@@ -156,11 +157,10 @@ normalized by the sum of squared actual data values.
 - `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
 This makes it compatible with the Lux ecosystem.
 """
-function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwargs...)
-    Cuda_ext = Base.get_extension(CoupledNODE, :CoupledNODECUDA)
-    if !isnothing(Cuda_ext) && !cpu
-        ArrayType = Cuda_ext.ArrayType()
-        dev = Cuda_ext.get_device()
+function create_loss_post_lux(
+        rhs; sciml_solver = Tsit5(), use_cuda::Bool = false, kwargs...)
+    if use_cuda
+        ArrayType = CUDA.CuArray
         dev = Lux.gpu_device()
     else
         ArrayType = Array
@@ -174,11 +174,10 @@ function create_loss_post_lux(rhs; sciml_solver = Tsit5(), cpu::Bool = true, kwa
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
-            if !isnothing(Cuda_ext) && !cpu
-                dt = Cuda_ext.allowscalar() do
+            if use_cuda
+                dt = CUDA.allowscalar() do
                     t[2] .- t[1]
                 end
-                @warn "***** ---> dt: $(dt) $(typeof(dt))"
             else
                 dt = @views t[2:2] .- t[1:1]
                 dt = only(ArrayType(dt))

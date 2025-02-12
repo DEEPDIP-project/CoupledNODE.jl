@@ -7,7 +7,6 @@ version = "1.0.0"
 Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
-CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 CoupledNODE = "88291d29-22ea-41b1-bc0b-03785bffce48"
@@ -34,6 +33,10 @@ Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 
+[weakdeps]
+CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
+cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
+
 [sources]
 IncompressibleNavierStokes = {rev = "main", url = "https://github.com/agdestein/IncompressibleNavierStokes.jl.git"}
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
@@ -43,10 +46,11 @@ CoupledNODE = {rev = "main", url = "https://github.com/DEEPDIP-project/CoupledNO
 Accessors = "0.1"
 Adapt = "4"
 CUDA = "5"
-CUDSS = "0.3.2"
+CUDSS = "0.4"
+cuDNN = "1"
 CairoMakie = "0.12"
 ComponentArrays = "0.15.19"
-CoupledNODE = "0.0.2"
+CoupledNODE = "0.0.3"
 Dates = "1"
 DifferentialEquations = "7.15.0"
 DocStringExtensions = "0.9"

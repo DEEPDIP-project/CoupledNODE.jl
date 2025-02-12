@@ -6,9 +6,11 @@ using CoupledNODE: cnn, create_loss_priori, mean_squared_error, loss_priori_lux,
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using LuxCUDA
+using CUDA
+#using CUDSS # Warning: loading CUDSS without a CUDA device breaks the CI
+using cuDNN
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
-using CUDA: CUDA
 using Adapt
 
 # Define the test set
@@ -64,11 +66,10 @@ using Adapt
         channels = [2, 2],
         activations = [tanh, identity],
         use_bias = [false, false],
-        rng
+        rng = rng,
+        use_cuda = true
     )
-    θ = device(θ)
     @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
-    st = device(st)
 
     # Give the CNN a test run
     test_in = device(io_priori[ig].u[:, :, :, 1:1])
@@ -97,5 +98,4 @@ using Adapt
     θ_priori = tstate.parameters
     @test !isnothing(θ_priori) # Check that the trained parameters are not nothing
     @test is_on_gpu(θ_priori.layer_4.weight) # Check that the trained parameters are on the GPU
-    @info θ_priori
 end

@@ -8,7 +8,8 @@ using DifferentialEquations: ODEProblem, solve, Tsit5
 using ComponentArrays: ComponentArray
 using Lux: Lux
 using CUDA
-using CUDSS
+#using CUDSS # Warning: loading CUDSS without a CUDA device breaks the CI
+using cuDNN
 using LuxCUDA
 using Adapt
 using Optimization: Optimization
@@ -33,7 +34,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Use gpu device
     backend = CUDABackend()
     CUDA.allowscalar(false)
-    device = x -> adapt(CuArray, x)
+    device = x -> adapt(CuArray{T}, x)
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
@@ -60,8 +61,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     test_data = load("test_data/data_test.jld2", "data_test")
     test_io_post = NS.create_io_arrays_posteriori(test_data, setups)
 
-    u = device(io_post[ig].u[:, :, :, 1, 1:10])
-    #T = setups[1].T
+    u = train_data_post[1]
     d = D = setups[1].grid.dimension()
     N = size(u, 1)
 
@@ -75,12 +75,9 @@ using OptimizationOptimisers: OptimizationOptimisers
         activations = [tanh, identity],
         use_bias = [false, false],
         rng = rng,
-        device = device
+        use_cuda = true
     )
-    θ = device(θ)
-    #@test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
-    @warn "*** -> typeof(θ): $(typeof(θ))"
-    st = device(st)
+    @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
 
     # Test and trigger the model
     test_output = Lux.apply(closure, u, θ, st)[1]
@@ -95,7 +92,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Define the loss (a-posteriori) 
     train_data_posteriori = dataloader_posteriori()
     loss_posteriori_lux = create_loss_post_lux(
-        dudt_nn2; sciml_solver = Tsit5(), cpu = false)
+        dudt_nn2; sciml_solver = Tsit5(), use_cuda = true)
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
@@ -118,5 +115,5 @@ using OptimizationOptimisers: OptimizationOptimisers
     # The trained parameters at the end of the training are:
     θ_posteriori = tstate.parameters
     @test !isnothing(θ_posteriori) # Check that the trained parameters are not nothing
-    #@test is_on_gpu(θ_posteriori.layer_4.weight) # Check that the trained parameters are on the GPU
+    @test is_on_gpu(θ_posteriori.layer_4.weight) # Check that the trained parameters are on the GPU
 end

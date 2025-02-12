@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=julia_test
 #SBATCH --partition=gpu
-#SBATCH --time=00:10:00
+#SBATCH --time=00:30:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -11,5 +11,5 @@
 module load 2023
 module load juliaup/1.14.5-GCCcore-12.3.0
 
-julia --project -t auto -e 'using Pkg; Pkg.resolve(); Pkg.test()'
+srun --unbuffered julia --project -t auto -e 'using Pkg; Pkg.resolve(); Pkg.test()'
 
