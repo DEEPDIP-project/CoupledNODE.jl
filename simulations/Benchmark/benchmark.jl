@@ -202,14 +202,13 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 using Lux:relu
 closure, θ_start, st = NS.load_model(conf)
 # Get the same model structure in INS format
-closure_INS, θ_INS = cnn(;
+closure_INS, θ_INS = NeuralClosure.cnn(;
     setup = setups[1],
     radii = conf["closure"]["radii"],
     channels = conf["closure"]["channels"],
-    activations = conf["closure"]["activations"],
+    activations = [eval(Meta.parse(func)) for func in conf["closure"]["activations"]],
     use_bias = conf["closure"]["use_bias"],
-    rng = Xoshiro(seeds.θ_start),
-    use_cuda = CUDA.functional() ? true : false,
+    rng = eval(Meta.parse(conf["closure"]["rng"])),
 )
 @assert device(θ_start) == device(θ_INS)
 
