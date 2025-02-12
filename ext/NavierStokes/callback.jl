@@ -50,7 +50,8 @@ function create_callback(
         figfile = nothing)
     if callbackstate === nothing
         # Initialize the callback state
-        callbackstate = (; θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
+        # To store data coming from CUDA device, we have to serialize them to CPU
+        callbackstate = (; θmin = Array(θ), loss_min = eltype(Array(θ))(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
@@ -78,7 +79,7 @@ function create_callback(
             l_val = loss_function(model, p, st, (y1, y2))[1]
             # check if this set of p produces a lower validation loss
             l_val < callbackstate.loss_min &&
-                (callbackstate = (; callbackstate..., θmin = p, loss_min = l_val))
+                (callbackstate = (; callbackstate..., θmin = Array(p), loss_min = l_val))
             @info "[$(step)] Validation Loss: $(l_val)"
             no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
