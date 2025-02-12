@@ -1,4 +1,7 @@
 using JLD2
+using CUDA: CUDA
+using Lux: Lux
+using LuxCUDA
 
 """
     load_checkpoint(checkfile)
@@ -23,6 +26,7 @@ function load_checkpoint(checkfile)
     callbackstate = checkpoint.callbackstate
     trainstate = checkpoint.trainstate
     epochs_trained = length(callbackstate.lhist_train)
-    @info "Loading checkpoint from $checkfile.\nPrevious training reached epoch $(epochs_trained)."
-    return callbackstate, trainstate, epochs_trained
+    dev = CUDA.functional() ? Lux.gpu_device() : Lux.cpu_device()
+    @info "Loading checkpoint from $checkfile and putting it on $dev.\nPrevious training reached epoch $(epochs_trained)."
+    return callbackstate |> dev, trainstate |> dev, epochs_trained
 end
