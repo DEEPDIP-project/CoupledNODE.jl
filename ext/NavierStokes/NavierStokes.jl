@@ -1,6 +1,6 @@
 module NavierStokes
 using IncompressibleNavierStokes
-using Lux: Lux
+using Lux: Lux, relu
 using Random: shuffle
 using NeuralClosure
 using CUDA: CUDA
