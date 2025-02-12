@@ -1,4 +1,4 @@
-#! format: off 
+#! format: off
 if false                      #src
     include("src/Benchmark.jl") #src
 end                           #src
@@ -50,6 +50,7 @@ outdir_model = joinpath(outdir, closure_name)
 plotdir = joinpath(outdir, "plots", closure_name)
 logdir = joinpath(outdir, "logs", closure_name)
 ispath(outdir) || mkpath(outdir)
+ispath(outdir_model) || mkpath(outdir_model)
 ispath(plotdir) || mkpath(plotdir)
 ispath(logdir) || mkpath(logdir)
 
@@ -146,8 +147,6 @@ else
 end
 conf["params"]["backend"] = deepcopy(backend)
 @info backend
-@info CUDA.versioninfo()
-
 
 ########################################################################## #src
 
@@ -477,7 +476,7 @@ let
             t = sample.t[it],
         )
         dt = T(1e-3)
-        
+
         ## No model
         dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
