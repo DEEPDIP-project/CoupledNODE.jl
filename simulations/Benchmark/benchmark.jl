@@ -207,7 +207,7 @@ closure_INS, θ_INS = cnn(;
     channels = conf["closure"]["channels"],
     activations = [eval(Meta.parse(func)) for func in conf["closure"]["activations"]],
     use_bias = conf["closure"]["use_bias"],
-    rng = Xoshiro(seeds.θ_start),
+    rng = eval(Meta.parse(conf["closure"]["rng"])),
 )
 @assert θ_start == θ_INS
 
