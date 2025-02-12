@@ -205,7 +205,7 @@ closure_INS, θ_INS = cnn(;
     setup = setups[1],
     radii = conf["closure"]["radii"],
     channels = conf["closure"]["channels"],
-    activations = conf["closure"]["activations"],
+    activations = [eval(Meta.parse(func)) for func in conf["closure"]["activations"]],
     use_bias = conf["closure"]["use_bias"],
     rng = Xoshiro(seeds.θ_start),
 )
