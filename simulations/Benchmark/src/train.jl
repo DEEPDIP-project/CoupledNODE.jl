@@ -122,6 +122,18 @@ function trainprior(;
             callbackstate = trainstate = nothing
             nepochs_left = nepoch
         end
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        @warn callbackstate
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        @warn trainstate
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        exit()
 
         callbackstate, callback = NS.create_callback(
             closure, θ, io_valid[itotal], loss, st;
