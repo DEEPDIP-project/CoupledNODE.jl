@@ -1,7 +1,6 @@
 using JLD2
 using CUDA: CUDA
 using Lux: Lux
-using LuxCUDA
 
 """
     load_checkpoint(checkfile)
