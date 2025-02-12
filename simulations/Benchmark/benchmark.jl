@@ -330,7 +330,6 @@ nprojectorders = length(projectorders)
 let
     dotrain = conf["posteriori"]["dotrain"]
     nepoch = conf["posteriori"]["nepoch"]
-    nepoch = 20
     dotrain && trainpost(;
         params,
         projectorders,
@@ -480,12 +479,12 @@ let
         ## No model
         dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
-        err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt)
+        err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
         epost.nomodel[I] = err_post(closure, θ_cnn_post[I].*0 , st, data)[1]
         # with closure
         dudt = NS.create_right_hand_side_with_closure(
             setup, psolver, closure, st)
-        err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt)
+        err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
         epost.cnn_prior[I] = err_post(closure, device(θ_cnn_prior[ig, ifil]), st, data)[1]
         epost.cnn_post[I] =  err_post(closure, device(θ_cnn_post[I]), st, data)[1]
         clean()
