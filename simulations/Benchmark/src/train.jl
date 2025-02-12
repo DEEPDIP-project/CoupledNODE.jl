@@ -4,7 +4,7 @@ function getdatafile(outdir, nles, filter, seed)
 end
 
 "Create data files."
-createdata(; params, seeds, outdir, taskid) =
+createdata(; params, seeds, outdir, taskid, backend) =
     for (iseed, seed) in enumerate(seeds)
         if isnothing(taskid) || iseed == taskid
             @info "Creating DNS trajectory for seed $(repr(seed))"
@@ -24,7 +24,8 @@ createdata(; params, seeds, outdir, taskid) =
             @info "Data file $(filenames[1]) already exists. Skipping."
             continue
         end
-        data = create_les_data(; params..., rng = Xoshiro(seed), filenames, Δt = params.Δt)
+        data = create_les_data(;
+            params..., rng = Xoshiro(seed), filenames, Δt = params.Δt, backend = backend)
         @info("Trajectory info:",
             data[1].comptime/60,
             length(data[1].t),
@@ -122,6 +123,18 @@ function trainprior(;
             callbackstate = trainstate = nothing
             nepochs_left = nepoch
         end
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        @warn callbackstate
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        @warn trainstate
+        @info "----------------------"
+        @info "----------------------"
+        @info "----------------------"
+        exit()
 
         callbackstate, callback = NS.create_callback(
             closure, θ, io_valid[itotal], loss, st;
@@ -135,7 +148,7 @@ function trainprior(;
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_prior, loss; tstate = trainstate,
                 nepochs = nepochs_left,
-                alg = opt, cpu = params.backend == CPU(), callback = callback)
+                alg = opt, cpu = !CUDA.functional(), callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 
@@ -179,7 +192,7 @@ function trainpost(;
         do_plot = false,
         plot_train = false
 )
-    device(x) = CUDA.functional() ? adapt(params.backend, x) : x
+    device(x) = adapt(params.backend, x)
     itotal = 0
     for projectorder in projectorders,
         (ifil, Φ) in enumerate(params.filters),
@@ -207,7 +220,7 @@ function trainpost(;
         setup = []
         for nl in nles
             x = ntuple(α -> LinRange(T(0.0), T(1.0), nl + 1), params.D)
-            push!(setup, Setup(; x = x, Re = params.Re))
+            push!(setup, Setup(; x = x, Re = params.Re, params.backend))
         end
 
         # Read the data in the format expected by the CoupledNODE
@@ -232,7 +245,8 @@ function trainpost(;
 
         dudt_nn = NS.create_right_hand_side_with_closure(
             setup[1], psolver, closure, st)
-        loss = create_loss_post_lux(dudt_nn; sciml_solver = Tsit5(), dt = dt)
+        loss = create_loss_post_lux(
+            dudt_nn; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
 
         if loadcheckpoint && isfile(checkfile)
             callbackstate, trainstate, epochs_trained = CoupledNODE.load_checkpoint(checkfile)
@@ -252,7 +266,7 @@ function trainpost(;
         else
             l, trainstate = CoupledNODE.train(
                 closure, θ, st, dataloader_post, loss; tstate = trainstate, nepochs = nepochs_left,
-                alg = opt, cpu = params.backend == CPU(), callback = callback)
+                alg = opt, cpu = !CUDA.functional(), callback = callback)
         end
         save_object(checkfile, (callbackstate = callbackstate, trainstate = trainstate))
 

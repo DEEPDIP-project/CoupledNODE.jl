@@ -130,7 +130,7 @@ T = eval(Meta.parse(conf["T"]))
 if CUDA.functional()
     ## For running on a CUDA compatible GPU
     @info "Running on CUDA"
-    @info CUDA.versioninfo()
+    cuda_active = true
     backend = CUDABackend()
     CUDA.allowscalar(false)
     device = x -> adapt(CuArray, x)
@@ -140,6 +140,7 @@ else
     ## Consider reducing the sizes of DNS, LES, and CNN layers if
     ## you want to test run on a laptop.
     @warn "Running on CPU"
+    cuda_active = false
     backend = CPU()
     device = identity
     clean() = nothing
@@ -166,7 +167,7 @@ dns_seeds_test = dns_seeds[ntrajectory:ntrajectory]
 
 # Create data
 docreatedata = conf["docreatedata"]
-docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid)
+docreatedata && createdata(; params, seeds = dns_seeds, outdir, taskid, backend)
 @info "Data generated"
 
 # Computational time
@@ -201,7 +202,7 @@ setups = map(nles -> getsetup(; params, nles), params.nles);
 using Lux:relu
 closure, θ_start, st = NS.load_model(conf)
 # Get the same model structure in INS format
-closure_INS, θ_INS = cnn(;
+closure_INS, θ_INS = NeuralClosure.cnn(;
     setup = setups[1],
     radii = conf["closure"]["radii"],
     channels = conf["closure"]["channels"],
@@ -209,7 +210,7 @@ closure_INS, θ_INS = cnn(;
     use_bias = conf["closure"]["use_bias"],
     rng = eval(Meta.parse(conf["closure"]["rng"])),
 )
-@assert θ_start == θ_INS
+@assert device(θ_start) == device(θ_INS)
 
 @info "Initialized CNN with $(length(θ_start)) parameters"
 
@@ -478,12 +479,12 @@ let
         ## No model
         dudt_nomod = NS.create_right_hand_side(
             setup, psolver)
-        err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt)
+        err_post = create_loss_post_lux(dudt_nomod; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
         epost.nomodel[I] = err_post(closure, θ_cnn_post[I].*0 , st, data)[1]
         # with closure
         dudt = NS.create_right_hand_side_with_closure(
             setup, psolver, closure, st)
-        err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt)
+        err_post = create_loss_post_lux(dudt; sciml_solver = Tsit5(), dt = dt, use_cuda = CUDA.functional())
         epost.cnn_prior[I] = err_post(closure, device(θ_cnn_prior[ig, ifil]), st, data)[1]
         epost.cnn_post[I] =  err_post(closure, device(θ_cnn_post[I]), st, data)[1]
         clean()
