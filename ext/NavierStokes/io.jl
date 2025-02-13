@@ -148,7 +148,8 @@ function load_cnn_params(conf)
         channels = data["channels"],
         activations = map(eval_field, data["activations"]),
         use_bias = data["use_bias"],
-        rng = eval_field(data["rng"], seeds)
+        rng = eval_field(data["rng"], seeds),
+        use_cuda = CUDA.functional() ? true : false
     )
 
     return closure, θ_start, st
