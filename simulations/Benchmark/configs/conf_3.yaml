@@ -33,7 +33,7 @@ closure:
   rng: "Xoshiro(seeds.θ_start)"
 priori:
   dotrain: true
-  nepoch: 210
+  nepoch: 50
   batchsize: 32
   opt: "OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1))"
   do_plot: false
@@ -41,7 +41,7 @@ priori:
 posteriori:
   dotrain: true
   projectorders: "(ProjectOrder.Last, )"
-  nepoch: 50
+  nepoch: 20
   opt: "OptimiserChain(Adam(T(1.0e-3)), ClipGrad(1))"
   nunroll: 3
   nunroll_valid: 5

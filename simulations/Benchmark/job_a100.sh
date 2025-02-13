@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=18
 #SBATCH --gpus=1
 #SBATCH --partition=gpu_a100
-#SBATCH --time=00:30:00
+#SBATCH --time=00:s310:00
 #SBATCH --mail-type=BEGIN,END
 # #SBATCH --mail-user=s.ciarella@esciencecenter.nl
 #SBATCH --array=1-1
@@ -26,5 +26,7 @@ export CONF_FILE=$1
 
 cd $HOME/CoupledNODE.jl/simulations/Benchmark
 
+srun --unbuffered julia --project -t auto -e 'using Pkg; Pkg.update(); Pkg.resolve()'
+echo "\n***************\nUpdate done"
 julia --project -t auto benchmark.jl
 

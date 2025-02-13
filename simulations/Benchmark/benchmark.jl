@@ -85,6 +85,12 @@ setsnelliuslogger(logfile)
 
 @info "Loading packages"
 
+if "CoupledNODE" in keys(Pkg.installed())
+    @info "CoupledNODE already installed"
+else
+    Pkg.add(PackageSpec(rev = "main", url = "https://github.com/DEEPDIP-project/CoupledNODE.jl.git"))
+end
+
 using Accessors
 using Adapt
 using CairoMakie
