@@ -1,6 +1,6 @@
 name = "CoupledNODE"
 uuid = "88291d29-22ea-41b1-bc0b-03785bffce48"
-authors = ["Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com> , Luisa Orozco <l.orozco@esciencecenter.nl>, Simone Ciarella <s.ciarella@esciencecenter.nl>, Aron Jansen <a.p.jansen@esciencecenter.nl>, Victor Azizi <v.azizi@esciencecenter.nl>"]
+authors = ["Simone Ciarella <s.ciarella@esciencecenter.nl>, Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com>, Luisa Orozco <l.orozco@esciencecenter.nl>,  Aron Jansen <a.p.jansen@esciencecenter.nl>, Victor Azizi <v.azizi@esciencecenter.nl>"]
 version = "0.0.3"
 
 [deps]
@@ -46,7 +46,7 @@ NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralC
 
 [extensions]
 CoupledNODECUDA_ext = ["cuDNN", "CUDSS"]
-NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
+NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure", "Adapt"]
 
 [compat]
 Adapt = "4"
