@@ -49,15 +49,10 @@ function create_callback(
         average_window = 25,
         device = identity,
         figfile = nothing)
-    to_cpu(x) = adapt(CPU(), x)
+    to_cpu(x) = collect(adapt(CPU(), x))
     if callbackstate === nothing
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
-        #CUDA.allowscalar() do
-        #    callbackstate = (;
-        #        θmin = collect(θ), loss_min = eltype(collect(θ))(Inf), lhist_val = [],
-        #        lhist_train = [], lhist_nomodel = [])
-        #end
         callbackstate = (;
             θmin = to_cpu(θ), loss_min = eltype(to_cpu(θ))(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
