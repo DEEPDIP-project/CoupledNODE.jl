@@ -48,14 +48,18 @@ function create_callback(
         average_window = 25,
         device = identity,
         figfile = nothing)
+    to_cpu(x) = adapt(CPU(),x)
     if callbackstate === nothing
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
-        CUDA.allowscalar() do
-            callbackstate = (;
-                θmin = collect(θ), loss_min = eltype(collect(θ))(Inf), lhist_val = [],
-                lhist_train = [], lhist_nomodel = [])
-        end
+        #CUDA.allowscalar() do
+        #    callbackstate = (;
+        #        θmin = collect(θ), loss_min = eltype(collect(θ))(Inf), lhist_val = [],
+        #        lhist_train = [], lhist_nomodel = [])
+        #end
+        callbackstate = (;
+            θmin = to_cpu(θ), loss_min = eltype(to_cpu(θ))(Inf), lhist_val = [],
+            lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")
@@ -81,17 +85,14 @@ function create_callback(
             y1, y2 = device(dataloader())
             l_val = loss_function(model, p, st, (y1, y2))[1]
             # check if this set of p produces a lower validation loss
-            l_val < callbackstate.loss_min && CUDA.allowscalar() do
-                (callbackstate = (; callbackstate..., θmin = collect(p), loss_min = collect(l_val)))
-            end
+            l_val < callbackstate.loss_min && 
+                (callbackstate = (; callbackstate..., θmin = to_cpu(p), loss_min = l_val))
             @info "[$(step)] Validation Loss: $(l_val)"
             no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
 
-            CUDA.allowscalar() do
-                push!(collect(callbackstate.lhist_val), l_val)
-                push!(collect(callbackstate.lhist_nomodel), no_model_loss)
-            end
+            push!(to_cpu(callbackstate.lhist_val), l_val)
+            push!(to_cpu(callbackstate.lhist_nomodel), no_model_loss)
 
             if do_plot
                 fig = CairoMakie.Figure()
