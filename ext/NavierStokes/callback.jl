@@ -89,7 +89,7 @@ function create_callback(
             l_val < callbackstate.loss_min &&
                 (callbackstate = (; callbackstate..., θmin = to_cpu(p), loss_min = l_val))
             @info "[$(step)] Validation Loss: $(l_val)"
-            no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
+            no_model_loss = loss_function(model, device(callbackstate.θmin .* 0), st, (y1, y2))[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
 
             push!(to_cpu(callbackstate.lhist_val), l_val)
