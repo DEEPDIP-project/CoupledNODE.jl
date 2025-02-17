@@ -1,6 +1,7 @@
 using CairoMakie: CairoMakie
 using Random: Random
 using Statistics: mean
+using Adapt: adapt
 
 """
     create_callback(model, val_io_data; lhist=[], lhist_train=[], nunroll=10, rng=rng, plot_train=true)
@@ -48,7 +49,7 @@ function create_callback(
         average_window = 25,
         device = identity,
         figfile = nothing)
-    to_cpu(x) = adapt(CPU(),x)
+    to_cpu(x) = adapt(CPU(), x)
     if callbackstate === nothing
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
@@ -85,7 +86,7 @@ function create_callback(
             y1, y2 = device(dataloader())
             l_val = loss_function(model, p, st, (y1, y2))[1]
             # check if this set of p produces a lower validation loss
-            l_val < callbackstate.loss_min && 
+            l_val < callbackstate.loss_min &&
                 (callbackstate = (; callbackstate..., θmin = to_cpu(p), loss_min = l_val))
             @info "[$(step)] Validation Loss: $(l_val)"
             no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
