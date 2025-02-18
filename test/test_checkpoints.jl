@@ -24,5 +24,5 @@ using Adapt
     @test epochs_trained == length(callbackstate.lhist_train)
 
     # Clean up
-    rm(checkfile, force=true)
+    rm(checkfile, force = true)
 end
