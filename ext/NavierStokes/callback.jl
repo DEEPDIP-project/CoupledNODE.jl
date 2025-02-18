@@ -1,6 +1,8 @@
 using CairoMakie: CairoMakie
 using Random: Random
 using Statistics: mean
+using Adapt: adapt
+using Lux: cpu_device
 
 """
     create_callback(model, val_io_data; lhist=[], lhist_train=[], nunroll=10, rng=rng, plot_train=true)
@@ -52,7 +54,7 @@ function create_callback(
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
         callbackstate = (;
-            θmin = Array(θ), loss_min = eltype(Array(θ))(Inf), lhist_val = [],
+            θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
@@ -73,20 +75,20 @@ function create_callback(
         step = length(callbackstate.lhist_train)
 
         plot_train && @info "[$(step)] Training Loss: $(l_train)"
-        push!(callbackstate.lhist_train, l_train)
+        push!(callbackstate.lhist_train, l_train |> cpu_device())
 
         if step % plot_every == 0
             y1, y2 = device(dataloader())
             l_val = loss_function(model, p, st, (y1, y2))[1]
             # check if this set of p produces a lower validation loss
             l_val < callbackstate.loss_min &&
-                (callbackstate = (; callbackstate..., θmin = Array(p), loss_min = l_val))
+                (callbackstate = (; callbackstate..., θmin = p, loss_min = l_val))
             @info "[$(step)] Validation Loss: $(l_val)"
             no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
 
-            push!(callbackstate.lhist_val, l_val)
-            push!(callbackstate.lhist_nomodel, no_model_loss)
+            push!(callbackstate.lhist_val, l_val |> cpu_device())
+            push!(callbackstate.lhist_nomodel, no_model_loss |> cpu_device())
 
             if do_plot
                 fig = CairoMakie.Figure()

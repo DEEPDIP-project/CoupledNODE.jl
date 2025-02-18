@@ -4,6 +4,7 @@ using Lux: Lux, relu
 using Random: shuffle
 using NeuralClosure
 using CUDA: CUDA
+using Adapt: adapt
 
 include("callback.jl")
 include("utils.jl")

@@ -3,6 +3,24 @@ using CUDA: CUDA
 using Lux: Lux
 
 """
+    namedtupleload(file)
+
+Load a JLD2 file and convert it to a named tuple.
+
+# Arguments
+- `file::String`: The path to the JLD2 file.
+
+# Returns
+- `NamedTuple`: The contents of the file as a named tuple.
+"""
+function namedtupleload(file)
+    dict = load(file)
+    k, v = keys(dict), values(dict)
+    pairs = @. Symbol(k) => v
+    (; pairs...)
+end
+
+"""
     load_checkpoint(checkfile)
 
 Load a training checkpoint from the specified file.
@@ -21,13 +39,25 @@ callbackstate, trainstate, epochs_trained = load_checkpoint("checkpoint.jld2")
 ```
 """
 function load_checkpoint(checkfile)
-    checkpoint = load_object(checkfile)
-    callbackstate = checkpoint.callbackstate
-    trainstate = checkpoint.trainstate
+    (; callbackstate, trainstate) = namedtupleload(checkfile)
     epochs_trained = length(callbackstate.lhist_train)
-    #dev = CUDA.functional() ? Lux.gpu_device() : Lux.cpu_device()
-    #@info "Loading checkpoint from $checkfile and putting it on $dev.\nPrevious training reached epoch $(epochs_trained)."
-    #return callbackstate |> dev, trainstate |> dev, epochs_trained
     @info "Loading checkpoint from $checkfile.\nPrevious training reached epoch $(epochs_trained)."
     return callbackstate, trainstate, epochs_trained
+end
+
+"""
+    save_checkpoint(checkfile, callbackstate, trainstate)
+
+Save the current training state to a checkpoint file.
+
+# Arguments
+- `checkfile::String`: The path to the checkpoint file.
+- `callbackstate`: The current state of the callback.
+- `trainstate`: The current state of the training process.
+"""
+function save_checkpoint(checkfile, callbackstate, trainstate)
+    @info "Saving checkpoint to $checkfile."
+    c = callbackstate |> cpu_device()
+    t = trainstate |> cpu_device()
+    jldsave(checkfile; callbackstate = c, trainstate = t)
 end
