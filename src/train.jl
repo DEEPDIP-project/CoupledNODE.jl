@@ -21,6 +21,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     if tstate === nothing
         tstate = Lux.Training.TrainState(model, ps, st, alg)
     end
+    @warn "Training state type: $(typeof(tstate))"
     loss::Float32 = 0 #NOP TODO: check compatibiity with precision of data
     @info "Lux Training started"
     for epoch in 1:nepochs
