@@ -17,7 +17,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)
     # Retrieve the training state from kwargs, otherwise create a new one
-    tstate = get(kwargs, :tstate, nothing)
+    #tstate = get(kwargs, :tstate, nothing)
     if tstate === nothing
         tstate = Lux.Training.TrainState(model, ps, st, alg)
     end
