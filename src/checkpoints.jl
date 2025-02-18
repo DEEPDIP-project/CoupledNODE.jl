@@ -21,9 +21,10 @@ callbackstate, trainstate, epochs_trained = load_checkpoint("checkpoint.jld2")
 ```
 """
 function load_checkpoint(checkfile)
-    checkpoint = load_object(checkfile)
-    callbackstate = checkpoint.callbackstate
-    trainstate = checkpoint.trainstate
+    #checkpoint = load_object(checkfile)
+    #callbackstate = checkpoint.callbackstate
+    #trainstate = checkpoint.trainstate
+    (; callbackstate, trainstate) = namedtupleload(checkfile)
     epochs_trained = length(callbackstate.lhist_train)
     @info "Loading checkpoint from $checkfile.\nPrevious training reached epoch $(epochs_trained)."
     return callbackstate, trainstate, epochs_trained
