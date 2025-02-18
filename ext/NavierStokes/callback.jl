@@ -53,7 +53,7 @@ function create_callback(
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
         callbackstate = (;
-            θmin = to_cpu(θ), loss_min = eltype(to_cpu(θ))(Inf), lhist_val = [],
+            θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
