@@ -122,6 +122,12 @@ Loads the parameters for a CNN model from the configuration dictionary.
 - `st::Any`: The state of the CNN.
 """
 function load_cnn_params(conf)
+    closure_type = conf["closure"]["type"]
+    if closure_type != "cnn"
+        @error "Model type $closure_type not supported by this function"
+        return
+    end
+
     T = eval(Meta.parse(conf["T"]))
     D = conf["params"]["D"]
 
