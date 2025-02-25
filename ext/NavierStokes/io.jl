@@ -102,7 +102,12 @@ Loads the model parameters based on the model type specified in the configuratio
 function load_model(conf)
     model_type = conf["closure"]["type"]
     if model_type == "cnn"
+        @info "Loading CNN model"
         return load_cnn_params(conf)
+    elseif model_type == "attentioncnn"
+        @info "Loading AttentionCNN model"
+        ACNN = Base.get_extension(CoupledNODE, :AttentionCNN)
+        return ACNN.load_attentioncnn_params(conf)
     else
         error("Model type not supported")
     end

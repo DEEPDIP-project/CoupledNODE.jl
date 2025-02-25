@@ -1,8 +1,12 @@
 module AttentionCNN
 
 using AttentionLayer: attentioncnn
+using Lux: Lux, relu
+using Random
+using CoupledNODE
+using CUDA: CUDA
 
-function load_cnn_params(conf)
+function load_attentioncnn_params(conf)
     closure_type = conf["closure"]["type"]
     if closure_type != "attentioncnn"
         @error "Model type $closure_type not supported by this function"
@@ -26,7 +30,8 @@ function load_cnn_params(conf)
 
     # Construct the cnn call
     data = conf["closure"]
-    seeds = load_seeds(conf)
+    NS = Base.get_extension(CoupledNODE, :NavierStokes)
+    seeds = NS.load_seeds(conf)
     closure, θ_start, st = attentioncnn(
         T = T,
         D = D,
@@ -46,5 +51,7 @@ function load_cnn_params(conf)
 
     return closure, θ_start, st
 end
+
+export load_attentioncnn_params
 
 end
