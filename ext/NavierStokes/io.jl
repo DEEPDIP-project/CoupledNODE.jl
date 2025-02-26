@@ -108,6 +108,10 @@ function load_model(conf)
         @info "Loading AttentionCNN model"
         ACNN = Base.get_extension(CoupledNODE, :AttentionCNN)
         return ACNN.load_attentioncnn_params(conf)
+    elseif model_type == "cno"
+        @info "Loading CNO model"
+        CNO = Base.get_extension(CoupledNODE, :CNO)
+        return CNO.load_cno_params(conf)
     else
         error("Model type not supported")
     end

@@ -33,6 +33,7 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 [weakdeps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 AttentionLayer = "3ee63b08-73c5-50c8-acc9-f395aa68c39a"
+ConvolutionalNeuralOperators = "d769ba41-1544-53e8-a779-241a28c31cef"
 CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
 IncompressibleNavierStokes = "5e318141-6589-402b-868d-77d7df8c442e"
 Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
@@ -46,9 +47,10 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
 
 [extensions]
+AttentionCNN = ["AttentionLayer"]
+CNO = ["ConvolutionalNeuralOperators"]
 CoupledNODECUDA_ext = ["cuDNN", "CUDSS"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure", "Adapt"]
-AttentionCNN = ["AttentionLayer"]
 
 [compat]
 Adapt = "4"
@@ -57,6 +59,7 @@ CUDSS = "0.4"
 CairoMakie = "0.12"
 ChainRules = "1"
 ComponentArrays = "0.15"
+ConvolutionalNeuralOperators = "0.1.0"
 DifferentialEquations = "7"
 Documenter = "1"
 FFTW = "1"
