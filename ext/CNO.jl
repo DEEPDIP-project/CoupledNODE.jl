@@ -1,6 +1,7 @@
 module CNO
 
-using ConvolutionalNeuralOperators
+using ConvolutionalNeuralOperators: create_CNO
+using ComponentArrays: ComponentArray
 using Lux: Lux, relu
 using Random
 using CoupledNODE
@@ -28,46 +29,31 @@ function load_cno_params(conf)
         end
     end
 
-    # Construct the cnn call
-    data = conf["closure"]
-    NS = Base.get_extension(CoupledNODE, :NavierStokes)
-    seeds = NS.load_seeds(conf)
-    closure, θ_start, st = attentioncnn(
-        T = T,
-        D = D,
-        N = data["N"],
-        data_ch = D,
-        radii = data["radii"],
-        channels = data["channels"],
-        activations = map(eval_field, data["activations"]),
-        use_bias = data["use_bias"],
-        use_attention = data["use_attention"],
-        emb_sizes = data["emb_sizes"],
-        patch_sizes = data["patch_sizes"],
-        n_heads = data["n_heads"],
-        sum_attention = data["sum_attention"],
-        rng = eval_field(data["rng"], seeds),
-        use_cuda = CUDA.functional() ? true : false
-    )
-
     # Model configuration
     data = conf["closure"]
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
     seeds = NS.load_seeds(conf)
-    model = create_CNO(
+    use_cuda = CUDA.functional() ? true : false
+    if use_cuda
+        dev = Lux.gpu_device()
+    else
+        dev = Lux.cpu_device()
+    end
+    closure= create_CNO(
         T = T,
-        N = N,
+        N = data["size"],
         D = D,
         cutoff = data["cutoff"],
         ch_sizes = data["channels"],
         activations = map(eval_field, data["activations"]),
         down_factors = data["down_factors"],
         k_radii = data["radii"],
-        bottleneck_depths = data["bottleneck_depths"]
+        bottleneck_depths = data["bottleneck_depths"],
     )
-    rng = eval_field(data["rng"], seeds)
-    θ, st = Lux.setup(rng, model)
-    θ = ComponentArray(θ)
+#    rng = eval_field(data["rng"], seeds),
+    params, state = Lux.setup(eval_field(data["rng"], seeds), closure)
+    st = state |> dev
+    θ_start = ComponentArray(params) |> dev
 
     return closure, θ_start, st
 end
