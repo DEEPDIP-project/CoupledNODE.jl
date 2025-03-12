@@ -35,7 +35,6 @@ function load_attentioncnn_params(conf)
     closure, θ_start, st = attentioncnn(
         T = T,
         D = D,
-        N = data["N"],
         data_ch = D,
         radii = data["radii"],
         channels = data["channels"],
@@ -43,6 +42,7 @@ function load_attentioncnn_params(conf)
         use_bias = data["use_bias"],
         use_attention = data["use_attention"],
         emb_sizes = data["emb_sizes"],
+        Ns = data["Ns"],
         patch_sizes = data["patch_sizes"],
         n_heads = data["n_heads"],
         sum_attention = data["sum_attention"],
