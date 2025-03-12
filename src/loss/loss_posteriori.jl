@@ -4,6 +4,7 @@ using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5
 using Lux: Lux
+using ChainRulesCore: ignore_derivatives
 
 """
 [DEPRECATED]
@@ -37,12 +38,18 @@ function create_randloss_MulDtO(
         # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0 
         length_required = nintervals * (nunroll + 1) - noverlaps * (nintervals - 1)
         # Zygote will select a random initial condition that can accomodate all the multishooting intervals
-        istart = Zygote.@ignore rand(1:(nt - length_required))
-        trajectory = Zygote.@ignore ArrayType(selectdim(target,
-            d,
-            istart:(istart + length_required)))
+        istart = ignore_derivatives() do
+            rand(1:(nt - length_required))
+        end
+        trajectory = ignore_derivatives() do
+            ArrayType(selectdim(target,
+                d,
+                istart:(istart + length_required)))
+        end
         # and select a certain number of samples
-        trajectory = Zygote.@ignore trajectory[:, rand(1:size(trajectory, 2), nsamples), :]
+        trajectory = ignore_derivatives() do
+            trajectory[:, rand(1:size(trajectory, 2), nsamples), :]
+        end
         # then return the loss for each multishooting set
         loss_MulDtO_oneset(trajectory,
             θ,
@@ -169,7 +176,9 @@ function create_loss_post_lux(
     @warn "A-posteriori loss function is using $dev device."
 
     function loss_function(model, ps, st, (u, t))
-        griddims = Zygote.@ignore ((:) for _ in 1:(ndims(u) - 2))
+        griddims = ignore_derivatives() do
+            ((:) for _ in 1:(ndims(u) - 2))
+        end
         x = dev(u[griddims..., :, 1])
         y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.

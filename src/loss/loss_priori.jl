@@ -73,9 +73,11 @@ function create_randloss_derivative(
         sd = length(size(input_data))
         n_samples = size(input_data)[end]
         return θ -> begin
-            i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
-            x_use = Zygote.@ignore selectdim(input_data, sd, i)
-            y_use = Zygote.@ignore selectdim(F_target, sd, i)
+            ignore_derivatives() do
+                i = sort(shuffle(1:n_samples)[1:n_use])
+                x_use = selectdim(input_data, sd, i)
+                y_use = selectdim(F_target, sd, i)
+            end
             mean_squared_error(f, st, x_use, y_use, θ, λ, λ_c)
         end
     elseif dim == 2
@@ -84,11 +86,13 @@ function create_randloss_derivative(
         sd = length(size(x1))
         n_samples = size(x1)[end]
         return θ -> begin
-            i = Zygote.@ignore sort(shuffle(1:n_samples)[1:n_use])
-            x1_use = Zygote.@ignore selectdim(x1, sd, i)
-            x2_use = Zygote.@ignore selectdim(x2, sd, i)
-            y1_use = Zygote.@ignore selectdim(y1, sd, i)
-            y2_use = Zygote.@ignore selectdim(y2, sd, i)
+            ignore_derivatives() do
+                i = sort(shuffle(1:n_samples)[1:n_use])
+                x1_use = selectdim(x1, sd, i)
+                x2_use = selectdim(x2, sd, i)
+                y1_use = selectdim(y1, sd, i)
+                y2_use = selectdim(y2, sd, i)
+            end
             mean_squared_error(f, st, ArrayPartition(x1_use, x2_use),
                 ArrayPartition(y1_use, y2_use), θ, λ, λ_c, dim = dim)
         end

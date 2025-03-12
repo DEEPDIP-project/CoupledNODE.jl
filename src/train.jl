@@ -4,6 +4,7 @@ using Zygote: Zygote
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using CairoMakie: save
+using ChainRulesCore: ignore_derivatives
 
 function train(model, ps, st, train_dataloader, loss_function;
         nepochs = 100,
@@ -25,7 +26,9 @@ function train(model, ps, st, train_dataloader, loss_function;
     loss::Float32 = 0 #NOP TODO: check compatibiity with precision of data
     @info "Lux Training started"
     for epoch in 1:nepochs
-        data = Zygote.@ignore dev(train_dataloader())
+        data = ignore_derivatives() do
+            dev(train_dataloader())
+        end
         _, loss, _, tstate = Lux.Training.single_train_step!(
             ad_type, loss_function, data, tstate)
         if callback !== nothing

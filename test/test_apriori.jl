@@ -30,6 +30,9 @@ using OptimizationOptimisers: OptimizationOptimisers
     # Dataloader priori
     dataloader_prior = NS.create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
     train_data_priori = dataloader_prior()
+    u, c = dataloader_prior()
+    @test size(u) == (16, 16, 2, 10)
+    @test size(c) == (16, 16, 2, 10)
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")
