@@ -102,7 +102,16 @@ Loads the model parameters based on the model type specified in the configuratio
 function load_model(conf)
     model_type = conf["closure"]["type"]
     if model_type == "cnn"
+        @info "Loading CNN model"
         return load_cnn_params(conf)
+    elseif model_type == "attentioncnn"
+        @info "Loading AttentionCNN model"
+        ACNN = Base.get_extension(CoupledNODE, :AttentionCNN)
+        return ACNN.load_attentioncnn_params(conf)
+    elseif model_type == "cno"
+        @info "Loading CNO model"
+        CNO = Base.get_extension(CoupledNODE, :CNO)
+        return CNO.load_cno_params(conf)
     else
         error("Model type not supported")
     end
@@ -122,6 +131,12 @@ Loads the parameters for a CNN model from the configuration dictionary.
 - `st::Any`: The state of the CNN.
 """
 function load_cnn_params(conf)
+    closure_type = conf["closure"]["type"]
+    if closure_type != "cnn"
+        @error "Model type $closure_type not supported by this function"
+        return
+    end
+
     T = eval(Meta.parse(conf["T"]))
     D = conf["params"]["D"]
 

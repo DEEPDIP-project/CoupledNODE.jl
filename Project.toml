@@ -7,6 +7,7 @@ version = "0.0.3"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
+ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
 ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
 DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
@@ -32,7 +33,9 @@ Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [weakdeps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+AttentionLayer = "3ee63b08-73c5-50c8-acc9-f395aa68c39a"
 CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
+ConvolutionalNeuralOperators = "d769ba41-1544-53e8-a779-241a28c31cef"
 IncompressibleNavierStokes = "5e318141-6589-402b-868d-77d7df8c442e"
 Juno = "e5e0dc1b-0480-54bc-9374-aad01c23163d"
 LuxCUDA = "d0bbae9a-e099-4d5b-a835-1c6931763bda"
@@ -45,6 +48,8 @@ cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
 
 [extensions]
+AttentionCNN = ["AttentionLayer"]
+CNO = ["ConvolutionalNeuralOperators"]
 CoupledNODECUDA_ext = ["cuDNN", "CUDSS"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure", "Adapt"]
 
@@ -54,7 +59,9 @@ CUDA = "5"
 CUDSS = "0.4"
 CairoMakie = "0.12"
 ChainRules = "1"
+ChainRulesCore = "1.25.1"
 ComponentArrays = "0.15"
+ConvolutionalNeuralOperators = "0.1.0"
 DifferentialEquations = "7"
 Documenter = "1"
 FFTW = "1"

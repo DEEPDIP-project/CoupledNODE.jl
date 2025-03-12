@@ -40,6 +40,9 @@ using OptimizationOptimisers: OptimizationOptimisers
     nunroll = 5
     dataloader_posteriori = NS.create_dataloader_posteriori(
         io_post[ig]; nunroll = nunroll, rng)
+    u, t = dataloader_posteriori()
+    @test size(u) == (18, 18, 2, 6)
+    @test size(t) == (6,)
 
     # Load the test data
     test_data = load("test_data/data_test.jld2", "data_test")
