@@ -8,6 +8,12 @@
 [![Documentation Status](https://readthedocs.org/projects/gemdat/badge/?version=latest)](https://deepdip-project.github.io/CoupledNODE.jl/stable/)
 [![DOI](https://zenodo.org/badge/760462639.svg)](https://doi.org/10.5281/zenodo.14197271)
 
+This package is part of the [DeepDip](https://github.com/DEEPDIP-project) project. It aims to provide a Julia implementation of the Coupled Neural ODEs (CNODEs) method, a data-driven approach to solve Partial Differential Equations (PDEs) in a multiscale context using closure modelling. Give a look at the other components of the project:
+* [IncomperessibleNavierStokes.jl](https://github.com/agdestein/IncompressibleNavierStokes.jl): a Julia package for solving the incompressible Navier-Stokes equations.
+* [AttentionLayer.jl](https://github.com/DEEPDIP-project/AttentionLayer.jl): a Julia package for implementing attention mechanisms in convolutional closure models.
+* [ConvolutionalNeuralOperators.jl](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl): a Julia package for implementing neural operators for continuous function.
+  
+  
 ## Installation
 
 ```julia
