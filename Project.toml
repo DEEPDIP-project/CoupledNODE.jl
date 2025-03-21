@@ -44,8 +44,9 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
-[sources]
-NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
+[sources.NeuralClosure]
+rev = "main"
+url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"
 
 [extensions]
 AttentionCNN = ["AttentionLayer"]
@@ -77,7 +78,7 @@ NNlib = "0.9"
 NeuralClosure = "1.0.0"
 Optimization = "4"
 OptimizationOptimisers = "0.3"
-Plots = "2"
+Plots = "2, 1"
 Revise = "3"
 SciMLSensitivity = "7"
 ShiftedArrays = "2"
