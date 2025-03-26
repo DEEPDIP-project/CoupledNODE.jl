@@ -179,8 +179,8 @@ function create_loss_post_lux(
         griddims = ignore_derivatives() do
             ((:) for _ in 1:(ndims(u) - 2))
         end
-        x = dev(u[griddims..., :, 1])
-        y = dev(u[griddims..., :, 2:end]) # remember to discard sol at the initial time step
+        x = u[griddims..., :, 1] |> dev
+        y = u[griddims..., :, 2:end] |> dev # remember to discard sol at the initial time step
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
         if !(:dt in keys(kwargs))
             if use_cuda

@@ -12,8 +12,10 @@ function train(model, ps, st, train_dataloader, loss_function;
         alg = OptimizationOptimisers.Adam(0.1),
         cpu::Bool = false,
         kwargs...)
-    dev = cpu ? Lux.cpu_device() : Lux.gpu_device()
-    ps, st = (ps, st) .|> dev
+    dev = cpu ? identity : Lux.gpu_device()
+    if !cpu
+        ps, st = (ps, st) .|> dev
+    end
     @info "Training on" dev
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)

@@ -89,7 +89,6 @@ using Random
         rng = Xoshiro(seeds.θ_start)
     )
     closure, θ_start, st = NS.load_model(conf)
-    #@test closure == ref_closure
-    @test θ_start == ref_θ_start
+    @test Array(θ_start) == Array(ref_θ_start)
     @test st == ref_st
 end
