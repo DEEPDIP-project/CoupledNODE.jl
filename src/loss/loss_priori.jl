@@ -136,7 +136,6 @@ Format of function signature and outputs are compatible with the Lux ecosystem.
 - `(; y_pred = y_pred)`: Named tuple containing the predicted values `y_pred`.
 """
 function loss_priori_lux(model, ps, st, (x, y), device = identity)
-    y_pred, st_ = model(x, ps, st)
-    loss = device(sum(abs2, y_pred .- y) / sum(abs2, y))
-    return loss, st_, (; y_pred = y_pred)
+    y_pred, st_ = Lux.apply(model, x, ps, st)[1:2]
+    return sum(abs2, y_pred .- y) / sum(abs2, y), st_, (; y_pred = y_pred)
 end
