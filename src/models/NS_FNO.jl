@@ -50,14 +50,14 @@ function FourierLayer(
     FourierLayer(dim_to_fft, Nxyz, kmax, first(ch), last(ch), σ, init_weight)
 end
 
-# We also need to specify how to initialize the parameters and states. 
+# We also need to specify how to initialize the parameters and states.
 
 function Lux.initialparameters(rng::AbstractRNG,
         (; Nxyz, kmax, cin, cout, init_weight)::FourierLayer)
     mydims = length(Nxyz)
     kgrid = ntuple(d -> kmax + 1, mydims)
     (;
-        # reshape the spacial weights to 
+        # reshape the spacial weights to
         # ( (1,)*mydims..., cout, cin)
         #spatial_weight = reshape(init_weight(rng, cout, cin) ,ntuple(d -> 1, mydims)..., cout, cin),
         # ( cout, cin, (1,)*mydims...)

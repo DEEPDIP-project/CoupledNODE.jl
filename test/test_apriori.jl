@@ -41,7 +41,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     d = D = setups[ig].grid.dimension()
 
     # Creation of the model: NN closure
-    closure, θ, st = cnn(;
+    closure, θ,
+    st = cnn(;
         T = T,
         D = D,
         data_ch = D,
@@ -61,12 +62,14 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
     # Define the callback
-    callbackstate_val, callback_val = NS.create_callback(
+    callbackstate_val,
+    callback_val = NS.create_callback(
         closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 100,
         rng = rng, do_plot = true, plot_train = false)
 
     # Training (via Lux)
-    loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
+    loss,
+    tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
         nepochs = 15, ad_type = Optimization.AutoZygote(),
         alg = OptimizationOptimisers.Adam(0.1), cpu = true, callback = nothing)
 

@@ -87,7 +87,8 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
     D = 2
 
     # Initialize the CNN model
-    chain, params, state = cnn(;
+    chain, params,
+    state = cnn(;
         T = T,
         D = D,
         data_ch = D,

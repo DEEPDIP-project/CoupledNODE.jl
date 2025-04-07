@@ -26,7 +26,8 @@ setups = map(params.nles) do nles
 end
 
 # Create model
-closure, _, _ = cnn(;
+closure, _,
+_ = cnn(;
     T = T,
     D = D,
     data_ch = D,

@@ -9,7 +9,8 @@ D = 2 # dimension
 
 # Create model
 using CoupledNODE: cnn
-closure, _, _ = cnn(;
+closure, _,
+_ = cnn(;
     T = T,
     D = D,
     data_ch = D,

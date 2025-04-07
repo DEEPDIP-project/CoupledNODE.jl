@@ -42,7 +42,7 @@ using OptimizationOptimisers: OptimizationOptimisers
         INS.Setup(; x = x, Re = params.Re, backend = backend)
     end
 
-    # A posteriori io_arrays 
+    # A posteriori io_arrays
     io_post = NS.create_io_arrays_posteriori(data, setups, device)
 
     # Example of dimensions and how to operate with io_arrays_posteriori
@@ -66,7 +66,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     N = size(u, 1)
 
     # Define the CNN layers
-    closure, θ, st = cnn(;
+    closure, θ,
+    st = cnn(;
         T = T,
         D = D,
         data_ch = D,
@@ -89,7 +90,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     dudt_nn2 = NS.create_right_hand_side_with_closure(
         setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-    # Define the loss (a-posteriori) 
+    # Define the loss (a-posteriori)
     train_data_posteriori = dataloader_posteriori()
     loss_posteriori_lux = create_loss_post_lux(
         dudt_nn2; sciml_solver = Tsit5(), use_cuda = true)
@@ -97,13 +98,16 @@ using OptimizationOptimisers: OptimizationOptimisers
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
     # Callback function
-    callbackstate_val, callback_val = NS.create_callback(
+    callbackstate_val,
+    callback_val = NS.create_callback(
         dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
         rng = rng, do_plot = false, plot_train = false, device = device)
     θ_posteriori = θ
 
     # Training via Lux
-    lux_result, lux_t, lux_mem, _ = @timed train(
+    lux_result, lux_t,
+    lux_mem,
+    _ = @timed train(
         closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
         nepochs = 50, ad_type = Optimization.AutoZygote(),
         alg = OptimizationOptimisers.Adam(0.01), cpu = false, callback = nothing)

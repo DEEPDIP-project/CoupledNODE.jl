@@ -55,7 +55,7 @@ using Random
     psolver = psolver_spectral(setup)
     @test params.icfunc(setup, psolver, Xoshiro(123)) ==
           ref_params.icfunc(setup, psolver, Xoshiro(123))
-    # test bodyforce 
+    # test bodyforce
     x = rand(1)[1]
     y = rand(1)[1]
     t = 0.0
@@ -78,7 +78,8 @@ using Random
     @test seeds.post == ref_seeds.post
 
     # test cnn
-    ref_closure, ref_θ_start, ref_st = CoupledNODE.cnn(;
+    ref_closure, ref_θ_start,
+    ref_st = CoupledNODE.cnn(;
         T = T,
         D = params.D,
         data_ch = params.D,

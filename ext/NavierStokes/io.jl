@@ -155,7 +155,8 @@ function load_cnn_params(conf)
     # Construct the cnn call
     data = conf["closure"]
     seeds = load_seeds(conf)
-    closure, θ_start, st = CoupledNODE.cnn(
+    closure, θ_start,
+    st = CoupledNODE.cnn(
         T = T,
         D = D,
         data_ch = D,

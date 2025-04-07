@@ -1,14 +1,40 @@
 repos:
-- repo: "local"
-  hooks:
-  - id: "format-julia"
-    name: "Format with JuliaFormatter"
-    entry: "julia --project helper_scripts/format_julia_files.jl"
-    language: "system"
-
-  - id: "build-notebooks"
-    name: "Build Notebooks"
-    language: "script"
-    entry: "./helper_scripts/build_notebooks.sh"
-    files: 'examples/src/\.jl$'
-
+  - repo: local
+    hooks:
+      # Prevent committing .rej files
+      - id: forbidden-files
+        name: forbidden files
+        entry: found Copier update rejection files; review them and remove them
+        language: fail
+        files: "\\.rej$"
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: file-contents-sorter
+        files: .JuliaFormatter.toml
+        args: [--unique]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: pretty-format-json
+        args: [--autofix, --indent=2]
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
+  - repo: https://github.com/citation-file-format/cffconvert
+    rev: 054bda51dbe278b3e86f27c890e3f3ac877d616c
+    hooks:
+      - id: validate-cff
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: "v4.0.0-alpha.8" # Use the sha or tag you want to point at
+    hooks:
+      - id: prettier
+        types_or: [yaml, json]
+        exclude: ".copier-answers.yml"
+  - repo: https://github.com/domluna/JuliaFormatter.jl
+    rev: v2.0.0
+    hooks:
+      - id: julia-formatter

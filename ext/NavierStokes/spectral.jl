@@ -59,7 +59,7 @@ function create_params(
     NSParams(x, N, K, Kf, k, ky, nu, normk, f, Pxx, Pxy, Pyy, pf, ∂x, ∂y)
 end
 
-# Data 
+# Data
 # This is a struct that contains the data of LES and DNS
 struct Data
     t::Array{Float32, 1}
@@ -109,7 +109,7 @@ function create_cache(
     NSCache(du, uf, v, vx, vy, v2, v2_reshaped, qf, q, F, Q)
 end
 
-# Initial Condition 
+# Initial Condition
 # For the initial conditions, we create a random spectrum with some decay.
 # Note that the initial conditions are projected onto the divergence free
 # space at the end.
@@ -171,7 +171,7 @@ function Q(u, params, cache)
     @views @. cache.q = -params.∂x * cache.qf[:, :, :, 1, :] -
                         params.∂y * cache.qf[:, :, :, 2, :]
 
-    ## Zero out high wave-numbers 
+    ## Zero out high wave-numbers
     @views begin
         @. cache.q[1:(params.Kf), (params.Kf + 1):(n - params.Kf), :, :] .= 0
         @. cache.q[(params.Kf + 1):(n - params.Kf), :, :, :] .= 0
@@ -188,7 +188,7 @@ function F_NS(u, params, cache)
     @. cache.F .= q - params.prefactor_F * u + params.f
     cache.F
 end
-# this is the advantage of the spectral space representation. The projection    
+# this is the advantage of the spectral space representation. The projection
 function project(u, params, cache)
     ux, uy = eachslice(u; dims = 3)
     @views begin

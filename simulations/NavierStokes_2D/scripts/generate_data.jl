@@ -27,7 +27,9 @@ params = (;
     bodyforce = (dim, x, y, t) -> (dim == 1) * 5 * sinpi(8 * y),
     issteadybodyforce = true,
     Δt = T(5e-3), create_psolver = INS.psolver_spectral,
-    icfunc = (setup, psolver, rng) -> INS.random_field(
+    icfunc = (setup,
+        psolver,
+        rng) -> INS.random_field(
         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
     rng
 )

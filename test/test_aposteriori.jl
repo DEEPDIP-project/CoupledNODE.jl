@@ -26,7 +26,7 @@ using OptimizationOptimisers: OptimizationOptimisers
         INS.Setup(; x = x, Re = params.Re)
     end
 
-    # A posteriori io_arrays 
+    # A posteriori io_arrays
     io_post = NS.create_io_arrays_posteriori(data, setups)
 
     # Example of dimensions and how to operate with io_arrays_posteriori
@@ -54,7 +54,8 @@ using OptimizationOptimisers: OptimizationOptimisers
     N = size(u, 1)
 
     # Define the CNN layers
-    closure, θ, st = cnn(;
+    closure, θ,
+    st = cnn(;
         T = T,
         D = D,
         data_ch = D,
@@ -73,7 +74,7 @@ using OptimizationOptimisers: OptimizationOptimisers
     dudt_nn2 = NS.create_right_hand_side_with_closure(
         setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-    # Define the loss (a-posteriori) 
+    # Define the loss (a-posteriori)
     train_data_posteriori = dataloader_posteriori()
     loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5())
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)

@@ -28,7 +28,8 @@ function train(model, ps, st, train_dataloader, loss_function;
     @info "Lux Training started"
     for epoch in 1:nepochs
         data = train_dataloader()
-        _, loss, _, tstate = Lux.Training.single_train_step!(
+        _, loss,
+        _, tstate = Lux.Training.single_train_step!(
             ad_type, loss_function, data, tstate)
         if callback !== nothing
             callback(tstate.parameters, loss)

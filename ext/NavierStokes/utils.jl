@@ -27,18 +27,20 @@ Create right hand side function f(u, p, t) compatible with SciML ODEProblem.
 This formulation was the one proved best in Syver's paper i.e. DCF.
 `u` has to be an array in the NN style e.g. `[n , n, D]`, with boundary conditions padding.
 """
-create_right_hand_side_with_closure(setup, psolver, closure, st) = function right_hand_side(
-        u, p, t)
-    u = INS.apply_bc_u(u, t, setup)
-    F = INS.momentum(u, nothing, t, setup)
-    u_lux = u[axes(u)..., 1:1] # Add batch dimension
-    u_lux = Lux.apply(closure, u_lux, p, st)[1]
-    u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
-    FC = F .+ u_lux
-    FC = INS.apply_bc_u(FC, t, setup; dudt = true)
-    FP = INS.project(FC, setup; psolver)
-    FP = INS.apply_bc_u(FP, t, setup; dudt = true)
-    return FP
+function create_right_hand_side_with_closure(setup, psolver, closure, st)
+    function right_hand_side(
+            u, p, t)
+        u = INS.apply_bc_u(u, t, setup)
+        F = INS.momentum(u, nothing, t, setup)
+        u_lux = u[axes(u)..., 1:1] # Add batch dimension
+        u_lux = Lux.apply(closure, u_lux, p, st)[1]
+        u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
+        FC = F .+ u_lux
+        FC = INS.apply_bc_u(FC, t, setup; dudt = true)
+        FP = INS.project(FC, setup; psolver)
+        FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+        return FP
+    end
 end
 
 """
@@ -85,12 +87,13 @@ function create_io_arrays_priori(data, setups)
         c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         ifield = ntuple(Returns(:), D)
         for is in 1:nsample, it in 1:(nt + 1)
+
             copyto!(
-                view(u, ifield..., :, :, is),
+                view(u,(ifield...),:,:,is),
                 data[is][ig, ifil].u[Iu[1], :, :]
             )
             copyto!(
-                view(c, ifield..., :, :, is),
+                view(c,(ifield...),:,:,is),
                 data[is][ig, ifil].c[Iu[1], :, :]
             )
         end
@@ -124,7 +127,7 @@ function create_io_arrays_posteriori(data, setups, device = identity)
         ifield = ntuple(Returns(:), D)
         for is in 1:nsample
             copyto!(
-                view(u, ifield..., :, is, :),
+                view(u,(ifield...),:,is,:),
                 data[is][ig, ifil].u[ifield..., :, :]
             )
         end
@@ -154,14 +157,16 @@ end
   - `u`: bar_u from `io_array` (input to NN)
   - `c`: commutator error from `io_array` (label)
 """
-create_dataloader_prior(io_array; batchsize = 50, device = identity, rng) = function dataloader()
-    x, y = io_array
-    nsample = size(x)[end]
-    d = ndims(x)
-    i = sort(shuffle(rng, 1:nsample)[1:batchsize])
-    xuse = device(Array(selectdim(x, d, i)))
-    yuse = device(Array(selectdim(y, d, i)))
-    xuse, yuse
+function create_dataloader_prior(io_array; batchsize = 50, device = identity, rng)
+    function dataloader()
+        x, y = io_array
+        nsample = size(x)[end]
+        d = ndims(x)
+        i = sort(shuffle(rng, 1:nsample)[1:batchsize])
+        xuse = device(Array(selectdim(x, d, i)))
+        yuse = device(Array(selectdim(y, d, i)))
+        xuse, yuse
+    end
 end
 
 """

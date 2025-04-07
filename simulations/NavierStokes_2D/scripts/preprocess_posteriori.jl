@@ -16,7 +16,7 @@ setups = map(params.nles) do nles
     # warning: backend defined in training_posteriori.jl. Needed in Setup for INS functions called in rhs.
 end
 
-# * A posteriori io_arrays 
+# * A posteriori io_arrays
 using CoupledNODE.NavierStokes: create_io_arrays_posteriori
 @info size(data)
 @assert false

@@ -28,7 +28,8 @@ include("preprocess_priori.jl")
 d = D = setups[ig].grid.dimension()
 
 # * Creation of the model: NN closure
-closure, θ, st = cnn(;
+closure, θ,
+st = cnn(;
     T = T,
     D = params.D,
     data_ch = params.D,
@@ -46,16 +47,18 @@ Lux.apply(closure, dev(io_priori[ig].u[:, :, :, 1:1]), θ, st)[1]
 loss_priori_lux(closure, θ, st, dev(train_data_priori))
 
 # * Define the callback
-callbackstate_val, callback_val = create_callback(
+callbackstate_val,
+callback_val = create_callback(
     closure, θ, test_io_post[ig], loss_priori_lux, st, batch_size = 64,
     rng = rng, do_plot = false, plot_train = false, device = dev)
 
 # * Training (via Lux)
 opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1));
-loss, tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
+loss,
+tstate = train(closure, θ, st, dataloader_prior, loss_priori_lux;
     nepochs = 50, ad_type = Optimization.AutoZygote(),
     alg = opt, cpu = cpu, callback = callback_val)
-# the trained parameters at the end of the training are: 
+# the trained parameters at the end of the training are:
 θ_priori = tstate.parameters
 
 # * save the trained model
