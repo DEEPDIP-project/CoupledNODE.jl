@@ -41,6 +41,12 @@ function load_params(conf)
         end
     end
 
+    if !haskey(data, "Δt")
+        data["Δt"] = nothing
+    else
+        data["Δt"] = T(data["Δt"])
+    end
+
     params = (;
         D = data["D"],
         lims = (T(data["lims"][1]), T(data["lims"][2])),
@@ -56,7 +62,7 @@ function load_params(conf)
         bodyforce = eval_field(data["bodyforce"], T),
         processors = eval_field(data["processors"], T),
         issteadybodyforce = data["issteadybodyforce"],
-        Δt = T(data["Δt"]),
+        Δt = data["Δt"],
         backend = data["backend"]
     )
 
