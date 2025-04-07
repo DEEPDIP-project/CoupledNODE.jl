@@ -113,10 +113,12 @@ Compute MSE between `f(x, θ, st)` and `y`.
 The MSE is further divided by `normalize(y)`.
 This signature has been chosen for compatibility with Lux.
 """
-mean_squared_error(f, θ, st, (x, y); normalize = y -> sum(abs2, y), λ = sqrt(1e-8)) = sum(
-    abs2, f(x, θ, st)[1] - y) / normalize(y) + eltype(x)(λ) *
-                                                                                      sum(
-    abs2, θ)
+function mean_squared_error(f, θ, st, (x, y); normalize = y -> sum(abs2, y), λ = sqrt(1e-8))
+    sum(
+        abs2, f(x, θ, st)[1] - y) / normalize(y) + eltype(x)(λ) *
+                                                   sum(
+        abs2, θ)
+end
 
 """
     loss_priori_lux(model, ps, st, (x, y))

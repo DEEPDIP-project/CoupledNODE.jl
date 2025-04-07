@@ -30,12 +30,12 @@ function create_randloss_MulDtO(
         target, training_CNODE, st; nunroll, nintervals = 1,
         noverlaps = 1, nsamples, λ_c = 1e2, λ_l1 = 1e-1)
     # TODO: there should be some check about the consistency of the input arguments
-    # Get the number of time steps 
+    # Get the number of time steps
     d = ndims(target)
     nt = size(target, d) # number of time steps (length of last dimension)
     function randloss_MulDtO(θ)
         # Compute the requested length of consecutive timesteps
-        # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0 
+        # Notice that each interval is long nunroll+1 because we are including the initial conditions as step_0
         length_required = nintervals * (nunroll + 1) - noverlaps * (nintervals - 1)
         # Zygote will select a random initial condition that can accomodate all the multishooting intervals
         istart = ignore_derivatives() do
@@ -94,15 +94,15 @@ function loss_MulDtO_oneset(trajectory,
         nintervals,
         noverlaps,
         nsamples)
-    # Get the timesteps where the intervals start 
+    # Get the timesteps where the intervals start
     starting_points = [i == 0 ? 1 : i * (nunroll + 1 - noverlaps)
                        for i in 0:(nintervals - 1)]
     # Take all the time intervals and concatenate them in the batch dimension
-    # [!] notice that this shuffles the datasamples, so along the new dimension 2 we will group by starting point 
+    # [!] notice that this shuffles the datasamples, so along the new dimension 2 we will group by starting point
     list_tr = cat([trajectory[:, :, i:(i + nunroll)]
                    for i in starting_points]...,
         dims = 2)
-    # Get all the initial conditions 
+    # Get all the initial conditions
     list_starts = list_tr[:, :, 1]
     # Use the differentiable solver to get the predictions
     pred, target = predict_u_CNODE(list_starts, θ, st, nunroll, training_CNODE, list_tr)
@@ -113,11 +113,11 @@ function loss_MulDtO_oneset(trajectory,
     if λ_c > 0 && size(list_tr, 3) == nunroll + 1
         # //TODO check if the continuity term is correct
         # Compute the continuity term by comparing end of one interval with the start of the next one
-        # (!) Remind that the trajectory is stored as: 
+        # (!) Remind that the trajectory is stored as:
         #   pred[grid, (nintervals*nsamples), nunroll+1]
         # and we need to compare the last noverlaps points of an interval
         pred_end = pred[:, :, (end - noverlaps + 1):end]
-        # with the first noverlaps points of the next interval EXCLUDING the initial condition 
+        # with the first noverlaps points of the next interval EXCLUDING the initial condition
         # (which is already part of the loss function)
         pred_start = pred[:, :, 2:(1 + noverlaps)]
         continuity = 0
@@ -141,7 +141,7 @@ end
     create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
 
 Creates a loss function for a-posteriori fitting using the given right-hand side (RHS) function `rhs`.
-The loss function computes the sum of squared differences between the predicted values and the actual data, 
+The loss function computes the sum of squared differences between the predicted values and the actual data,
 normalized by the sum of squared actual data values.
 
 # Arguments
@@ -194,7 +194,7 @@ function create_loss_post_lux(
             kwargs = (; kwargs..., dt = dt)
         end
         function get_tspan(t)
-            # To avoid problems with SciMLBase.promote_tspan, 
+            # To avoid problems with SciMLBase.promote_tspan,
             # we have to return t_span as a tuple on the CPU
             return (Array(t)[1], Array(t)[end])
         end
@@ -221,7 +221,7 @@ This function is compatible with training via Optim.jl.
  - `p`: Parameters for the model.
  - `st`: State of the model.
  - `dataloader::Function`: A function that returns the data `(u, t)`.
- 
+
 # Returns
  - `loss`: The computed loss value.
 """

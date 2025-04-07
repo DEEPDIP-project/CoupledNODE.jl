@@ -12,4 +12,3 @@ module load 2023
 module load juliaup/1.14.5-GCCcore-12.3.0
 
 srun --unbuffered julia --project -t auto -e 'using Pkg; Pkg.resolve(); Pkg.test()'
-

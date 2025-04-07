@@ -9,11 +9,11 @@
 [![DOI](https://zenodo.org/badge/760462639.svg)](https://doi.org/10.5281/zenodo.14197271)
 
 This package is part of the [DeepDip](https://github.com/DEEPDIP-project) project. It aims to provide a Julia implementation of the Coupled Neural ODEs (CNODEs) method, a data-driven approach to solve Partial Differential Equations (PDEs) in a multiscale context using closure modelling. Give a look at the other components of the project:
+
 * [IncomperessibleNavierStokes.jl](https://github.com/agdestein/IncompressibleNavierStokes.jl): a Julia package for solving the incompressible Navier-Stokes equations.
 * [AttentionLayer.jl](https://github.com/DEEPDIP-project/AttentionLayer.jl): a Julia package for implementing attention mechanisms in convolutional closure models.
 * [ConvolutionalNeuralOperators.jl](https://github.com/DEEPDIP-project/ConvolutionalNeuralOperators.jl): a Julia package for implementing neural operators for continuous function.
-  
-  
+
 ## Installation
 
 ```julia
@@ -37,6 +37,7 @@ In general, we have an ordinary differential equation (ODE) when $$\frac{du}{dt}
 We have a Neural ODE (NODE) when the structure of the problem becomes: $$\frac{du}{dt} = f(u,t) + NN(u |\theta).$$ Notice the extra force term, named $NN$ because it can be a neural network, that depends on extra parameters $\theta$ that are not part of the solution. Overall, a NODE problem is a data-driven method that aims to model the solution $u(t)$ when the ODE can not be solved exactly, or even if $f$ is unknown. Let's look at the details with an example.
 
 ### Multiscale approach to chaotic PDEs
+
 In a more realistic situation, the incognita is usually a vector field, so we will try to solve for $u(x,t): \Omega \times \mathbb{R} \rightarrow \mathbb{R}^m$, where the spacial coordinate is $x\in \Omega \subseteq \mathbb{R}^D$ and the field $u$ is $m$-dimensional.
 
 If the problem is simple, like the case of linear ODEs, $u$ will be perfectly representable using a few parameters, e.g phase and frequency of an harmonic oscillator, and an analytical solution will be probably available.
@@ -66,9 +67,11 @@ or in words: **does the discretized solution evolve like the original?**
 
 The answer is that it depends on the harshness of the discretization, i.e. the value of $N$ for the specific problem.
 We distinguish two cases:
+
 * **DNS** (direct numerical simulation): if $N$ is large then eq.(2) is true, or we can say that the system is effectively *closed* because the discretized solution evolves following the behavior of the original system.
 
 However, especially if the system is chaotic, it is likely that the small scale behavior influences the large scale behavior. In this case we talk about:
+
 * **LES** (large eddy simulations): $N$ is too small to capture the small scale effects, thus the eq.(1) is *not closed*. This means that $\frac{d\bar{u}}{dt} = f_h(\bar{u})$ has a different dynamics than the exact solution $u(t)$, so we would need instead to solve $$\frac{d\bar{u}}{dt} = \Phi f(u).$$
 
 However this DE depends on $u$, so the system is not closed and can not be efficiently solved.

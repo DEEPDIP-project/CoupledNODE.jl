@@ -38,7 +38,8 @@ d = D = setups[1].grid.dimension()
 N = size(u, 1)
 
 # * Define the CNN layers
-closure, θ, st = cnn(;
+closure, θ,
+st = cnn(;
     T = T,
     D = params.D,
     data_ch = params.D,
@@ -57,20 +58,23 @@ closure(dev(u), θ, st)
 dudt_nn2 = create_right_hand_side_with_closure(
     setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
 
-# * Define the loss (a-posteriori) 
+# * Define the loss (a-posteriori)
 train_data_posteriori = dataloader_posteriori()
 loss_posteriori_lux = create_loss_post_lux(dudt_nn2; sciml_solver = Tsit5(), cpu = cpu)
 loss_posteriori_lux(closure, θ, st, dev(train_data_posteriori))
 
 # * Callback function
-callbackstate_val, callback_val = create_callback(
+callbackstate_val,
+callback_val = create_callback(
     dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 2 * nunroll,
     rng = rng, do_plot = false, plot_train = false, device = dev)
 θ_posteriori = θ
 
 # * training via Lux
 opt = ClipAdam = OptimiserChain(Adam(T(1.0e-2)), ClipGrad(1));
-lux_result, lux_t, lux_mem, _ = @timed train(
+lux_result, lux_t,
+lux_mem,
+_ = @timed train(
     closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
     nepochs = 300, ad_type = Optimization.AutoZygote(),
     alg = opt, cpu = true, callback = callback_val)

@@ -32,7 +32,8 @@ function load_attentioncnn_params(conf)
     data = conf["closure"]
     NS = Base.get_extension(CoupledNODE, :NavierStokes)
     seeds = NS.load_seeds(conf)
-    closure, θ_start, st = attentioncnn(
+    closure, θ_start,
+    st = attentioncnn(
         T = T,
         D = D,
         data_ch = D,
