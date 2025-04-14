@@ -79,27 +79,39 @@ function create_io_arrays_priori(data, setups)
     ngrid, nfilter = size(data[1])
     nt = length(data[1][1].t) - 1
     T = eltype(data[1][1].t)
-    map(CartesianIndices((ngrid, nfilter))) do I
-        ig, ifil = I.I
+
+    # Preallocate arrays for the results
+    results = Vector{NamedTuple{(:u, :c), Tuple{Array{T}, Array{T}}}}(
+        undef, ngrid * nfilter)
+
+    Threads.@threads for idx in 1:(ngrid * nfilter)
+        ig, ifil = CartesianIndices((ngrid, nfilter))[idx].I
         (; dimension, N, Iu) = setups[ig].grid
         D = dimension()
         u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         ifield = ntuple(Returns(:), D)
-        for is in 1:nsample, it in 1:(nt + 1)
 
-            @info "Sample Info: Sample = $is, Grid = $ig, Filter = $ifil, Time = $it, A size = $(size(view(u, (ifield...), :, :, is))), B size = $(size(data[is][ig, ifil].u[Iu[1], :, :]))"
-            copyto!(
-                view(u,(ifield...),:,:,is),
-                data[is][ig, ifil].u[Iu[1], :, :]
-            )
-            copyto!(
-                view(c,(ifield...),:,:,is),
-                data[is][ig, ifil].c[Iu[1], :, :]
-            )
+        for is in 1:nsample
+            for it in 1:(nt + 1)
+                @inbounds begin
+                    copyto!(
+                        view(u,(ifield...),:,:,is),
+                        data[is][ig, ifil].u[Iu[1], :, :]
+                    )
+                    copyto!(
+                        view(c,(ifield...),:,:,is),
+                        data[is][ig, ifil].c[Iu[1], :, :]
+                    )
+                end
+            end
         end
-        (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
+
+        results[idx] = (;
+            u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
     end
+
+    return results
 end
 
 """
