@@ -88,6 +88,12 @@ function create_io_arrays_priori(data, setups)
         ifield = ntuple(Returns(:), D)
         for is in 1:nsample, it in 1:(nt + 1)
 
+            @info "Sample: " is
+            @info "Grid: " ig
+            @info "Filter: " ifil
+            @info "Time: " it
+            @info "A: " size(view(u,(ifield...),:,:,is))
+            @info "B: " size(data[is][ig, ifil].u[Iu[1], :, :])
             copyto!(
                 view(u,(ifield...),:,:,is),
                 data[is][ig, ifil].u[Iu[1], :, :]
