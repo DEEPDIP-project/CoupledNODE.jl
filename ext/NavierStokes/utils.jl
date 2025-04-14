@@ -95,16 +95,14 @@ function create_io_arrays_priori(data, setups)
         for is in 1:nsample
             for it in 1:(nt + 1)
                 @inbounds begin
-                    #                    copyto!(
-                    #                        view(u,(ifield...),:,:,is),
-                    #                        data[is][ig, ifil].u[Iu[1], :, :]
-                    #                    )
-                    @views view(u,(ifield...),:,:,is) .= data[is][ig, ifil].u[Iu[1], :, :]
-                    #                    copyto!(
-                    #                        view(c,(ifield...),:,:,is),
-                    #                        data[is][ig, ifil].c[Iu[1], :, :]
-                    #                    )
-                    @views view(c,(ifield...),:,:,is) .= data[is][ig, ifil].c[Iu[1], :, :]
+                    copyto!(
+                        view(u,(ifield...),:,:,is),
+                        data[is][ig, ifil].u[Iu[1], :, :]
+                    )
+                    copyto!(
+                        view(c,(ifield...),:,:,is),
+                        data[is][ig, ifil].c[Iu[1], :, :]
+                    )
                 end
             end
         end
