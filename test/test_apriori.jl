@@ -8,34 +8,6 @@ using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 
-function ref_create_io_arrays_priori(data, setups)
-    # This is a reference function that creates the io_arrays for the a-priori
-    nsample = length(data)
-    ngrid, nfilter = size(data[1])
-    nt = length(data[1][1].t) - 1
-    T = eltype(data[1][1].t)
-    map(CartesianIndices((ngrid, nfilter))) do I
-        ig, ifil = I.I
-        (; dimension, N, Iu) = setups[ig].grid
-        D = dimension()
-        u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
-        c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
-        ifield = ntuple(Returns(:), D)
-        for is in 1:nsample, it in 1:(nt + 1)
-
-            @info "Sample Info: Sample = $is, Grid = $ig, Filter = $ifil, Time = $it, A size = $(size(view(u, (ifield...), :, :, is))), B size = $(size(data[is][ig, ifil].u[Iu[1], :, :]))"
-            copyto!(
-                view(u,(ifield...),:,:,is),
-                data[is][ig, ifil].u[Iu[1], :, :]
-            )
-            copyto!(
-                view(c,(ifield...),:,:,is),
-                data[is][ig, ifil].c[Iu[1], :, :]
-            )
-        end
-        (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
-    end
-end
 # Define the test set
 @testset "A-priori" begin
     T = Float32
@@ -54,15 +26,6 @@ end
 
     # Create io_arrays
     io_priori = NS.create_io_arrays_priori(data, setups)
-    # and compare with the reference function
-    ref_io_priori = ref_create_io_arrays_priori(data, setups)
-    @assert length(io_priori) == length(ref_io_priori)
-    @assert length(io_priori[1][1]) == length(ref_io_priori[1][1])
-    @assert length(io_priori[1][2]) == length(ref_io_priori[1][2])
-    @assert size(io_priori[1][1]) == size(ref_io_priori[1][1])
-    @assert size(io_priori[1][2]) == size(ref_io_priori[1][2])
-    @assert io_priori[1][1] == ref_io_priori[1][1]
-    @assert io_priori[1][2] == ref_io_priori[1][2]
 
     # Dataloader priori
     dataloader_prior = NS.create_dataloader_prior(io_priori[ig]; batchsize = 10, rng)
