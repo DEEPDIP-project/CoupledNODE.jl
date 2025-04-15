@@ -75,6 +75,7 @@ Create ``(\\bar{u}, c)`` pairs for training.
 A named tuple with fields `u` and `c`. (without boundary conditions padding)
 """
 function create_io_arrays_priori(data, setups)
+    # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
     ngrid, nfilter = size(data[1])
     nt = length(data[1][1].t) - 1
@@ -86,8 +87,7 @@ function create_io_arrays_priori(data, setups)
         u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
         ifield = ntuple(Returns(:), D)
-        for is in 1:nsample, it in 1:(nt + 1)
-
+        for is in 1:nsample
             copyto!(
                 view(u,(ifield...),:,:,is),
                 data[is][ig, ifil].u[Iu[1], :, :]
