@@ -48,9 +48,9 @@ function load_cno_params(conf)
         activations = map(eval_field, data["activations"]),
         down_factors = data["down_factors"],
         k_radii = data["radii"],
-        bottleneck_depths = data["bottleneck_depths"]
+        bottleneck_depths = haskey(data, "bottleneck_depths") ? data["bottleneck_depths"] :
+                            nothing
     )
-    #    rng = eval_field(data["rng"], seeds),
     params, state = Lux.setup(eval_field(data["rng"], seeds), closure)
     st = state |> dev
     θ_start = ComponentArray(params) |> dev
