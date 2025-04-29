@@ -12,7 +12,7 @@ using Random
     @test T == Float32
 
     # test parameters
-    backend = CPU()
+    backend = IncompressibleNavierStokes.CPU()
     conf["params"]["backend"] = backend
     ref_params = (;
         D = 2,
