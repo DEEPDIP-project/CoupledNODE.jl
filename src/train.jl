@@ -3,7 +3,6 @@ using Lux: Lux
 using Zygote: Zygote
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
-using CairoMakie: save
 using ChainRulesCore: ignore_derivatives
 
 function train(model, ps, st, train_dataloader, loss_function;
