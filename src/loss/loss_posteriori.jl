@@ -193,6 +193,9 @@ function create_loss_post_lux(
             end
             kwargs = (; kwargs..., dt = dt)
         end
+        if (kwargs[:sensealg] == nothing)
+            delete!(kwargs, :sensealg)
+        end
         function get_tspan(t)
             # To avoid problems with SciMLBase.promote_tspan,
             # we have to return t_span as a tuple on the CPU
@@ -202,7 +205,6 @@ function create_loss_post_lux(
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = dev(ArrayType(solve(
             prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = Array(t), kwargs...)))
-        #prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = collect(t), kwargs...)))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
