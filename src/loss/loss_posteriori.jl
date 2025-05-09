@@ -201,15 +201,9 @@ function create_loss_post_lux(
         end
         tspan = get_tspan(t)
         prob = ODEProblem(rhs, x, tspan, ps)
-        if (:sensealg in keys(kwargs))
-            pred = dev(ArrayType(solve(
-                prob, sciml_solver; u0 = x, p = ps, adaptive = false,
-                saveat = Array(t), sensealg = sensealg, dt = dt)))
-        else
-            pred = dev(ArrayType(solve(
-                prob, sciml_solver; u0 = x, p = ps,
-                adaptive = false, saveat = Array(t), dt = dt)))
-        end
+        pred = dev(ArrayType(solve(
+            prob, sciml_solver; u0 = x, p = ps,
+            adaptive = false, saveat = Array(t), kwargs...)))
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
             abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
