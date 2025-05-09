@@ -193,9 +193,15 @@ function create_loss_post_lux(
             end
             kwargs = (; kwargs..., dt = dt)
         end
-        if (kwargs[:sensealg] == nothing)
-            delete!(kwargs, :sensealg)
+        if !(:sensealg in keys(kwargs)) && (kwargs[:sensealg] == nothing)
+            kwargs = (;
+                (k => v
+            for (k, v) in pairs(kwargs) if !(k == :sensealg && v == nothing))...)
+            @info "-----------------------------"
+            @warn kwargs
+            @info "-----------------------------"
         end
+
         function get_tspan(t)
             # To avoid problems with SciMLBase.promote_tspan,
             # we have to return t_span as a tuple on the CPU
