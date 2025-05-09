@@ -204,10 +204,11 @@ function create_loss_post_lux(
         if (:sensealg in keys(kwargs))
             pred = dev(ArrayType(solve(
                 prob, sciml_solver; u0 = x, p = ps, adaptive = false,
-                saveat = Array(t), sensealg = sensealg)))
+                saveat = Array(t), sensealg = sensealg, dt = dt)))
         else
             pred = dev(ArrayType(solve(
-                prob, sciml_solver; u0 = x, p = ps, adaptive = false, saveat = Array(t))))
+                prob, sciml_solver; u0 = x, p = ps,
+                adaptive = false, saveat = Array(t), dt = dt)))
         end
         # remember that the first element of pred is the initial condition (SciML)
         return sum(
