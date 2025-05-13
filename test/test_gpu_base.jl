@@ -100,7 +100,7 @@ using Lux, LuxCUDA, ComponentArrays, CUDA, Random
     )
 
     # Example input data
-    input_data = rand(Float32, 32, 32, 2, 1) |> gpu
+    input_data = CUDA.rand(Float32, 32, 32, 2, 1)
 
     # Apply the chain
     output = chain(input_data, params, state)

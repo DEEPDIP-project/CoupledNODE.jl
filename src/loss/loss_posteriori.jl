@@ -165,49 +165,33 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
-        rhs; sciml_solver = Tsit5(), use_cuda::Bool = false, kwargs...)
-    if use_cuda
-        ArrayType = CUDA.CuArray
-        dev = Lux.gpu_device()
-    else
-        ArrayType = Array
-        dev = Lux.cpu_device()
-    end
-    @warn "A-posteriori loss function is using $dev device."
-
+        rhs, griddims; sciml_solver = Tsit5(), kwargs...)
     function loss_function(model, ps, st, (u, t))
-        griddims = ignore_derivatives() do
-            ((:) for _ in 1:(ndims(u) - 2))
-        end
-        x = u[griddims..., :, 1] |> dev
-        y = u[griddims..., :, 2:end] |> dev # remember to discard sol at the initial time step
+        x = u[griddims..., :, 1]
+        y = u[griddims..., :, 2:end]
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
-        if !(:dt in keys(kwargs))
-            if use_cuda
-                dt = CUDA.allowscalar() do
-                    t[2] .- t[1]
-                end
-            else
-                dt = @views t[2:2] .- t[1:1]
-                dt = only(ArrayType(dt))
-            end
-            kwargs = (; kwargs..., dt = dt)
-        end
 
-        function get_tspan(t)
-            # To avoid problems with SciMLBase.promote_tspan,
-            # we have to return t_span as a tuple on the CPU
-            return (Array(t)[1], Array(t)[end])
+        CUDA.allowscalar() do
+            dt = t[2] - t[1]
+            tspan = (t[1], t[end])
+            kwargs = (; kwargs..., dt = dt, saveat = Array(t))
         end
-        tspan = get_tspan(t)
         prob = ODEProblem(rhs, x, tspan, ps)
-        pred = dev(ArrayType(solve(
+        pred = solve(
             prob, sciml_solver; u0 = x, p = ps,
-            adaptive = false, saveat = Array(t), kwargs...)))
-        # remember that the first element of pred is the initial condition (SciML)
-        return sum(
-            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
-               sum(abs2, y), st, (; y_pred = pred)
+            adaptive = true, kwargs...)
+        # (!) remember that the first element of pred is the initial condition (SciML)
+        if size(y[griddims..., :, 1:(size(pred, 4) - 1)]) ==
+           size(pred[griddims..., :, 2:end])
+            @inbounds begin
+                loss = sum((y[griddims..., :, 1:(size(pred, 4) - 1)] .-
+                            pred[griddims..., :, 2:end]) .^ 2) / sum(abs2, y)
+            end
+            return loss, st, (; y_pred = pred)
+        else
+            @warn "Instability in the loss function. The predicted and target data have different sizes."
+            return Inf, st, (; y_pred = pred)
+        end
     end
 end
 

@@ -92,8 +92,11 @@ using OptimizationOptimisers: OptimizationOptimisers
 
     # Define the loss (a-posteriori)
     train_data_posteriori = dataloader_posteriori()
+    griddims = ((:) for _ in 1:D)
     loss_posteriori_lux = create_loss_post_lux(
-        dudt_nn2; sciml_solver = Tsit5(), use_cuda = true)
+        dudt_nn2,
+        griddims;
+    )
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
 
