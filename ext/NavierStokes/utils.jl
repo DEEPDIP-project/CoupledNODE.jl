@@ -212,3 +212,47 @@ function create_dataloader_posteriori(io_array; nunroll = 10, device = identity,
         (; u = u, t = t)
     end
 end
+
+function create_dataloader_post_2(trajectories; ntrajectory, nunroll, device = identity)
+    function dataloader(rng)
+        batch = shuffle(rng, trajectories)[1:ntrajectory] # Select a subset of trajectories
+        data = map(batch) do (; u, t)
+            nt = length(t)
+            @assert nt ≥ nunroll "Trajectory too short for nunroll = $nunroll"
+            istart = rand(rng, 1:(nt - nunroll))
+            it = istart:(istart + nunroll)
+            u = selectdim(u, ndims(u), it) |> Array |> device # convert view to array first
+            (; u, t = t[it])
+        end
+        data, rng
+    end
+end
+
+function create_dataloader_posteriori_3(
+        io_array; nunroll = 10, nsamples = 1, device = identity, rng)
+    function dataloader()
+        (n..., dim, _, _) = axes(io_array.u)
+        (_..., samples, nt) = size(io_array.u)
+
+        @assert nt ≥ nunroll
+        @assert nsamples ≤ samples "Requested nsamples ($nsamples) exceeds available samples ($samples)"
+
+        # Select starting point for unrolling
+        istart = rand(rng, 1:(nt - nunroll))
+        it = istart:(istart + nunroll)
+
+        # Select multiple samples
+        isamples = rand(rng, 1:samples, nsamples)
+
+        # Use views and batch data movement
+        u = view(io_array.u, n..., dim, isamples, it)
+        t = view(io_array.t, isamples, it)
+
+        if device != identity
+            u = device(copy(u))
+            t = device(copy(t))
+        end
+
+        (; u = u, t = t)
+    end
+end

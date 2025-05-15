@@ -165,10 +165,10 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
-        rhs, griddims; sciml_solver = Tsit5(), kwargs...)
+        rhs, griddims, inside; sciml_solver = Tsit5(), kwargs...)
     function loss_function(model, ps, st, (u, t))
         x = u[griddims..., :, 1]
-        y = u[griddims..., :, 2:end]
+        nts = size(u, ndims(u))
         tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
 
         CUDA.allowscalar() do
@@ -180,17 +180,15 @@ function create_loss_post_lux(
         pred = solve(
             prob, sciml_solver; u0 = x, p = ps,
             adaptive = true, kwargs...)
-        # (!) remember that the first element of pred is the initial condition (SciML)
-        if size(y[griddims..., :, 1:(size(pred, 4) - 1)]) ==
-           size(pred[griddims..., :, 2:end])
-            @inbounds begin
-                loss = sum((y[griddims..., :, 1:(size(pred, 4) - 1)] .-
-                            pred[griddims..., :, 2:end]) .^ 2) / sum(abs2, y)
-            end
-            return loss, st, (; y_pred = pred)
-        else
+        if size(pred, 4) != nts
             @warn "Instability in the loss function. The predicted and target data have different sizes."
             return Inf, st, (; y_pred = pred)
+        else
+            # (!) remember that the first element is the initial condition, so we discard it from the loss
+            loss = (1/nts) *
+                   sum((pred[inside..., :, 2:nts] .- u[inside..., :, 2:nts]) .^ 2) /
+                   sum(abs2, u[inside..., :, 2:nts])
+            return loss, st, (; y_pred = pred)
         end
     end
 end
