@@ -3,6 +3,11 @@ using Test
 using Lux, LuxCUDA, ComponentArrays, CUDA, Random
 
 @testset "GPU base CNN" begin
+    if !CUDA.functional()
+        @error "CUDA is not functional. Skipping GPU tests."
+        return
+    end
+
     gpu = Lux.gpu_device()
 
     function cnn(;

@@ -95,9 +95,11 @@ for SENSEALG_i in sensealgs
         # Define the loss (a-posteriori)
         train_data_posteriori = dataloader_posteriori()
         griddims = ((:) for _ in 1:D)
+        inside = ((:) for _ in 1:D)
         loss_posteriori_lux = create_loss_post_lux(
             dudt_nn2,
-            griddims;
+            griddims,
+            inside;
             sensealg = SENSEALG_i
         )
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)

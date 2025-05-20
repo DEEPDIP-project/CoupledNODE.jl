@@ -2,6 +2,13 @@ using JLD2: jldsave
 using Random: Random
 using IncompressibleNavierStokes
 using NeuralClosure
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
+
+if CUDA.functional()
+    backend = CUDABackend()
+else
+    backend = IncompressibleNavierStokes.CPU()
+end
 
 T = Float32
 rng = Random.Xoshiro(123)
@@ -15,7 +22,7 @@ params = (;
     D = 2,
     Re = T(1e3),
     lims = (T(0.0), T(1.0)),
-    nles = [16, 32],
+    nles = [16],
     ndns = 64,
     filters = (FaceAverage(),),
     tburn = T(5e-2),
@@ -27,19 +34,29 @@ params = (;
         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
     rng
 )
-
-data_train = [create_les_data(; params...) for _ in 1:Nsim_train];
-data_test = [create_les_data(; params...) for _ in 1:Nsim_test];
-
-@test data_train isa Array
-@test data_test isa Array
 @test params isa NamedTuple
-
-#save data
-jldsave("test_data/data_train.jld2"; data_train)
-jldsave("test_data/data_test.jld2"; data_test)
 jldsave("test_data/params_data.jld2"; params)
-
-@test isfile("test_data/data_train.jld2")
-@test isfile("test_data/data_test.jld2")
 @test isfile("test_data/params_data.jld2")
+
+if !isfile("test_data/data_train.jld2")
+    data_train = [NS.create_les_data_projected(;
+                      params...,
+                      backend = backend
+                  ) for _ in 1:Nsim_train];
+    jldsave("test_data/data_train.jld2"; data_train)
+    @test isfile("test_data/data_train.jld2")
+end
+if !isfile("test_data/data_test.jld2")
+    data_test = [NS.create_les_data_projected(;
+                     params...,
+                     backend = backend
+                 ) for _ in 1:Nsim_test];
+    jldsave("test_data/data_test.jld2"; data_test)
+    @test isfile("test_data/data_test.jld2")
+end
+if !isfile("test_data/data_test_INS.jld2")
+    data_test = [create_les_data(; params...) for _ in 1:Nsim_test];
+    @test data_test isa Array
+    jldsave("test_data/data_test_INS.jld2"; data_test)
+    @test isfile("test_data/data_test_INS.jld2")
+end

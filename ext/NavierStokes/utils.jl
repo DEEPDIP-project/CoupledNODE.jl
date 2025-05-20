@@ -49,11 +49,12 @@ end
 In place version of [`create_right_hand_side`](@ref).
 """
 function create_right_hand_side_inplace(setup, psolver)
+    @error "Deprecated: look at the following link: https://agdestein.github.io/IncompressibleNavierStokes.jl/dev/manual/sciml "
     (; x, N, dimension) = setup.grid
     D = dimension()
-    F = similar(u)
     div = similar(x[1], N)
     p = similar(x[1], N)
+    F = similar(x[1], (N..., D))
     function right_hand_side!(dudt, u, params, t)
         INS.apply_bc_u!(u, t, setup)
         INS.momentum!(F, u, nothing, t, setup)
@@ -74,7 +75,7 @@ Create ``(\\bar{u}, c)`` pairs for training.
 # Returns
 A named tuple with fields `u` and `c`. (without boundary conditions padding)
 """
-function create_io_arrays_priori(data, setups)
+function INS_create_io_arrays_priori(data, setups)
     # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
     ngrid, nfilter = size(data[1])
@@ -100,6 +101,30 @@ function create_io_arrays_priori(data, setups)
         (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
     end
 end
+function create_io_arrays_priori(data, setup)
+    # This is a reference function that creates the io_arrays for the a-priori
+    nsample = length(data)
+    nt = length(data[1].t) - 1
+    T = eltype(data[1].t[1])
+    (; dimension, N, Iu) = setup.grid
+    D = dimension()
+    u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
+    c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
+    ifield = ntuple(Returns(:), D)
+    for is in 1:nsample
+        for it in 1:nt
+            copyto!(
+                view(u, (ifield...), :, it, is),
+                data[is].u[it][Iu[1], :]
+            )
+            copyto!(
+                view(c, (ifield...), :, it, is),
+                data[is].c[it][Iu[1], :]
+            )
+        end
+    end
+    (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
+end
 
 """
     create_io_arrays_posteriori(data, setups)
@@ -113,7 +138,30 @@ Main differences between this function and NeuralClosure.create_io_arrays
 A named tuple with fields `u` and `t`.
 `u` is a matrix without padding and shape (nless..., D, sample, t)
 """
-function create_io_arrays_posteriori(data, setups, device = identity)
+function create_io_arrays_posteriori(data, setup, device = identity)
+    nsample = length(data)
+    nt = length(data[1].t) - 1
+    T = eltype(data[1].t[1])
+    (; dimension, N) = setup.grid
+    D = dimension()
+    u = zeros(T, N..., D, nsample, nt + 1)
+    t = zeros(T, nsample, nt + 1)
+    ifield = ntuple(Returns(:), D)
+    for is in 1:nsample
+        for it in 1:nt
+            copyto!(
+                view(u, (ifield...), :, is, it),
+                data[is].u[it][ifield..., :]
+            )
+            copyto!(
+                view(t, is, it),
+                data[is].t[it]
+            )
+        end
+    end
+    (; u = device(u), t = t)
+end
+function INS_create_io_arrays_posteriori(data, setups, device = identity)
     nsample = length(data)
     ngrid, nfilter = size(data[1])
     nt = length(data[1][1].t) - 1
@@ -163,8 +211,8 @@ function create_dataloader_prior(io_array; batchsize = 50, device = identity, rn
         nsample = size(x)[end]
         d = ndims(x)
         i = sort(shuffle(rng, 1:nsample)[1:batchsize])
-        xuse = device(Array(selectdim(x, d, i)))
-        yuse = device(Array(selectdim(y, d, i)))
+        xuse = device(selectdim(x, d, i))
+        yuse = device(selectdim(y, d, i))
         xuse, yuse
     end
 end
@@ -190,45 +238,7 @@ Creates a dataloader function for a-posteriori fitting from the given `io_array`
 - Have only tested in 2D cases.
 - It assumes that the data are loaded in batches of size 1
 """
-function create_dataloader_posteriori(io_array; nunroll = 10, device = identity, rng)
-    function dataloader()
-        (n..., dim, _, _) = axes(io_array.u) # expects that the io_array will be for a i_grid
-        (_..., samples, nt) = size(io_array.u)
-
-        @assert nt ≥ nunroll
-        # select starting point for unrolling
-        istart = rand(rng, 1:(nt - nunroll))
-        it = istart:(istart + nunroll)
-        # select the sample
-        isample = rand(rng, 1:samples)
-        if device == identity
-            u = view(io_array.u, n..., dim, isample, it)
-            t = io_array.t[isample, it]
-        else
-            # TODO: check if this is the correct way to move the data to the device
-            u = device(collect(view(io_array.u, n..., dim, isample, it)))
-            t = device(io_array.t[isample, it])
-        end
-        (; u = u, t = t)
-    end
-end
-
-function create_dataloader_post_2(trajectories; ntrajectory, nunroll, device = identity)
-    function dataloader(rng)
-        batch = shuffle(rng, trajectories)[1:ntrajectory] # Select a subset of trajectories
-        data = map(batch) do (; u, t)
-            nt = length(t)
-            @assert nt ≥ nunroll "Trajectory too short for nunroll = $nunroll"
-            istart = rand(rng, 1:(nt - nunroll))
-            it = istart:(istart + nunroll)
-            u = selectdim(u, ndims(u), it) |> Array |> device # convert view to array first
-            (; u, t = t[it])
-        end
-        data, rng
-    end
-end
-
-function create_dataloader_posteriori_3(
+function create_dataloader_posteriori(
         io_array; nunroll = 10, nsamples = 1, device = identity, rng)
     function dataloader()
         (n..., dim, _, _) = axes(io_array.u)
