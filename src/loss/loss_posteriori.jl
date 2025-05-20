@@ -57,8 +57,6 @@ function create_loss_post_lux(
                 @warn "Instability in the loss function. The predicted and target data have different sizes."
                 @info "Predicted size: $(size(pred))"
                 @info "Target size: $(size(uref))"
-                @info "size(t): $(size(t))"
-                @info "t: $(t)"
                 return Inf, st, (; y_pred = pred)
             else
                 loss += sum(

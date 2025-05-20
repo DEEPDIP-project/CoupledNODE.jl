@@ -82,7 +82,7 @@ for SENSEALG_i in sensealgs
         )
 
         # Test and trigger the model
-        test_output = Lux.apply(closure, u, θ, st)[1]
+        test_output = Lux.apply(closure, u[:, :, :, 1, :], θ, st)[1]
 
         # Define the right hand side of the ODE
         dudt_nn2 = NS.create_right_hand_side_with_closure(
@@ -104,7 +104,7 @@ for SENSEALG_i in sensealgs
         # Callback function
         callbackstate_val,
         callback_val = NS.create_callback(
-            dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
+            dudt_nn2, θ, test_io_post, loss_posteriori_lux, st, nunroll = 3 * nunroll,
             rng = rng, do_plot = false, plot_train = false, device = device)
         θ_posteriori = θ
 
