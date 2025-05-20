@@ -51,21 +51,17 @@ for SENSEALG_i in sensealgs
         end
 
         # A posteriori io_arrays
-        io_post = NS.create_io_arrays_posteriori(data, setups, device)
-
-        # Example of dimensions and how to operate with io_arrays_posteriori
-        (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
-        (samples, nsteps) = size(io_post[ig].t)
+        io_post = NS.create_io_arrays_posteriori(data, setups[1], device)
 
         # Create dataloader containing trajectories with the specified nunroll
         nunroll = 5
         dataloader_posteriori = NS.create_dataloader_posteriori(
-            io_post[ig]; nunroll = nunroll, rng = rng, device = device)
+            io_post; nunroll = nunroll, rng = rng, device = device)
         train_data_post = dataloader_posteriori()
 
         # Load the test data
         test_data = load("test_data/data_test.jld2", "data_test")
-        test_io_post = NS.create_io_arrays_posteriori(test_data, setups)
+        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[1], device)
 
         u = train_data_post[1]
         d = D = setups[1].grid.dimension()
@@ -86,7 +82,7 @@ for SENSEALG_i in sensealgs
         )
 
         # Test and trigger the model
-        test_output = Lux.apply(closure, u, θ, st)[1]
+        test_output = Lux.apply(closure, u[:, :, :, 1, :], θ, st)[1]
 
         # Define the right hand side of the ODE
         dudt_nn2 = NS.create_right_hand_side_with_closure(
@@ -95,9 +91,11 @@ for SENSEALG_i in sensealgs
         # Define the loss (a-posteriori)
         train_data_posteriori = dataloader_posteriori()
         griddims = ((:) for _ in 1:D)
+        inside = ((:) for _ in 1:D)
         loss_posteriori_lux = create_loss_post_lux(
             dudt_nn2,
-            griddims;
+            griddims,
+            inside;
             sensealg = SENSEALG_i
         )
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
@@ -106,7 +104,7 @@ for SENSEALG_i in sensealgs
         # Callback function
         callbackstate_val,
         callback_val = NS.create_callback(
-            dudt_nn2, θ, test_io_post[ig], loss_posteriori_lux, st, nunroll = 3 * nunroll,
+            dudt_nn2, θ, test_io_post, loss_posteriori_lux, st, nunroll = 3 * nunroll,
             rng = rng, do_plot = false, plot_train = false, device = device)
         θ_posteriori = θ
 

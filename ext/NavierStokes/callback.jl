@@ -54,18 +54,23 @@ function create_callback(
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
         callbackstate = (;
-            θmin = θ, loss_min = eltype(θ)(Inf), lhist_val = [],
+            θmin = θ, maximprove = eltype(θ)(0), loss_min = eltype(θ)(Inf), lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
         error("Either nunroll or batch_size must be provided")
     elseif nunroll !== nothing
         @info "Creating a posteriori callback"
-        dataloader = create_dataloader_posteriori(val_io_data; nunroll = nunroll, rng)
+        dataloader = create_dataloader_posteriori(
+            val_io_data; nunroll = nunroll, nsamples = 1, device = device, rng)
     else
         @info "Creating a priori callback"
-        dataloader = create_dataloader_prior(val_io_data; batchsize = batch_size, rng)
+        dataloader = create_dataloader_prior(
+            val_io_data; batchsize = batch_size, device = device, rng)
     end
+    # Take data only once
+    data = dataloader()
+    no_model_loss = loss_function(model, device(callbackstate.θmin .* 0), st, data)[1]
 
     function rolling_average(y)
         return [mean(@view y[max(1, i - average_window):i]) for i in 1:length(y)]
@@ -78,14 +83,22 @@ function create_callback(
         push!(callbackstate.lhist_train, l_train |> cpu_device())
 
         if step % plot_every == 0
-            y1, y2 = device(dataloader())
-            l_val = loss_function(model, p, st, (y1, y2))[1]
-            # check if this set of p produces a lower validation loss
-            l_val < callbackstate.loss_min &&
-                (callbackstate = (; callbackstate..., θmin = p, loss_min = l_val))
+
+            #data = dataloader(
+            l_val = loss_function(model, p, st, data)[1]
             @info "[$(step)] Validation Loss: $(l_val)"
-            no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, (y1, y2))[1]
+            #no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, data)[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
+            if l_val < callbackstate.loss_min
+                callbackstate = (callbackstate..., θmin = p, loss_min = l_val)
+            end
+
+            ## check the percentage of improvement
+            #pimprove = abs(l_val - no_model_loss)/no_model_loss
+            #@info "[$(step)] Validation Loss improvement: $(pimprove)"
+            #if pimprove > callbackstate.maximprove
+            #    (callbackstate = (; callbackstate..., θmin = p, maximprove = pimprove))
+            #end
 
             push!(callbackstate.lhist_val, l_val |> cpu_device())
             push!(callbackstate.lhist_nomodel, no_model_loss |> cpu_device())
