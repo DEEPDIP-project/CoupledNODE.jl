@@ -61,7 +61,7 @@ function create_callback(
         error("Either nunroll or batch_size must be provided")
     elseif nunroll !== nothing
         @info "Creating a posteriori callback"
-        dataloader = create_dataloader_posteriori_3(
+        dataloader = create_dataloader_posteriori(
             val_io_data; nunroll = nunroll, nsamples = 1, device = device, rng)
     else
         @info "Creating a priori callback"

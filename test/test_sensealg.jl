@@ -51,21 +51,17 @@ for SENSEALG_i in sensealgs
         end
 
         # A posteriori io_arrays
-        io_post = NS.create_io_arrays_posteriori(data, setups, device)
-
-        # Example of dimensions and how to operate with io_arrays_posteriori
-        (n, _, dim, samples, nsteps) = size(io_post[ig].u) # (nles, nles, D, samples, tsteps+1)
-        (samples, nsteps) = size(io_post[ig].t)
+        io_post = NS.create_io_arrays_posteriori(data, setups[1], device)
 
         # Create dataloader containing trajectories with the specified nunroll
         nunroll = 5
         dataloader_posteriori = NS.create_dataloader_posteriori(
-            io_post[ig]; nunroll = nunroll, rng = rng, device = device)
+            io_post; nunroll = nunroll, rng = rng, device = device)
         train_data_post = dataloader_posteriori()
 
         # Load the test data
         test_data = load("test_data/data_test.jld2", "data_test")
-        test_io_post = NS.create_io_arrays_posteriori(test_data, setups)
+        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[1], device)
 
         u = train_data_post[1]
         d = D = setups[1].grid.dimension()

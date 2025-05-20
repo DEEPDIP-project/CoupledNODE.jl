@@ -101,7 +101,7 @@ function INS_create_io_arrays_priori(data, setups)
         (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
     end
 end
-function create_io_arrays_priori(data, setup)
+function create_io_arrays_priori(data, setup, device = identity)
     # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
     nt = length(data[1].t) - 1
@@ -123,7 +123,7 @@ function create_io_arrays_priori(data, setup)
             )
         end
     end
-    (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
+    (; u = device(reshape(u, (N .- 2)..., D, :)), c = device(reshape(c, (N .- 2)..., D, :)))
 end
 
 """

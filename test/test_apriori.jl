@@ -7,6 +7,7 @@ NS = Base.get_extension(CoupledNODE, :NavierStokes)
 using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
+using Adapt
 
 T = Float32
 rng = Random.Xoshiro(123)
@@ -17,17 +18,18 @@ data = load("test_data/data_train.jld2", "data_train")
 params = load("test_data/params_data.jld2", "params")
 test_data = load("test_data/data_test.jld2", "data_test")
 
-# Build LES setups and assemble operators
-setups = map(params.nles) do nles
-    x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
-    INS.Setup(; x = x, Re = params.Re)
-end
-d = D = setups[ig].grid.dimension()
+d = D = params.D
 
 @testset "A-priori (CPU)" begin
+    # Build LES setups and assemble operators
+    setups = map(params.nles) do nles
+        x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+        INS.Setup(; x = x, Re = params.Re)
+    end
 
     # Create io_arrays
     io_priori = NS.create_io_arrays_priori(data, setups[ig])
+    test_io_priori = NS.create_io_arrays_priori(test_data, setups[ig])
 
     # Dataloader priori
     dataloader_prior = NS.create_dataloader_prior(io_priori; batchsize = 10, rng)
@@ -60,7 +62,7 @@ d = D = setups[ig].grid.dimension()
     # Define the callback
     callbackstate_val,
     callback_val = NS.create_callback(
-        closure, θ, test_io_post, loss_priori_lux, st, batch_size = 100,
+        closure, θ, test_io_priori, loss_priori_lux, st, batch_size = 30,
         rng = rng, do_plot = true, plot_train = false)
 
     # Training (via Lux)
@@ -87,7 +89,7 @@ end
 
     # Helper function to check if a variable is on the GPU
     function is_on_gpu(x)
-        return x isa CuArray
+        return x isa CuArray || (x isa SubArray && is_on_gpu(x.parent))
     end
 
     # Use gpu device
@@ -98,18 +100,20 @@ end
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
         x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
-        INS.Setup(; x = x, Re = params.Re)
+        INS.Setup(; x = x, Re = params.Re, backend = backend)
     end
 
     # Create io_arrays
-    io_priori = NS.create_io_arrays_priori(data, setups[ig])
+    io_priori = NS.create_io_arrays_priori(data, setups[ig], device)
+    test_io_priori = NS.create_io_arrays_priori(test_data, setups[ig], device)
 
     # Dataloader priori
     dataloader_prior = NS.create_dataloader_prior(
-        io_priori[ig]; batchsize = 10, rng = rng, device = device)
-    u, t = dataloader_prior()
-    @test is_on_gpu(u) # Check that the training data is on the GPU
-    @test is_on_gpu(t) # Check that the training data is on the GPU
+        io_priori; batchsize = 10, rng = rng, device = device)
+    train_data_priori = dataloader_prior()
+    u, c = dataloader_prior()
+    @test is_on_gpu(u)
+    @test is_on_gpu(c)
 
     # Creation of the model: NN closure
     closure, θ,
@@ -138,7 +142,7 @@ end
     # Define the callback
     callbackstate_val,
     callback_val = NS.create_callback(
-        closure, θ, test_io_post, loss_priori_lux, st, batch_size = 100,
+        closure, θ, test_io_priori, loss_priori_lux, st, batch_size = 30,
         rng = rng, do_plot = true, plot_train = false, device = device)
 
     # Training (via Lux)

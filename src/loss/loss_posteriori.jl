@@ -40,20 +40,25 @@ function create_loss_post_lux(
         nts = size(all_u, ndims(all_u))
         loss = 0
         for si in 1:nsamp
-            uref = all_u[inside..., :, si, 2:nts]
-            x = all_u[griddims..., :, si, 1]
-            t = all_t[si, :]
-            tspan, dt, prob, pred = nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
+            uref, x, t, tspan, dt,
+            prob, pred = nothing, nothing, nothing, nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
 
             CUDA.allowscalar() do
-                tspan = (t[1], t[end])
+                uref = all_u[inside..., :, si, 2:nts]
+                x = all_u[griddims..., :, si, 1]
+                t = all_t[si, 2:nts]
+                tspan = (all_t[si, 1], all_t[si, end])
             end
             prob = ODEProblem(rhs, x, tspan, ps)
             pred = solve(
                 prob, sciml_solver; u0 = x, p = ps,
                 adaptive = true, save_start = false, saveat = Array(t), kwargs...)
-            if size(pred, 4) != size(uref, 4)
+            if size(pred) != size(uref)
                 @warn "Instability in the loss function. The predicted and target data have different sizes."
+                @info "Predicted size: $(size(pred))"
+                @info "Target size: $(size(uref))"
+                @info "size(t): $(size(t))"
+                @info "t: $(t)"
                 return Inf, st, (; y_pred = pred)
             else
                 loss += sum(

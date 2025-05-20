@@ -21,16 +21,17 @@ data = load("test_data/data_train.jld2", "data_train")
 params = load("test_data/params_data.jld2", "params")
 test_data = load("test_data/data_test.jld2", "data_test")
 
-# Build LES setups and assemble operators
-setups = map(params.nles) do nles
-    x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
-    INS.Setup(; x = x, Re = params.Re)
-end
-d = D = setups[1].grid.dimension()
+d = D = params.D
 griddims = ((:) for _ in 1:D)
 inside = ((:) for _ in 1:D)
 
 @testset "A-posteriori (CPU)" begin
+
+    # Build LES setups and assemble operators
+    setups = map(params.nles) do nles
+        x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+        INS.Setup(; x = x, Re = params.Re)
+    end
 
     # A posteriori io_arrays
     io_post = NS.create_io_arrays_posteriori(data, setups[ig])
@@ -112,7 +113,7 @@ end
     # Use gpu device
     backend = CUDABackend()
     CUDA.allowscalar(false)
-    device = x -> adapt(CuArray{T}, x)
+    device = x -> adapt(CuArray{Float32}, x)
 
     # Build LES setups and assemble operators
     setups = map(params.nles) do nles
@@ -147,7 +148,8 @@ end
     @test is_on_gpu(θ.layer_4.weight) # Check that the parameters are on the GPU
 
     # Test and trigger the model
-    test_output = Lux.apply(closure, u[:, :, :, 1, :], θ, st)[1]
+    CUDA.@allowscalar u0 = u[:, :, :, 1, :]
+    test_output = Lux.apply(closure, u0, θ, st)[1]
     @test !isnothing(test_output) # Check that the output is not nothing
     @test is_on_gpu(u) # Check that the output is on the GPU
     @test is_on_gpu(test_output) # Check that the output is on the GPU

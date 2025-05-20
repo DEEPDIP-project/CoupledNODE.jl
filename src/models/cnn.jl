@@ -1,4 +1,5 @@
 using Lux
+using LuxCUDA
 using NNlib: pad_circular
 using Random: Random
 using ComponentArrays: ComponentArray
