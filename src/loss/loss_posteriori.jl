@@ -2,7 +2,7 @@ using Zygote: Zygote
 using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
-using DifferentialEquations: ODEProblem, solve, Tsit5, RK4
+using DifferentialEquations: ODEProblem, solve, Tsit5, RK4, remake
 using Lux: Lux
 using ChainRulesCore: ignore_derivatives
 
@@ -34,8 +34,8 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
-        rhs, griddims, inside; sciml_solver = Tsit5(), kwargs...)
-    function loss_function(model, ps, st, (all_u, all_t))
+        rhs, griddims, inside; ensemble = false, sciml_solver = Tsit5(), kwargs...)
+    function _loss_function(model, ps, st, (all_u, all_t))
         nsamp = size(all_u, ndims(all_u) - 1)
         nts = size(all_u, ndims(all_u))
         loss = 0
@@ -53,7 +53,7 @@ function create_loss_post_lux(
             pred = solve(
                 prob, sciml_solver; u0 = x, p = ps,
                 adaptive = true, save_start = false, saveat = Array(t), kwargs...)
-            if size(pred) != size(uref)
+            if size(pred)[4] != size(uref)[4]
                 @warn "Instability in the loss function. The predicted and target data have different sizes."
                 @info "Predicted size: $(size(pred))"
                 @info "Target size: $(size(uref))"
@@ -66,6 +66,52 @@ function create_loss_post_lux(
             end
         end
         return loss/nsamp, st, (; y_pred = nothing)
+    end
+    uref, x, t, tspan, dt,
+    prob, pred = nothing, nothing, nothing, nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
+    function _loss_ensemble(model, ps, st, (all_u, all_t))
+        nsamp = size(all_u, ndims(all_u) - 1)
+        nts = size(all_u, ndims(all_u))
+        loss = 0.0
+
+        for si in 1:nsamp
+            CUDA.allowscalar() do
+                uref = all_u[inside..., :, si, 2:nts]
+                x = all_u[griddims..., :, si, 1]
+                t = all_t[si, 2:nts]
+                tspan = (all_t[si, 1], all_t[si, end])
+            end
+
+            if prob === nothing
+                prob = ODEProblem(rhs, x, tspan, ps)
+            else
+                remake!(prob, u0 = x, tspan = tspan, p = ps)
+            end
+
+            pred = solve(prob, sciml_solver; u0 = x, p = ps, tspan = tspan,
+                adaptive = true, save_start = true, saveat = Array(t), kwargs...)
+
+            if size(pred)[4] != size(uref)[4]
+                @warn "Instability in loss function. Size mismatch."
+                @info "Predicted size: $(size(pred))"
+                @info "Target size: $(size(uref))"
+                return Inf, st, (; y_pred = pred)
+            end
+
+            loss += sum(
+                sum((pred[inside..., :, :] .- uref) .^ 2, dims = (1, 2, 3)) ./
+                sum(abs2, uref, dims = (1, 2, 3))
+            ) / (nts-1)
+        end
+
+        return loss / nsamp, st, (; y_pred = nothing)
+    end
+
+    if !ensemble
+        return _loss_function
+    else
+        @info "Using ensemble loss function"
+        return _loss_ensemble
     end
 end
 
