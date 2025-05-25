@@ -1,0 +1,313 @@
+using Test
+using Random: Random, seed!
+using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
+using JLD2: load, @save
+using CoupledNODE: cnn, train, create_loss_post_lux
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
+using DifferentialEquations: ODEProblem, solve, Tsit5
+using ComponentArrays: ComponentArray
+using Lux: Lux
+using Optimization: Optimization
+using OptimizationOptimisers: OptimizationOptimisers
+using Adapt
+
+T = Float32
+rng = Random.Xoshiro(123)
+ig = 1 # index of the LES grid to use.
+nunroll = 3
+# for some reason it does not work with more than 2 samples (?????)
+
+# Load the data
+data = load("test_data/data_train.jld2", "data_train")
+params = load("test_data/params_data.jld2", "params")
+test_data = load("test_data/data_test.jld2", "data_test")
+
+d = D = params.D
+griddims = ((:) for _ in 1:D)
+inside = ((:) for _ in 1:D)
+
+function create_sequential_loss_post(
+        rhs, griddims, inside; sciml_solver = Tsit5(), kwargs...)
+    @warn "This function is used only for testing purposes."
+
+    #function _loss_function(model, ps, st, (all_u, all_t))
+    #    @error "this should not be used!"
+    #    exit()
+    #    nsamp = size(all_u, ndims(all_u) - 1)
+    #    nts = size(all_u, ndims(all_u))
+
+    #    x0, uref, saveat_times, tspan = nothing, nothing, nothing, nothing
+
+    #    CUDA.allowscalar() do
+    #        saveat_times = Array(all_t[1, 2:nts])
+    #        tspan = (all_t[1, 1], all_t[1, end])
+    #    end
+
+    #    # Collect predictions
+    #    preds = map(1:nsamp) do si
+    #        x0 = CUDA.allowscalar() do
+    #            all_u[griddims..., :, si, 1]
+    #        end
+    #        prob = ODEProblem(rhs, x0, tspan, ps)
+    #        pred = solve(
+    #            prob, sciml_solver; u0 = x0, p = ps,
+    #            adaptive = true, save_start = false, saveat = saveat_times, kwargs...
+    #        )
+    #        pred[inside..., :, :]
+    #    end
+    #
+    #    # Compute losses
+    #    losses = map(1:nsamp) do si
+    #        CUDA.allowscalar() do
+    #            uref = all_u[inside..., :, si, 2:nts]
+    #        end
+    #        pred = ArrayType()(preds[si])
+    #        if size(pred)[4] != size(uref)[4]
+    #            @warn "Shape mismatch in sample $si: $(size(pred)) vs $(size(uref))"
+    #            return Inf, st, (; y_pred = nothing)
+    #        end
+    #        sum(
+    #            sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
+    #            sum(abs2, uref, dims = (1, 2, 3))
+    #        )
+    #    end
+
+    #    return sum(losses) / (nsamp * (nts - 1)), st, (; y_pred = nothing)
+    #end
+
+    function _loss_function(model, ps, st, (all_u, all_t))
+        nsamp = size(all_u, ndims(all_u) - 1)
+        nts = size(all_u, ndims(all_u))
+        loss = 0
+        for si in 1:nsamp
+            uref, x, t, tspan, dt,
+            prob, pred = nothing, nothing, nothing, nothing, nothing, nothing, nothing # initialize variable outside allowscalar do.
+
+            CUDA.allowscalar() do
+                uref = all_u[inside..., :, si, 2:nts]
+                x = all_u[griddims..., :, si, 1]
+                t = all_t[si, 2:nts]
+                tspan = (all_t[si, 1], all_t[si, end])
+            end
+            prob = ODEProblem(rhs, x, tspan, ps)
+            pred = solve(
+                prob, sciml_solver; u0 = x, p = ps,
+                adaptive = true, save_start = false, saveat = Array(t), kwargs...)
+            if size(pred)[4] != size(uref)[4]
+                @warn "Instability in the loss function. The predicted and target data have different sizes."
+                @info "Predicted size: $(size(pred))"
+                @info "Target size: $(size(uref))"
+                return Inf, st, (; y_pred = pred)
+            else
+                loss += sum(
+                    sum((pred[inside..., :, :] .- uref) .^ 2, dims = (1, 2, 3)) ./
+                    sum(abs2, uref, dims = (1, 2, 3))
+                ) / (nts-1)
+            end
+        end
+        return loss/nsamp, st, (; y_pred = nothing)
+    end
+end
+
+nsamps = [1, 3]
+for NSAMP in nsamps
+    @testset "Ensemble a-posteriori (CPU) nsamp = $(NSAMP)" begin
+        seed!(1234)
+
+        # Build LES setups and assemble operators
+        setups = map(params.nles) do nles
+            x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+            INS.Setup(; x = x, Re = params.Re)
+        end
+
+        # A posteriori io_arrays
+        io_post = NS.create_io_arrays_posteriori(data, setups[ig])
+        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[ig])
+
+        # Define the CNN layers
+        closure, θ,
+        st = cnn(;
+            T = T,
+            D = D,
+            data_ch = D,
+            radii = [3, 3],
+            channels = [2, 2],
+            activations = [tanh, identity],
+            use_bias = [false, false],
+            rng
+        )
+        # Define the right hand side of the ODE
+        dudt_nn2 = NS.create_right_hand_side_with_closure(
+            setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+
+        # Create dataloader containing trajectories with the specified nunroll
+        dataloader_posteriori = NS.create_dataloader_posteriori(
+            io_post; nunroll = nunroll, nsamples = NSAMP, rng)
+        train_data_posteriori = dataloader_posteriori()
+
+        # Define the loss (sequential)
+        loss_posteriori_lux = create_sequential_loss_post(
+            dudt_nn2,
+            griddims,
+            inside;
+        )
+        loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+        loss_value, t, m,
+        _ = @timed loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value). Takes $(t) s and $(m) bytes"
+        @test isfinite(loss_value[1]) # Check that the loss value is finite
+        # Define the loss (ensemble)
+        loss_posteriori_ensemble = create_loss_post_lux(
+            dudt_nn2,
+            griddims,
+            inside,
+            ;
+            ensemble = true,
+            force_cpu = true
+        )
+        loss_ensemble = loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
+        loss_ensemble, t, m,
+        _ = @timed loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
+        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble). Takes $(t) s and $(m) bytes"
+        @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
+
+        @test max(loss_ensemble[1] .- loss_value[1]) < 1e-4
+
+        # Callback function
+        θ_posteriori = θ
+
+        # Training ensemble
+        _, _,
+        _,
+        _ = @timed train(
+            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
+            nepochs = 1, ad_type = Optimization.AutoZygote(),
+            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        ensemble_result, ensemble_t,
+        ensemble_mem,
+        _ = @timed train(
+            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
+            nepochs = 10, ad_type = Optimization.AutoZygote(),
+            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
+
+        # Check that the training loss is finite
+        loss_ensemble, tstate_ensemble = ensemble_result
+        @test isfinite(loss_ensemble)
+
+        # The trained parameters at the end of the training are:
+        θ_posteriori_ensemble = tstate_ensemble.parameters
+        @test !isnothing(θ_posteriori_ensemble)
+    end
+end
+
+nsamps = [1, 3]
+for NSAMP in nsamps
+    @testset "Ensemble a-posteriori (GPU) nsamp = $(NSAMP)" begin
+        seed!(1234)
+
+        if !CUDA.functional()
+            @testset "CUDA not available" begin
+                @test true
+            end
+            return
+        end
+
+        # Helper function to check if a variable is on the GPU
+        function is_on_gpu(x)
+            return x isa CuArray
+        end
+
+        # Use gpu device
+        backend = CUDABackend()
+        CUDA.allowscalar(false)
+        device = x -> adapt(CuArray{Float32}, x)
+
+        # Build LES setups and assemble operators
+        setups = map(params.nles) do nles
+            x = ntuple(α -> LinRange(T(0.0), T(1.0), nles + 1), params.D)
+            INS.Setup(; x = x, Re = params.Re, backend = backend)
+        end
+
+        # A posteriori io_arrays
+        io_post = NS.create_io_arrays_posteriori(data, setups[ig], device)
+        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[ig], device)
+
+        # Define the CNN layers
+        closure, θ,
+        st = cnn(;
+            T = T,
+            D = D,
+            data_ch = D,
+            radii = [3, 3],
+            channels = [2, 2],
+            activations = [tanh, identity],
+            use_bias = [false, false],
+            use_cuda = true,
+            rng
+        )
+        # Define the right hand side of the ODE
+        dudt_nn2 = NS.create_right_hand_side_with_closure(
+            setups[ig], INS.psolver_spectral(setups[ig]), closure, st)
+
+        # Create dataloader containing trajectories with the specified nunroll
+        dataloader_posteriori = NS.create_dataloader_posteriori(
+            io_post; nunroll = nunroll, nsamples = NSAMP, device = device, rng)
+        u, t = dataloader_posteriori()
+        train_data_posteriori = dataloader_posteriori()
+
+        # Define the loss (ensemble)
+        loss_posteriori_ensemble = create_loss_post_lux(
+            dudt_nn2,
+            griddims,
+            inside,
+            ;
+            ensemble = true
+        )
+        loss_ensemble = loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
+        loss_ensemble, t, m,
+        _ = @timed loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
+        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble). Takes $(t) s and $(m) bytes"
+        @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
+
+        # Define the loss (sequential)
+        loss_posteriori_lux = create_sequential_loss_post(
+            dudt_nn2,
+            griddims,
+            inside
+        )
+        loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+        loss_value, t, m,
+        _ = @timed loss_posteriori_lux(closure, θ, st, train_data_posteriori)
+        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value). Takes $(t) s and $(m) bytes"
+        @test isfinite(loss_value[1]) # Check that the loss value is finite
+
+        @test max(loss_ensemble[1] .- loss_value[1]) < 1e-4
+
+        # Callback function
+        θ_posteriori = θ
+
+        # Training via Lux (with a dry run)
+        _, _,
+        _,
+        _ = @timed train(
+            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
+            nepochs = 1, ad_type = Optimization.AutoZygote(),
+            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        ensemble_result, ensemble_t,
+        ensemble_mem,
+        _ = @timed train(
+            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
+            nepochs = 10, ad_type = Optimization.AutoZygote(),
+            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
+
+        # Check that the training loss is finite
+        loss_ensemble, tstate_ensemble = ensemble_result
+        @test isfinite(loss_ensemble)
+
+        # The trained parameters at the end of the training are:
+        θ_posteriori_ensemble = tstate_ensemble.parameters
+        @test !isnothing(θ_posteriori_ensemble)
+    end
+end
