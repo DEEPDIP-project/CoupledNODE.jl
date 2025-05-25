@@ -1,6 +1,6 @@
 name = "CoupledNODE"
 uuid = "88291d29-22ea-41b1-bc0b-03785bffce48"
-authors = ["Simone Ciarella <s.ciarella@esciencecenter.nl>, Pablo Rodríguez Sánchez <pablo.rodriguez.sanchez@gmail.com>, Luisa Orozco <l.orozco@esciencecenter.nl>,  Aron Jansen <a.p.jansen@esciencecenter.nl>, Victor Azizi <v.azizi@esciencecenter.nl>"]
+authors = ["Simone Ciarella <s.ciarella@esciencecenter.nl>, Luisa Orozco <l.orozco@esciencecenter.nl>,  Aron Jansen <a.p.jansen@esciencecenter.nl>, Victor Azizi <v.azizi@esciencecenter.nl>"]
 version = "0.0.3"
 
 [deps]
@@ -83,7 +83,7 @@ SciMLSensitivity = "7"
 Statistics = "1.10"
 Tullio = "0.3"
 YAML = "0.4.12"
-Zygote = "0.6, 0.7"
+Zygote = "0.7"
 cuDNN = "1"
 julia = "1.11"
 

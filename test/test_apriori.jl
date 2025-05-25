@@ -87,11 +87,6 @@ end
         return
     end
 
-    # Helper function to check if a variable is on the GPU
-    function is_on_gpu(x)
-        return x isa CuArray || (x isa SubArray && is_on_gpu(x.parent))
-    end
-
     # Use gpu device
     backend = CUDABackend()
     CUDA.allowscalar(false)
