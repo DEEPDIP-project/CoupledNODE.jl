@@ -15,6 +15,11 @@ else
     @warn "No GPU device available"
 end
 
+# Helper function to check if a variable is on the GPU
+function is_on_gpu(x)
+    return x isa CuArray || (x isa SubArray && is_on_gpu(x.parent))
+end
+
 #=
 Don't add your tests to runtests.jl. Instead, create files named
 

@@ -60,7 +60,7 @@ for SENSEALG_i in sensealgs
 
         # Create dataloader containing trajectories with the specified nunroll
         dataloader_posteriori = NS.create_dataloader_posteriori(
-            io_post; nunroll = nunroll, nsamples = 2, rng)
+            io_post; nunroll = nunroll, rng)
         u, t = dataloader_posteriori()
         train_data_posteriori = dataloader_posteriori()
 
@@ -120,11 +120,6 @@ for SENSEALG_i in sensealgs
                 @test true
             end
             return
-        end
-
-        # Helper function to check if a variable is on the GPU
-        function is_on_gpu(x)
-            return x isa CuArray
         end
 
         # Use gpu device
