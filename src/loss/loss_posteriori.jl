@@ -86,6 +86,7 @@ function create_loss_post_lux(
     end
 
     function _loss_ensemble(model, ps, st, (all_u, all_t))
+        @error "Ensemble loss is broken. Follow this issue for updates: https://github.com/DEEPDIP-project/CoupledNODE.jl/issues/207"
         nsamp = size(all_u, ndims(all_u) - 1)
         nts = size(all_u, ndims(all_u))
 
