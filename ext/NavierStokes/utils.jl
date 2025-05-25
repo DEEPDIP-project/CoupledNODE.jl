@@ -11,13 +11,16 @@ Create right hand side function f(u, p, t) compatible with
 the OrdinaryDiffEq ODE solvers. Note that `u` has to be an array.
 To convert the tuple `u = (ux, uy)` to an array, use `stack(u)`.
 """
-create_right_hand_side(setup, psolver) = function right_hand_side(u, p, t)
-    u = INS.apply_bc_u(u, t, setup)
-    F = INS.momentum(u, nothing, t, setup)
-    F = INS.apply_bc_u(F, t, setup; dudt = true)
-    PF = INS.project(F, setup; psolver)
-    PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-    return PF
+function create_right_hand_side(setup, psolver)
+    function right_hand_side(u, p, t)
+        @error "Deprecated: look at the following link: https://agdestein.github.io/IncompressibleNavierStokes.jl/dev/manual/sciml "
+        u = INS.apply_bc_u(u, t, setup)
+        F = INS.momentum(u, nothing, t, setup)
+        F = INS.apply_bc_u(F, t, setup; dudt = true)
+        PF = INS.project(F, setup; psolver)
+        #PF = INS.apply_bc_u(PF, t, setup; dudt = true)
+        #return PF
+    end
 end
 
 """
@@ -38,7 +41,7 @@ function create_right_hand_side_with_closure(setup, psolver, closure, st)
         FC = F .+ u_lux
         FC = INS.apply_bc_u(FC, t, setup; dudt = true)
         FP = INS.project(FC, setup; psolver)
-        FP = INS.apply_bc_u(FP, t, setup; dudt = true)
+        #FP = INS.apply_bc_u(FP, t, setup; dudt = true)
         return FP
     end
 end
@@ -49,22 +52,31 @@ end
 In place version of [`create_right_hand_side`](@ref).
 """
 function create_right_hand_side_inplace(setup, psolver)
-    @error "Deprecated: look at the following link: https://agdestein.github.io/IncompressibleNavierStokes.jl/dev/manual/sciml "
-    (; x, N, dimension) = setup.grid
-    D = dimension()
-    div = similar(x[1], N)
-    p = similar(x[1], N)
-    F = similar(x[1], (N..., D))
+    p = scalarfield(setup)
     function right_hand_side!(dudt, u, params, t)
-        INS.apply_bc_u!(u, t, setup)
-        INS.momentum!(F, u, nothing, t, setup)
-        INS.apply_bc_u!(F, t, setup; dudt = true)
-        INS.project!(F, setup; psolver, div, p)
-        INS.apply_bc_u!(F, t, setup; dudt = true)
-        for α in 1:D
-            dudt[ntuple(Returns(:), D)..., α] .= F[α]
-        end
-        dudt
+        # [!]*** be careful to not touch u in this function!
+        temp_vector = copy(u)
+        INS.apply_bc_u!(temp_vector, t, setup)
+        INS.momentum!(dudt, temp_vector, nothing, t, setup)
+        INS.apply_bc_u!(dudt, t, setup; dudt = true)
+        INS.project!(dudt, setup; psolver, p)
+        return nothing
+    end
+end
+function create_right_hand_side_with_closure_inplace(setup, psolver, closure, st)
+    p = scalarfield(setup)
+    function right_hand_side!(dudt, u, params, t)
+        # [!]*** be careful to not touch u in this function!
+        temp_vector = copy(u)
+        INS.apply_bc_u!(temp_vector, t, setup)
+        INS.momentum!(dudt, temp_vector, nothing, t, setup)
+        u_lux = temp_vector[axes(u)..., 1:1] # Add batch dimension
+        u_lux = Lux.apply(closure, u_lux, params, st)[1]
+        u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
+        dudt .+= u_lux
+        INS.apply_bc_u!(dudt, t, setup; dudt = true)
+        INS.project!(dudt, setup; psolver, p)
+        return nothing
     end
 end
 
@@ -104,6 +116,8 @@ end
 function create_io_arrays_priori(data, setup, device = identity)
     # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
+    @info "Creating io_arrays for a-priori. I find $(nsample) samples."
+    (; dimension, N, Iu) = setup.grid
     nt = length(data[1].t) - 1
     T = eltype(data[1].t[1])
     (; dimension, N, Iu) = setup.grid
@@ -112,16 +126,14 @@ function create_io_arrays_priori(data, setup, device = identity)
     c = zeros(T, (N .- 2)..., D, nt + 1, nsample)
     ifield = ntuple(Returns(:), D)
     for is in 1:nsample
-        for it in 1:nt
-            copyto!(
-                view(u, (ifield...), :, it, is),
-                data[is].u[it][Iu[1], :]
-            )
-            copyto!(
-                view(c, (ifield...), :, it, is),
-                data[is].c[it][Iu[1], :]
-            )
-        end
+        copyto!(
+            view(u,(ifield...),:,:,is),
+            data[is].u[Iu[1], :, :]
+        )
+        copyto!(
+            view(c,(ifield...),:,:,is),
+            data[is].c[Iu[1], :, :]
+        )
     end
     (; u = device(reshape(u, (N .- 2)..., D, :)), c = device(reshape(c, (N .- 2)..., D, :)))
 end
@@ -148,16 +160,14 @@ function create_io_arrays_posteriori(data, setup, device = identity)
     t = zeros(T, nsample, nt + 1)
     ifield = ntuple(Returns(:), D)
     for is in 1:nsample
-        for it in 1:nt
-            copyto!(
-                view(u, (ifield...), :, is, it),
-                data[is].u[it][ifield..., :]
-            )
-            copyto!(
-                view(t, is, it),
-                data[is].t[it]
-            )
-        end
+        copyto!(
+            view(u,(ifield...),:,is,:),
+            data[is].u[ifield..., :, :]
+        )
+        copyto!(
+            view(t, is, :),
+            data[is].t[:]
+        )
     end
     (; u = device(u), t = t)
 end

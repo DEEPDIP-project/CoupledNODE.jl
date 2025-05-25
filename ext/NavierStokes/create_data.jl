@@ -69,10 +69,11 @@ function create_les_data_projected(;
         t in tsave && return true
         return false
     end
-    all_ules = []
-    all_c = []
-    all_t = []
-    Fdns = create_right_hand_side(dns, psolver)
+    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tsave)-1))
+    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tsave)-1))
+    all_t = Array{T}(undef, (length(tsave)-1))
+    idx = Ref(1)
+    Fdns = INS.create_right_hand_side(dns, psolver)
     function filter_callback(integrator)
         u = integrator.u
         t = integrator.t
@@ -91,19 +92,21 @@ function create_les_data_projected(;
         apply_bc_u!(FΦ, t, les; dudt = true)
         project!(FΦ, les; psolver = psolver_les, p = p)
         @. c = ΦF - FΦ
-        push!(all_ules, Array(Φu))
-        push!(all_c, Array(c))
-        push!(all_t, T(t))
+
+        all_ules[:, :, :, idx[]] = Array(Φu)
+        all_c[:, :, :, idx[]] = Array(c)
+        all_t[idx[]] = t
+        idx[] += 1
     end
     cb = DiscreteCallback(condition, filter_callback)
 
     # Now use SciML to solve the DNS
-    rhs!(du, u, p, t) = right_hand_side!(du, u, Ref([dns, psolver]), t)
+    rhs! = create_right_hand_side_inplace(dns, psolver)
     tspan = (T(0), tsim)
     prob = ODEProblem(rhs!, u, tspan, nothing)
     dns_solution = solve(
         prob, Tsit5(); u0 = u, p = nothing,
-        adaptive = true, saveat = tsim, callback = cb, tspan = tspan, tstops = tsave)
+        adaptive = true, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tsave)
 
     @info "DNS simulation finished"
 

@@ -25,7 +25,6 @@ The file will be automatically included inside a `@testset` with title "Title Fo
 for (root, dirs, files) in walkdir(@__DIR__)
     for file in files
         if isnothing(match(r"^test_.*\.jl$", file))
-            #if isnothing(match(r"^test_data.*\.jl$", file))
             continue
         end
 
