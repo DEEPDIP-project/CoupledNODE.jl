@@ -16,6 +16,7 @@ using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using SciMLSensitivity
 
+dt = Float32(1e-4)
 # Define the test set
 NON_supported = [ForwardDiffSensitivity(), ZygoteAdjoint(), TrackerAdjoint(),
     ReverseDiffAdjoint(), QuadratureAdjoint()]
@@ -95,7 +96,8 @@ for SENSEALG_i in sensealgs
         loss_posteriori_lux = create_loss_post_lux(
             dudt_nn2,
             griddims,
-            inside;
+            inside,
+            dt;
             sensealg = SENSEALG_i
         )
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)

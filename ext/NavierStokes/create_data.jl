@@ -64,15 +64,16 @@ function create_les_data_projected(;
     compression = compression[1]
     les = les[1]
     psolver_les = psolver_les[1]
-    tsave = collect(T(0):(savefreq * Δt):tsim)
+    tdatapoint = collect(T(0):(savefreq * Δt):tsim)
     function condition(u, t, integrator)
-        t in tsave && return true
+        t in tdatapoint && return true
         return false
     end
-    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tsave)-1))
-    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tsave)-1))
-    all_t = Array{T}(undef, (length(tsave)-1))
+    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tdatapoint)-1))
+    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tdatapoint)-1))
+    all_t = Array{T}(undef, (length(tdatapoint)-1))
     idx = Ref(1)
+    u0 = copy(u)
     Fdns = INS.create_right_hand_side(dns, psolver)
     p = scalarfield(les)
     Φu = vectorfield(les)
@@ -82,7 +83,6 @@ function create_les_data_projected(;
     temp = nothing
     F = Fdns(u, nothing, T(0)) #TODO check if we can avoid recomputing this
     ut = copy(u)
-    tt = T(0)
     function filter_callback(integrator)
         GC.gc()
         CUDA.reclaim()
@@ -107,13 +107,65 @@ function create_les_data_projected(;
 
     # Now use SciML to solve the DNS
     rhs! = create_right_hand_side_inplace(dns, psolver)
-    tspan = (T(0), tsim)
-    prob = ODEProblem(rhs!, u, tspan, nothing)
-    @info "Starting DNS simulation"
-    dns_solution = solve(
-        prob, Tsit5(); u0 = u, p = nothing,
-        adaptive = true, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tsave)
+    #tspan = (T(0), tsim)
+    #prob = ODEProblem(rhs!, u, tspan, nothing)
+    #@info "Starting DNS simulation"
+    #dns_solution = solve(
+    #    prob, RK4(); u0 = u, p = nothing,
+    #    adaptive = false, dt=T(1e-4), saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tdatapoint)
+    #@info "DNS simulation finished"
+    #res1 = (; u = all_ules, c = all_c, t = all_t)
+
+    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tdatapoint)-1))
+    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tdatapoint)-1))
+    all_t = Array{T}(undef, (length(tdatapoint)-1))
+    idx = Ref(1)
+
+    # Setup
+    t0 = T(0)
+    tfinal = tsim
+    nchunks = 10
+    dt_chunk = tsim / nchunks
+    save_every = 2 * tsim
+    tchunk = collect(t0:dt_chunk:tfinal)  # Save at the end of each chunk
+
+    u_current = u0  # Initial condition
+
+    @info "Starting chunked DNS simulation"
+
+    for (i, t_start) in enumerate(tchunk[1:(end - 1)])
+        @info "Processing chunk $(i) from $(t_start) to $(tchunk[i+1])"
+        @info size(u_current)
+        @info sum(u_current)
+        GC.gc()
+        CUDA.reclaim()
+        t_end = tchunk[i + 1]
+        tspan_chunk = (t_start, t_end)
+        prob = ODEProblem(rhs!, u_current, tspan_chunk, nothing)
+
+        sol = solve(
+            prob, RK4(); u0 = u_current, p = nothing,
+            adaptive = false, dt = Δt, save_end = true, callback = cb,
+            tspan = tspan_chunk, tstops = tdatapoint
+        )
+
+        u_current = sol.u[end]  # Use last state as initial condition for next chunk
+    end
+
     @info "DNS simulation finished"
+
+    res2 = (; u = all_ules, c = all_c, t = all_t)
+
+    #@info "Comparing results"
+    #@assert length(res1.t) == length(res2.t) "Time vectors have different lengths"
+    #@assert size(res1.u) == size(res2.u) "Velocity fields have different sizes"
+    #@assert size(res1.c) == size(res2.c) "Closure fields have different sizes"
+    #for i in 1:length(res1.t)
+    #    @assert res1.t[i] ≈ res2.t[i] "Time vectors differ at t = $(res1.t[i])"
+    #    @assert all(isapprox.(res1.u[:, :, :, i], res2.u[:, :, :, i]; atol = 1e-4)) "Velocity fields differ at t = $(res1.t[i])"
+    #    @assert all(isapprox.(res1.c[:, :, :, i], res2.c[:, :, :, i]; atol = 1e-4)) "Closure fields differ at t = $(res1.t[i])"
+    #end
+    #@info "Data creation finished"
 
     (; u = all_ules, c = all_c, t = all_t)
 end

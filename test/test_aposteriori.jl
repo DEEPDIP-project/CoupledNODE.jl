@@ -15,6 +15,7 @@ T = Float32
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 nunroll = 5
+dt = T(1e-4)
 
 # Load the data
 data = load("test_data/data_train.jld2", "data_train")
@@ -68,7 +69,8 @@ inside = ((:) for _ in 1:D)
     loss_posteriori_lux = create_loss_post_lux(
         dudt_nn2,
         griddims,
-        inside;
+        inside,
+        dt;
     )
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
@@ -158,7 +160,8 @@ end
     loss_posteriori_lux = create_loss_post_lux(
         dudt_nn2,
         griddims,
-        inside;
+        inside,
+        dt;
     )
     loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
     @test isfinite(loss_value[1]) # Check that the loss value is finite
