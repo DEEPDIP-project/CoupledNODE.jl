@@ -74,18 +74,21 @@ function create_les_data_projected(;
     all_t = Array{T}(undef, (length(tsave)-1))
     idx = Ref(1)
     Fdns = INS.create_right_hand_side(dns, psolver)
+    p = scalarfield(les)
+    Φu = vectorfield(les)
+    FΦ = vectorfield(les)
+    ΦF = vectorfield(les)
+    c = vectorfield(les)
+    temp = nothing
+    F = Fdns(u, nothing, T(0)) #TODO check if we can avoid recomputing this
+    ut = copy(u)
+    tt = T(0)
     function filter_callback(integrator)
-        u = integrator.u
+        ut .= integrator.u
         t = integrator.t
-        F = Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
-        p = scalarfield(les)
-        Φu = vectorfield(les)
-        FΦ = vectorfield(les)
-        ΦF = vectorfield(les)
-        c = vectorfield(les)
-        temp = nothing
+        F .= Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
 
-        Φ(Φu, u, les, compression)
+        Φ(Φu, ut, les, compression)
         apply_bc_u!(Φu, t, les)
         Φ(ΦF, F, les, compression)
         momentum!(FΦ, Φu, temp, t, les)
@@ -93,8 +96,8 @@ function create_les_data_projected(;
         project!(FΦ, les; psolver = psolver_les, p = p)
         @. c = ΦF - FΦ
 
-        all_ules[:, :, :, idx[]] = Array(Φu)
-        all_c[:, :, :, idx[]] = Array(c)
+        all_ules[:, :, :, idx[]] .= Array(Φu)
+        all_c[:, :, :, idx[]] .= Array(c)
         all_t[idx[]] = t
         idx[] += 1
     end
@@ -104,10 +107,10 @@ function create_les_data_projected(;
     rhs! = create_right_hand_side_inplace(dns, psolver)
     tspan = (T(0), tsim)
     prob = ODEProblem(rhs!, u, tspan, nothing)
+    @info "Starting DNS simulation"
     dns_solution = solve(
         prob, Tsit5(); u0 = u, p = nothing,
         adaptive = true, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tsave)
-
     @info "DNS simulation finished"
 
     (; u = all_ules, c = all_c, t = all_t)
