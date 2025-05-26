@@ -158,3 +158,46 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u ->
         u -> dropdims(u, dims = 1)
     )
 end
+
+using Lux
+using Random: Random
+using ComponentArrays: ComponentArray
+
+"""
+    fno(; kmax_fno, ch_fno, σ_fno, Nxyz, input_channels, rng = Random.default_rng(), use_cuda = false, init_weight = Lux.glorot_uniform)
+
+Constructs a Fourier Neural Operator model with a consistent interface to `cnn`.
+
+# Arguments
+- `kmax_fno`: Array of maximum wavenumbers for each Fourier layer.
+- `ch_fno`: Array of channel sizes for each Fourier layer.
+- `σ_fno`: Array of activation functions for each Fourier layer.
+- `Nxyz`: Tuple with grid sizes.
+- `input_channels`: Tuple of input channel functions (default: identity).
+- `rng`: Random number generator (default: `Random.default_rng()`).
+- `use_cuda`: Whether to use CUDA (default: false).
+- `init_weight`: Weight initializer (default: `Lux.glorot_uniform`).
+
+# Returns
+A tuple `(chain, params, state)` where
+- `chain`: The constructed Lux.Chain model.
+- `params`: The parameters of the model.
+- `state`: The state of the model.
+"""
+function fno(; kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u -> u,),
+        rng = Random.default_rng(), use_cuda = false, init_weight = Lux.glorot_uniform)
+    if use_cuda
+        dev = Lux.gpu_device()
+    else
+        dev = Lux.cpu_device()
+    end
+
+    @warn "*** FNO is using the following device: $(dev)"
+
+    chain = create_fno_model(
+        kmax_fno, ch_fno, σ_fno, Nxyz, input_channels; init_weight = init_weight)
+    params, state = Lux.setup(rng, chain)
+    state = state |> dev
+    params = ComponentArray(params) |> dev
+    (chain, params, state)
+end

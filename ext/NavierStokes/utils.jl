@@ -18,8 +18,6 @@ function create_right_hand_side(setup, psolver)
         F = INS.momentum(u, nothing, t, setup)
         F = INS.apply_bc_u(F, t, setup; dudt = true)
         PF = INS.project(F, setup; psolver)
-        #PF = INS.apply_bc_u(PF, t, setup; dudt = true)
-        #return PF
     end
 end
 
@@ -41,7 +39,6 @@ function create_right_hand_side_with_closure(setup, psolver, closure, st)
         FC = F .+ u_lux
         FC = INS.apply_bc_u(FC, t, setup; dudt = true)
         FP = INS.project(FC, setup; psolver)
-        #FP = INS.apply_bc_u(FP, t, setup; dudt = true)
         return FP
     end
 end
