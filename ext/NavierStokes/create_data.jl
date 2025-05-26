@@ -84,6 +84,8 @@ function create_les_data_projected(;
     ut = copy(u)
     tt = T(0)
     function filter_callback(integrator)
+        GC.gc()
+        CUDA.reclaim()
         ut .= integrator.u
         t = integrator.t
         F .= Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
