@@ -50,9 +50,10 @@ In place version of [`create_right_hand_side`](@ref).
 """
 function create_right_hand_side_inplace(setup, psolver)
     p = scalarfield(setup)
+    temp_vector = vectorfield(setup)
     function right_hand_side!(dudt, u, params, t)
         # [!]*** be careful to not touch u in this function!
-        temp_vector = copy(u)
+        temp_vector .= copy(u)
         INS.apply_bc_u!(temp_vector, t, setup)
         INS.momentum!(dudt, temp_vector, nothing, t, setup)
         INS.apply_bc_u!(dudt, t, setup; dudt = true)
@@ -63,7 +64,7 @@ end
 function create_right_hand_side_with_closure_inplace(setup, psolver, closure, st)
     p = scalarfield(setup)
     temp_vector = vectorfield(setup)
-    u_lux = temp_vector[axes(u)..., 1:1] # Add batch dimension
+    u_lux = temp_vector[axes(temp_vector)..., 1:1] # Add batch dimension
     function right_hand_side!(dudt, u, params, t)
         # [!]*** be careful to not touch u in this function!
         temp_vector .= copy(u)
@@ -71,7 +72,6 @@ function create_right_hand_side_with_closure_inplace(setup, psolver, closure, st
         INS.momentum!(dudt, temp_vector, nothing, t, setup)
         u_lux .= temp_vector[axes(u)..., 1:1]
         u_lux = Lux.apply(closure, u_lux, params, st)[1]
-        #u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
         dudt .+= u_lux[axes(u)..., 1] # Remove batch dimension
         INS.apply_bc_u!(dudt, t, setup; dudt = true)
         INS.project!(dudt, setup; psolver, p)
