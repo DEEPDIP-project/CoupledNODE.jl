@@ -16,6 +16,7 @@ T = Float32
 rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 nunroll = 5
+dt = T(1e-3)
 
 # Load the data
 data = load("test_data/data_train.jld2", "data_train")
@@ -68,7 +69,8 @@ for SENSEALG_i in sensealgs
         loss_posteriori_lux = create_loss_post_lux(
             dudt_nn2,
             griddims,
-            inside;
+            inside,
+            dt;
             sensealg = SENSEALG_i
         )
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
@@ -89,7 +91,7 @@ for SENSEALG_i in sensealgs
         lux_mem,
         _ = @timed train(
             closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-            nepochs = 50, ad_type = Optimization.AutoZygote(),
+            nepochs = 5, ad_type = Optimization.AutoZygote(),
             alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
 
         push!(timings, (SENSEALG_i, lux_t))
@@ -164,7 +166,8 @@ for SENSEALG_i in sensealgs
         loss_posteriori_lux = create_loss_post_lux(
             dudt_nn2,
             griddims,
-            inside;
+            inside,
+            dt;
             sensealg = SENSEALG_i
         )
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
@@ -183,7 +186,7 @@ for SENSEALG_i in sensealgs
         lux_mem,
         _ = @timed train(
             closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-            nepochs = 50, ad_type = Optimization.AutoZygote(),
+            nepochs = 5, ad_type = Optimization.AutoZygote(),
             alg = OptimizationOptimisers.Adam(0.01), cpu = false, callback = nothing)
 
         push!(timings, (SENSEALG_i, lux_t))

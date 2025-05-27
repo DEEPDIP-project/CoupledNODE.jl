@@ -1,7 +1,42 @@
 using DifferentialEquations
-using IncompressibleNavierStokes: right_hand_side!, apply_bc_u!, momentum!, project!
+using JLD2: jldsave
+using Random: Random
+using IncompressibleNavierStokes
+using NeuralClosure
+NS = Base.get_extension(CoupledNODE, :NavierStokes)
 
-function create_les_data_projected(;
+if CUDA.functional()
+    backend = CUDABackend()
+else
+    backend = IncompressibleNavierStokes.CPU()
+end
+
+T = Float32
+rng = Random.Xoshiro(123)
+
+# Parameters
+params = (;
+    D = 2,
+    Re = T(1e3),
+    lims = (T(0.0), T(1.0)),
+    nles = [16],
+    ndns = 64,
+    filters = (FaceAverage(),),
+    tburn = T(0.1),
+    tsim = T(0.5),
+    savefreq = 100,
+    Δt = T(1e-4),
+    create_psolver = psolver_spectral,
+    icfunc = (setup, psolver,
+        rng) -> random_field(
+        setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),
+    rng
+)
+
+# Reference function to test if the chunking procedure used by CoupledNODE
+# works correctly for the projected LES data.
+function _create_les_data_projected_singlerun(;
+        u0,
         D,
         Re,
         lims,
@@ -47,17 +82,12 @@ function create_les_data_projected(;
     psolver_les = create_psolver.(les)
 
     # Initial conditions
-    ustart = icfunc(dns, psolver, rng)
+    ustart = u0
+
+    # We skip the burn-in phase here, since we assume that the initial conditions is right after the burn-in phase
+    u = u0
 
     any(u -> any(isnan, u), ustart) && @warn "Initial conditions contain NaNs"
-
-    _dns = dns
-
-    # Solve burn-in DNS using INS
-    (; u, t),
-    outputs = solve_unsteady(; setup = _dns, ustart, tlims = (T(0), tburn), Δt, psolver)
-    u0 = copy(u)
-    @info "Burn-in DNS simulation finished"
 
     # Define the callback function for the filter
     Φ = filters[1]
@@ -73,7 +103,7 @@ function create_les_data_projected(;
     all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tdatapoint)-1))
     all_t = Array{T}(undef, (length(tdatapoint)-1))
     idx = Ref(1)
-    Fdns = INS.create_right_hand_side(dns, psolver)
+    Fdns = IncompressibleNavierStokes.create_right_hand_side(dns, psolver)
     p = scalarfield(les)
     Φu = vectorfield(les)
     FΦ = vectorfield(les)
@@ -88,11 +118,11 @@ function create_les_data_projected(;
         F .= Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
 
         Φ(Φu, ut, les, compression)
-        apply_bc_u!(Φu, t, les)
+        IncompressibleNavierStokes.apply_bc_u!(Φu, t, les)
         Φ(ΦF, F, les, compression)
-        momentum!(FΦ, Φu, temp, t, les)
-        apply_bc_u!(FΦ, t, les; dudt = true)
-        project!(FΦ, les; psolver = psolver_les, p = p)
+        IncompressibleNavierStokes.momentum!(FΦ, Φu, temp, t, les)
+        IncompressibleNavierStokes.apply_bc_u!(FΦ, t, les; dudt = true)
+        IncompressibleNavierStokes.project!(FΦ, les; psolver = psolver_les, p = p)
         @. c = ΦF - FΦ
 
         all_ules[:, :, :, idx[]] .= Array(Φu)
@@ -103,38 +133,32 @@ function create_les_data_projected(;
     cb = DiscreteCallback(condition, filter_callback)
 
     # Now use SciML to solve the DNS
-    rhs! = create_right_hand_side_inplace(dns, psolver)
-    t0 = T(0)
-    tfinal = tsim
-    nchunks = 10
-    dt_chunk = tsim / nchunks
-    tchunk = collect(t0:dt_chunk:tfinal)  # Save at the end of each chunk
+    rhs! = NS.create_right_hand_side_inplace(dns, psolver)
+    tspan = (T(0), tsim)
+    prob = ODEProblem(rhs!, u, tspan, nothing)
+    dns_solution = solve(
+        prob, RK4(); u0 = u, p = nothing,
+        adaptive = false, dt = Δt, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tdatapoint)
 
-    u_current = u  # Initial condition
-    prob = ODEProblem(rhs!, u_current, nothing, nothing)
+    (; u = all_ules, c = all_c, t = all_t)
+end
 
-    @info "Starting chunked DNS simulation"
-
-    for (i, t_start) in enumerate(tchunk[1:(end - 1)])
-        @info "Processing chunk $(i) from $(t_start) to $(tchunk[i+1])"
-        GC.gc()
-        if CUDA.functional()
-            CUDA.reclaim()
-        end
-        t_end = tchunk[i + 1]
-        tspan_chunk = (t_start, t_end)
-        prob = ODEProblem(rhs!, u_current, tspan_chunk, nothing)
-
-        sol = solve(
-            prob, RK4(); u0 = u_current, p = nothing,
-            adaptive = false, dt = Δt, save_end = true, callback = cb,
-            tspan = tspan_chunk, tstops = tdatapoint
-        )
-
-        u_current = sol.u[end]
+@testset "Create data (chunking)" begin
+    data = NS.create_les_data_projected(;
+        params...,
+        backend = backend
+    )
+    data_ref = _create_les_data_projected_singlerun(;
+        data.u0,
+        params...,
+        backend = backend
+    )
+    @test length(data.t) == length(data_ref.t)
+    @test size(data.u) == size(data_ref.u)
+    @test size(data.c) == size(data_ref.c)
+    for i in 1:length(data.t)
+        @test data.t[i] == data_ref.t[i]
+        @test all(isapprox.(data.u[:, :, :, i], data_ref.u[:, :, :, i]; atol = 1e-4))
+        @test all(isapprox.(data.c[:, :, :, i], data_ref.c[:, :, :, i]; atol = 1e-4))
     end
-
-    @info "DNS simulation finished"
-
-    (; u = all_ules, c = all_c, t = all_t, u0 = u0)
 end

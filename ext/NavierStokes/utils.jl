@@ -115,7 +115,6 @@ end
 function create_io_arrays_priori(data, setup, device = identity)
     # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
-    @info "Creating io_arrays for a-priori. I find $(nsample) samples."
     (; dimension, N, Iu) = setup.grid
     nt = length(data[1].t) - 1
     T = eltype(data[1].t[1])

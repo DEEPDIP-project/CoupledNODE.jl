@@ -18,6 +18,7 @@ rng = Random.Xoshiro(123)
 ig = 1 # index of the LES grid to use.
 nunroll = 3
 nsamps = [1, 2, 3]
+dt = T(1e-3)
 
 # Load the data
 data = load("test_data/data_train.jld2", "data_train")
@@ -29,7 +30,7 @@ griddims = ((:) for _ in 1:D)
 inside = ((:) for _ in 1:D)
 
 function create_sequential_loss_post(
-        rhs, griddims, inside; sciml_solver = Tsit5(), kwargs...)
+        rhs, griddims, inside; sciml_solver = RK4(), kwargs...)
     @warn "This function is used only for testing purposes."
 
     # [!] This commented out function could be used as an alternative to the ensemble loss function.
@@ -55,7 +56,7 @@ function create_sequential_loss_post(
     #        prob = ODEProblem(rhs, x0, tspan, ps)
     #        pred = solve(
     #            prob, sciml_solver; u0 = x0, p = ps,
-    #            adaptive = true, save_start = false, saveat = saveat_times, kwargs...
+    #            adaptive = false, save_start = false, saveat = saveat_times, kwargs...
     #        )
     #        pred[inside..., :, :]
     #    end
@@ -96,7 +97,7 @@ function create_sequential_loss_post(
             prob = ODEProblem(rhs, x, tspan, ps)
             pred = solve(
                 prob, sciml_solver; u0 = x, p = ps,
-                adaptive = true, save_start = false, saveat = Array(t), kwargs...)
+                adaptive = false, save_start = false, saveat = Array(t), kwargs...)
             if size(pred)[4] != size(uref)[4]
                 @warn "Instability in the loss function. The predicted and target data have different sizes."
                 @info "Predicted size: $(size(pred))"
@@ -164,6 +165,7 @@ for NSAMP in nsamps
             dudt_nn2,
             griddims,
             inside,
+            dt
             ;
             ensemble = true,
             force_cpu = true
@@ -190,7 +192,7 @@ for NSAMP in nsamps
         ensemble_mem,
         _ = @timed train(
             closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 10, ad_type = Optimization.AutoZygote(),
+            nepochs = 5, ad_type = Optimization.AutoZygote(),
             alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
         @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
 
@@ -258,6 +260,7 @@ for NSAMP in nsamps
             dudt_nn2,
             griddims,
             inside,
+            dt
             ;
             ensemble = true
         )
@@ -295,7 +298,7 @@ for NSAMP in nsamps
         ensemble_mem,
         _ = @timed train(
             closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 10, ad_type = Optimization.AutoZygote(),
+            nepochs = 5, ad_type = Optimization.AutoZygote(),
             alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
         @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
 

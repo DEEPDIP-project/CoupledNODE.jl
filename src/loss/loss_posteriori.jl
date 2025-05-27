@@ -9,7 +9,7 @@ using Lux: Lux
 using ChainRulesCore: ignore_derivatives
 
 """
-    create_loss_post_lux(rhs; sciml_solver = Tsit5(), kwargs...)
+    create_loss_post_lux(rhs; sciml_solver = RK4(), kwargs...)
 
 Creates a loss function for a-posteriori fitting using the given right-hand side (RHS) function `rhs`.
 The loss function computes the sum of squared differences between the predicted values and the actual data,
@@ -17,7 +17,7 @@ normalized by the sum of squared actual data values.
 
 # Arguments
 - `rhs::Function`: The right-hand side function for the ODE problem.
-- `sciml_solver::AbstractODEAlgorithm`: (Optional) The SciML solver to use for solving the ODE problem. Defaults to `Tsit5()`.
+- `sciml_solver::AbstractODEAlgorithm`: (Optional) The SciML solver to use for solving the ODE problem. Defaults to `RK4()`.
 - `kwargs...`: Additional keyword arguments to pass to the solver.
 
 # Returns
@@ -36,8 +36,8 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
-        rhs, griddims, inside; ensemble = false,
-        force_cpu = false, sciml_solver = Tsit5(), kwargs...)
+        rhs, griddims, inside, dt; ensemble = false,
+        force_cpu = false, sciml_solver = RK4(), kwargs...)
     function ArrayType()
         if force_cpu
             return Array
@@ -62,7 +62,7 @@ function create_loss_post_lux(
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
             prob, sciml_solver; u0 = x, p = ps,
-            adaptive = true, save_start = false, saveat = saveat_times, kwargs...)
+            adaptive = false, dt = dt, save_start = false, saveat = saveat_times, kwargs...)
         if size(pred)[4] != size(uref)[4]
             @warn "Instability in the loss function. The predicted and target data have different sizes."
             @info "Predicted size: $(size(pred))"
@@ -115,9 +115,10 @@ function create_loss_post_lux(
 
         sols = solve(
             ensemble_prob, sciml_solver, ensemble_type;
+            dt = dt,
             trajectories = nsamp,
             saveat = saveat_times,
-            adaptive = true,
+            adaptive = false,
             save_start = false
         )
 
@@ -147,40 +148,4 @@ function create_loss_post_lux(
         @info "Using ensemble loss function"
         return _loss_ensemble
     end
-end
-
-"""
-    validate_results(model, p, dataloader, nuse = 100)
-
-Validate the results of the model using the given parameters `p`, dataloader, and number of samples `nuse`.
-
-# Arguments
-- `model`: The model to evaluate.
-- `p`: Parameters for the model.
-- `dataloader::Function`: A function that returns the data `(u, t)`.
-- `nuse::Int`: The number of samples to use for validation. Defaults to `100`.
-
-# Returns
- - `loss`: The computed loss value.
-"""
-function validate_results(model, p, dataloader, nuse = 100)
-    loss = 0
-    for _ in 1:nuse
-        data = dataloader()
-        u, t = data
-        griddims = axes(u)[1:(ndims(u) - 2)]
-        x = u[griddims..., :, 1]
-        y = u[griddims..., :, 2:end] # remember to discard sol at the initial time step
-        #dt = params.Δt
-        dt = t[2] - t[1]
-        #saveat_loss = [i * dt for i in 1:length(y)]
-        tspan = [t[1], t[end]]
-        prob = ODEProblem(model, x, tspan, p)
-        pred = Array(solve(prob, Tsit5(); u0 = x, p = p, dt = dt, adaptive = false))
-        # remember that the first element of pred is the initial condition (SciML)
-        loss += sum(
-            abs2, y[griddims..., :, 1:(size(pred, 4) - 1)] - pred[griddims..., :, 2:end]) /
-                sum(abs2, y)
-    end
-    return loss / nuse
 end
