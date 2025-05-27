@@ -6,7 +6,7 @@ using OptimizationOptimisers: OptimizationOptimisers
 using ChainRulesCore: ignore_derivatives
 
 function train(model, ps, st, train_dataloader, loss_function;
-        nepochs = 100,
+        nepochs = 50,
         ad_type = Optimization.AutoZygote(),
         alg = OptimizationOptimisers.Adam(0.1),
         cpu::Bool = false,

@@ -28,7 +28,8 @@ params = (;
     tburn = T(5e-2),
     tsim = T(0.2),
     savefreq = 1,
-    Δt = T(5e-3), create_psolver = psolver_spectral,
+    Δt = T(1e-4),
+    create_psolver = psolver_spectral,
     icfunc = (setup, psolver,
         rng) -> random_field(
         setup, zero(eltype(setup.grid.x[1])); kp = 20, psolver, rng),

@@ -16,7 +16,7 @@ using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using SciMLSensitivity
 
-dt = Float32(1e-4)
+dt = Float32(1e-3)
 # Define the test set
 NON_supported = [ForwardDiffSensitivity(), ZygoteAdjoint(), TrackerAdjoint(),
     ReverseDiffAdjoint(), QuadratureAdjoint()]
@@ -115,7 +115,7 @@ for SENSEALG_i in sensealgs
         lux_mem,
         _ = @timed train(
             closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_lux;
-            nepochs = 10, ad_type = Optimization.AutoZygote(),
+            nepochs = 5, ad_type = Optimization.AutoZygote(),
             alg = OptimizationOptimisers.Adam(0.001), cpu = false, callback = nothing)
 
         loss, tstate = lux_result

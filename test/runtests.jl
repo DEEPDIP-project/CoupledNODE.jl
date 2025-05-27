@@ -1,6 +1,7 @@
 using CoupledNODE
 using Test
 using CUDA
+using Random
 
 # Needs to be run before tests
 @testset "generate test data" begin
