@@ -115,7 +115,7 @@ function _create_les_data_projected_singlerun(;
     function filter_callback(integrator)
         ut .= integrator.u
         t = integrator.t
-        F .= Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
+        F .= Fdns(ut, nothing, t) #TODO check if we can avoid recomputing this
 
         Φ(Φu, ut, les, compression)
         IncompressibleNavierStokes.apply_bc_u!(Φu, t, les)
@@ -137,14 +137,14 @@ function _create_les_data_projected_singlerun(;
     tspan = (T(0), tsim)
     prob = ODEProblem(rhs!, u, tspan, nothing)
     dns_solution = solve(
-        prob, RK4(); u0 = u, p = nothing,
-        adaptive = false, dt = Δt, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tdatapoint)
+        prob, Tsit5(); u0 = u, p = nothing,
+        adaptive = true, saveat = 2*tsim, callback = cb, tspan = tspan, tstops = tdatapoint)
 
     (; u = all_ules, c = all_c, t = all_t)
 end
 
 @testset "Create data (chunking)" begin
-    data = NS.create_les_data_projected(;
+    data = NS.create_les_data_projected(nchunks = 7;
         params...,
         backend = backend
     )

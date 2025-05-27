@@ -17,7 +17,7 @@ normalized by the sum of squared actual data values.
 
 # Arguments
 - `rhs::Function`: The right-hand side function for the ODE problem.
-- `sciml_solver::AbstractODEAlgorithm`: (Optional) The SciML solver to use for solving the ODE problem. Defaults to `RK4()`.
+- `sciml_solver::AbstractODEAlgorithm`: (Optional) The SciML solver to use for solving the ODE problem. Defaults to `Tsit5()`.
 - `kwargs...`: Additional keyword arguments to pass to the solver.
 
 # Returns
@@ -37,7 +37,7 @@ This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
         rhs, griddims, inside, dt; ensemble = false,
-        force_cpu = false, sciml_solver = RK4(), kwargs...)
+        force_cpu = false, sciml_solver = Tsit5(), kwargs...)
     function ArrayType()
         if force_cpu
             return Array
@@ -62,7 +62,7 @@ function create_loss_post_lux(
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
             prob, sciml_solver; u0 = x, p = ps,
-            adaptive = false, dt = dt, save_start = false, saveat = saveat_times, kwargs...)
+            adaptive = true, dt = dt, save_start = false, saveat = saveat_times, kwargs...)
         if size(pred)[4] != size(uref)[4]
             @warn "Instability in the loss function. The predicted and target data have different sizes."
             @info "Predicted size: $(size(pred))"
@@ -118,7 +118,7 @@ function create_loss_post_lux(
             dt = dt,
             trajectories = nsamp,
             saveat = saveat_times,
-            adaptive = false,
+            adaptive = true,
             save_start = false
         )
 

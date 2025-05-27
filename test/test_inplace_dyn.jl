@@ -54,10 +54,10 @@ d = D = params.D
     prob_out = ODEProblem(Fout, ustart, tspan, nothing)
 
     # First a burn-in simulation
-    burn_in = solve(prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
-    burn_out = solve(prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_in = solve(prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_out = solve(prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
     @test burn_in.u ≈ burn_out.u
     ustart = burn_in.u[end]
 
@@ -65,25 +65,25 @@ d = D = params.D
     _, _,
     _,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     _, _,
     _,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     # Now the real simulations
     solution_in, t_in,
     mem_in,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     solution_out, t_out,
     mem_out,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     @test solution_in.u ≈ solution_out.u
     @test solution_in.t ≈ solution_out.t
@@ -125,10 +125,10 @@ end
     prob_out = ODEProblem(Fout, ustart, tspan, nothing)
 
     # First a burn-in simulation
-    burn_in = solve(prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
-    burn_out = solve(prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_in = solve(prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_out = solve(prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
     @test burn_in.u ≈ burn_out.u
     @test is_on_gpu(burn_in.u[end])
     @test is_on_gpu(burn_out.u[end])
@@ -138,25 +138,25 @@ end
     _, _,
     _,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     _, _,
     _,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     # Now the real simulations
     solution_in, t_in,
     mem_in,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     solution_out, t_out,
     mem_out,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = nothing,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = nothing,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     @test solution_in.u ≈ solution_out.u
     @test solution_in.t ≈ solution_out.t
@@ -201,10 +201,10 @@ end
     prob_out = ODEProblem(Fout, ustart, tspan, θ)
 
     # First a burn-in simulation
-    burn_in = solve(prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(0.5), dt = T(1e-3), tspan = tspan)
-    burn_out = solve(prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(0.5), dt = T(1e-3), tspan = tspan)
+    burn_in = solve(prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(0.5), dt = T(1e-3), tspan = tspan)
+    burn_out = solve(prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(0.5), dt = T(1e-3), tspan = tspan)
     @test burn_in.u ≈ burn_out.u
     ustart = burn_in.u[end]
 
@@ -212,25 +212,25 @@ end
     _, _,
     _,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     _, _,
     _,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     # Now the real simulations
     solution_in, t_in,
     mem_in,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     solution_out, t_out,
     mem_out,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     @test solution_in.u ≈ solution_out.u
     @test solution_in.t ≈ solution_out.t
@@ -286,10 +286,10 @@ end
     prob_out = ODEProblem(Fout, ustart, tspan, θ)
 
     # First a burn-in simulation
-    burn_in = solve(prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
-    burn_out = solve(prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_in = solve(prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
+    burn_out = solve(prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = 0.5, dt = T(1e-3), tspan = tspan)
     @test burn_in.u ≈ burn_out.u
     @test is_on_gpu(burn_in.u[end])
     @test is_on_gpu(burn_out.u[end])
@@ -299,25 +299,25 @@ end
     _, _,
     _,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     _, _,
     _,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     # Now the real simulations
     solution_in, t_in,
     mem_in,
     _ = @timed solve(
-        prob_in, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_in, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
     solution_out, t_out,
     mem_out,
     _ = @timed solve(
-        prob_out, RK4(); u0 = ustart, p = θ,
-        adaptive = false, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
+        prob_out, Tsit5(); u0 = ustart, p = θ,
+        adaptive = true, saveat = T(1e-4), dt = T(1e-3), tspan = tspan)
 
     @test solution_in.u ≈ solution_out.u
     @test solution_in.t ≈ solution_out.t

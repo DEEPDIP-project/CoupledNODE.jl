@@ -56,7 +56,7 @@ function create_sequential_loss_post(
     #        prob = ODEProblem(rhs, x0, tspan, ps)
     #        pred = solve(
     #            prob, sciml_solver; u0 = x0, p = ps,
-    #            adaptive = false, save_start = false, saveat = saveat_times, kwargs...
+    #            adaptive = true, save_start = false, saveat = saveat_times, kwargs...
     #        )
     #        pred[inside..., :, :]
     #    end
@@ -97,7 +97,7 @@ function create_sequential_loss_post(
             prob = ODEProblem(rhs, x, tspan, ps)
             pred = solve(
                 prob, sciml_solver; u0 = x, p = ps,
-                adaptive = false, save_start = false, saveat = Array(t), kwargs...)
+                adaptive = true, save_start = false, saveat = Array(t), kwargs...)
             if size(pred)[4] != size(uref)[4]
                 @warn "Instability in the loss function. The predicted and target data have different sizes."
                 @info "Predicted size: $(size(pred))"

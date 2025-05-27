@@ -2,6 +2,7 @@ using DifferentialEquations
 using IncompressibleNavierStokes: right_hand_side!, apply_bc_u!, momentum!, project!
 
 function create_les_data_projected(;
+        nchunks = 10,
         D,
         Re,
         lims,
@@ -58,6 +59,7 @@ function create_les_data_projected(;
     outputs = solve_unsteady(; setup = _dns, ustart, tlims = (T(0), tburn), Δt, psolver)
     u0 = copy(u)
     @info "Burn-in DNS simulation finished"
+    any(u -> any(isnan, u), u) && @warn "NaNs after burn-in"
 
     # Define the callback function for the filter
     Φ = filters[1]
@@ -85,7 +87,7 @@ function create_les_data_projected(;
     function filter_callback(integrator)
         ut .= integrator.u
         t = integrator.t
-        F .= Fdns(u, nothing, t) #TODO check if we can avoid recomputing this
+        F .= Fdns(ut, nothing, t) #TODO check if we can avoid recomputing this
 
         Φ(Φu, ut, les, compression)
         apply_bc_u!(Φu, t, les)
@@ -106,7 +108,6 @@ function create_les_data_projected(;
     rhs! = create_right_hand_side_inplace(dns, psolver)
     t0 = T(0)
     tfinal = tsim
-    nchunks = 10
     dt_chunk = tsim / nchunks
     tchunk = collect(t0:dt_chunk:tfinal)  # Save at the end of each chunk
 
@@ -121,13 +122,15 @@ function create_les_data_projected(;
         if CUDA.functional()
             CUDA.reclaim()
         end
+        any(u -> any(isnan, u), u_current) &&
+            @warn "Solution contains NaNs. Probably dt is too large."
         t_end = tchunk[i + 1]
         tspan_chunk = (t_start, t_end)
         prob = ODEProblem(rhs!, u_current, tspan_chunk, nothing)
 
         sol = solve(
-            prob, RK4(); u0 = u_current, p = nothing,
-            adaptive = false, dt = Δt, save_end = true, callback = cb,
+            prob, Tsit5(); u0 = u_current, p = nothing,
+            adaptive = true, save_end = true, callback = cb,
             tspan = tspan_chunk, tstops = tdatapoint
         )
 
