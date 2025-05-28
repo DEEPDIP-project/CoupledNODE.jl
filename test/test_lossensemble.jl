@@ -111,7 +111,7 @@ for NSAMP in nsamps
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
         loss_value, t, m,
         _ = @timed loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value). Takes $(t) s and $(m) bytes"
+        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value[1]). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_value[1]) # Check that the loss value is finite
         # Define the loss (ensemble)
         loss_posteriori_ensemble = create_loss_post_lux(
@@ -126,7 +126,7 @@ for NSAMP in nsamps
         loss_ensemble = loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
         loss_ensemble, t, m,
         _ = @timed loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
-        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble). Takes $(t) s and $(m) bytes"
+        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble[1]). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
 
         @test loss_ensemble[1] ≈ loss_value[1]
@@ -220,7 +220,7 @@ for NSAMP in nsamps
         loss_ensemble = loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
         loss_ensemble, t, m,
         _ = @timed loss_posteriori_ensemble(closure, θ, st, train_data_posteriori)
-        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble). Takes $(t) s and $(m) bytes"
+        @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble[1]). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
 
         # Define the loss (sequential)
@@ -232,7 +232,7 @@ for NSAMP in nsamps
         loss_value = loss_posteriori_lux(closure, θ, st, train_data_posteriori)
         loss_value, t, m,
         _ = @timed loss_posteriori_lux(closure, θ, st, train_data_posteriori)
-        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value). Takes $(t) s and $(m) bytes"
+        @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value[1]). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_value[1]) # Check that the loss value is finite
 
         @test loss_ensemble[1] ≈ loss_value[1]
