@@ -4,7 +4,7 @@ using IncompressibleNavierStokes: IncompressibleNavierStokes as INS
 using JLD2: load, @save
 using CoupledNODE: cnn, train, create_loss_post_lux
 NS = Base.get_extension(CoupledNODE, :NavierStokes)
-using DifferentialEquations: ODEProblem, solve, Tsit5
+using DifferentialEquations: ODEProblem, solve, Tsit5, RK4
 using ComponentArrays: ComponentArray
 using Lux: Lux
 using Optimization: Optimization
@@ -32,53 +32,6 @@ inside = ((:) for _ in 1:D)
 function create_sequential_loss_post(
         rhs, griddims, inside; sciml_solver = RK4(), kwargs...)
     @warn "This function is used only for testing purposes."
-
-    # [!] This commented out function could be used as an alternative to the ensemble loss function.
-    # [!] Notice that it used to be differentiable for nsamp=1,2
-    #function _loss_function(model, ps, st, (all_u, all_t))
-    #    @error "this should not be used!"
-    #    exit()
-    #    nsamp = size(all_u, ndims(all_u) - 1)
-    #    nts = size(all_u, ndims(all_u))
-
-    #    x0, uref, saveat_times, tspan = nothing, nothing, nothing, nothing
-
-    #    CUDA.allowscalar() do
-    #        saveat_times = Array(all_t[1, 2:nts])
-    #        tspan = (all_t[1, 1], all_t[1, end])
-    #    end
-
-    #    # Collect predictions
-    #    preds = map(1:nsamp) do si
-    #        x0 = CUDA.allowscalar() do
-    #            all_u[griddims..., :, si, 1]
-    #        end
-    #        prob = ODEProblem(rhs, x0, tspan, ps)
-    #        pred = solve(
-    #            prob, sciml_solver; u0 = x0, p = ps,
-    #            adaptive = true, save_start = false, saveat = saveat_times, kwargs...
-    #        )
-    #        pred[inside..., :, :]
-    #    end
-    #
-    #    # Compute losses
-    #    losses = map(1:nsamp) do si
-    #        CUDA.allowscalar() do
-    #            uref = all_u[inside..., :, si, 2:nts]
-    #        end
-    #        pred = ArrayType()(preds[si])
-    #        if size(pred)[4] != size(uref)[4]
-    #            @warn "Shape mismatch in sample $si: $(size(pred)) vs $(size(uref))"
-    #            return Inf, st, (; y_pred = nothing)
-    #        end
-    #        sum(
-    #            sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
-    #            sum(abs2, uref, dims = (1, 2, 3))
-    #        )
-    #    end
-
-    #    return sum(losses) / (nsamp * (nts - 1)), st, (; y_pred = nothing)
-    #end
 
     function _loss_function(model, ps, st, (all_u, all_t))
         nsamp = size(all_u, ndims(all_u) - 1)
@@ -176,7 +129,7 @@ for NSAMP in nsamps
         @info "($(NSAMP)-samp Ensemble) Loss value: $(loss_ensemble). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
 
-        @test max(loss_ensemble[1] .- loss_value[1]) < 1e-4
+        @test loss_ensemble[1] ≈ loss_value[1]
 
         # Callback function
         θ_posteriori = θ
@@ -282,7 +235,7 @@ for NSAMP in nsamps
         @info "($(NSAMP)-samp Sequential) Loss value: $(loss_value). Takes $(t) s and $(m) bytes"
         @test isfinite(loss_value[1]) # Check that the loss value is finite
 
-        @test max(loss_ensemble[1] .- loss_value[1]) < 1e-4
+        @test loss_ensemble[1] ≈ loss_value[1]
 
         # Callback function
         θ_posteriori = θ

@@ -1,6 +1,7 @@
 module CoupledNODE
 
 include("models/cnn.jl")
+include("models/model_utils.jl")
 # TODO FNO can become an independent pkg and it needs to be tested
 #include("models/FNO.jl")
 

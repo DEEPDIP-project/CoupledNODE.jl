@@ -3,7 +3,7 @@ using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5, RK4, remake, EnsembleProblem,
-                             EnsembleThreads
+                             EnsembleThreads, EnsembleSerial
 using DiffEqGPU: EnsembleGPUArray
 using Lux: Lux
 using ChainRulesCore: ignore_derivatives
@@ -82,11 +82,11 @@ function create_loss_post_lux(
     else
         ensemble_type = CUDA.functional() ? EnsembleGPUArray(CUDA.CUDABackend()) :
                         EnsembleThreads()
-        # unfortunately, EnsembleGPUKernel does not work for complicated rhs
+        # unfortunately, EnsembleGPUKernel does not work for complicated rhs, not even in forward mode
     end
+    ensemble_type = EnsembleSerial() # this is the only one compatible with AD
 
     function _loss_ensemble(model, ps, st, (all_u, all_t))
-        @error "Ensemble loss is broken. Follow this issue for updates: https://github.com/DEEPDIP-project/CoupledNODE.jl/issues/207"
         nsamp = size(all_u, ndims(all_u) - 1)
         nts = size(all_u, ndims(all_u))
 
@@ -146,6 +146,7 @@ function create_loss_post_lux(
         return _loss_function
     else
         @info "Using ensemble loss function"
+        @warn "Unfortunately only EnsembleSerial is compatile with AD: https://github.com/DEEPDIP-project/CoupledNODE.jl/issues/207"
         return _loss_ensemble
     end
 end

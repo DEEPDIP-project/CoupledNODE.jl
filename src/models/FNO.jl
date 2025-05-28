@@ -22,9 +22,7 @@
 
 using Lux: Lux, Dense, gelu
 using LuxCore: AbstractLuxLayer
-if CUDA.functional()
-    using LuxCUDA
-end
+using LuxCUDA
 using FFTW: fft
 using Random: AbstractRNG
 using Tullio: @tullio
@@ -57,12 +55,6 @@ function Lux.initialparameters(rng::AbstractRNG,
     mydims = length(Nxyz)
     kgrid = ntuple(d -> kmax + 1, mydims)
     (;
-        # reshape the spacial weights to
-        # ( (1,)*mydims..., cout, cin)
-        #spatial_weight = reshape(init_weight(rng, cout, cin) ,ntuple(d -> 1, mydims)..., cout, cin),
-        # ( cout, cin, (1,)*mydims...)
-        #spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin ,ntuple(d -> 1, mydims)...),
-        # ( cout, cin)
         spatial_weight = reshape(init_weight(rng, cout, cin), cout, cin),
         # the extra dimension of size 2 is for real and imaginary part
         spectral_weights = init_weight(rng, cout, kgrid..., cin, 2)
@@ -131,8 +123,16 @@ function ((; dim_to_fft, Nxyz, kmax, cout, cin, σ)::FourierLayer)(x, params, st
     v, state
 end
 
-function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u -> u,);
+function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz; use_cuda = false,
         init_weight = Lux.glorot_uniform)
+    if use_cuda
+        dev = Lux.gpu_device()
+    else
+        dev = Lux.cpu_device()
+    end
+
+    @warn "*** FNO is using the following device: $(dev) "
+
     # from the grids I can get the dimension
     dim = length(Nxyz)
     ch_dim = dim + 1
@@ -144,8 +144,8 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u ->
         error("Only 1D and 2D grids are supported.")
     end
 
-    return Chain(
-        input_channels...,
+    layers = (
+        collocate,
         (FourierLayer(
              dim_to_fft, Nxyz, kmax_fno[i], ch_fno[i] => ch_fno[i + 1];
              σ = σ_fno[i], init_weight = init_weight) for
@@ -155,47 +155,11 @@ function create_fno_model(kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u ->
         # in the end I will have a single channel
         Dense(2 * ch_fno[end] => 1; use_bias = false),
         # drop the channel dimension
-        u -> dropdims(u, dims = 1)
+        u -> dropdims(u, dims = 1),
+        decollocate
     )
-end
 
-using Lux
-using Random: Random
-using ComponentArrays: ComponentArray
-
-"""
-    fno(; kmax_fno, ch_fno, σ_fno, Nxyz, input_channels, rng = Random.default_rng(), use_cuda = false, init_weight = Lux.glorot_uniform)
-
-Constructs a Fourier Neural Operator model with a consistent interface to `cnn`.
-
-# Arguments
-- `kmax_fno`: Array of maximum wavenumbers for each Fourier layer.
-- `ch_fno`: Array of channel sizes for each Fourier layer.
-- `σ_fno`: Array of activation functions for each Fourier layer.
-- `Nxyz`: Tuple with grid sizes.
-- `input_channels`: Tuple of input channel functions (default: identity).
-- `rng`: Random number generator (default: `Random.default_rng()`).
-- `use_cuda`: Whether to use CUDA (default: false).
-- `init_weight`: Weight initializer (default: `Lux.glorot_uniform`).
-
-# Returns
-A tuple `(chain, params, state)` where
-- `chain`: The constructed Lux.Chain model.
-- `params`: The parameters of the model.
-- `state`: The state of the model.
-"""
-function fno(; kmax_fno, ch_fno, σ_fno, Nxyz, input_channels = (u -> u,),
-        rng = Random.default_rng(), use_cuda = false, init_weight = Lux.glorot_uniform)
-    if use_cuda
-        dev = Lux.gpu_device()
-    else
-        dev = Lux.cpu_device()
-    end
-
-    @warn "*** FNO is using the following device: $(dev)"
-
-    chain = create_fno_model(
-        kmax_fno, ch_fno, σ_fno, Nxyz, input_channels; init_weight = init_weight)
+    chain = Chain(layers...)
     params, state = Lux.setup(rng, chain)
     state = state |> dev
     params = ComponentArray(params) |> dev
