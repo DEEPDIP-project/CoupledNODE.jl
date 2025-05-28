@@ -2,9 +2,7 @@ using Zygote: Zygote
 using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
-using DifferentialEquations: ODEProblem, solve, Tsit5, RK4, remake, EnsembleProblem,
-                             EnsembleThreads, EnsembleSerial
-using DiffEqGPU: EnsembleGPUArray
+using DifferentialEquations: ODEProblem, solve, Tsit5, RK4
 using Lux: Lux
 using ChainRulesCore: ignore_derivatives
 
@@ -77,15 +75,6 @@ function create_loss_post_lux(
         return loss, st, (; y_pred = nothing)
     end
 
-    if force_cpu || true
-        ensemble_type = EnsembleThreads()
-    else
-        ensemble_type = CUDA.functional() ? EnsembleGPUArray(CUDA.CUDABackend()) :
-                        EnsembleThreads()
-        # unfortunately, EnsembleGPUKernel does not work for complicated rhs, not even in forward mode
-    end
-    ensemble_type = EnsembleSerial() # this is the only one compatible with AD
-
     function _loss_ensemble(model, ps, st, (all_u, all_t))
         nsamp = size(all_u, ndims(all_u) - 1)
         nts = size(all_u, ndims(all_u))
@@ -93,60 +82,54 @@ function create_loss_post_lux(
         t_indices = 2:nts
         saveat_times = Array(all_t[1, t_indices]) # This has to be Array even for GPU solvers
 
-        x0, tspan, uref, pred = nothing, nothing, nothing, nothing
+        x0, xi, tspan, uref, pred = nothing, nothing, nothing, nothing, nothing
 
-        # Define how each problem varies
-        function prob_func(prob, i, repeat)
+        ignore_derivatives() do
             CUDA.allowscalar() do
-                xᵢ = all_u[griddims..., :, i, 1]
-                tᵢ = all_t[i, :]
-                remake(prob; u0 = xᵢ, tspan = (tᵢ[1], tᵢ[end]))
+                x0 = all_u[griddims..., :, 1, 1]
+                tspan = (all_t[1, 1], all_t[1, end]) # tspan is the same for all problems
+                xi = [all_u[griddims..., :, i, 1] for i in 1:nsamp]
             end
         end
 
-        CUDA.allowscalar() do
-            x0 = all_u[griddims..., :, 1, 1]
-            tspan = (all_t[1, 1], all_t[1, end])
-        end
-        base_prob = ODEProblem(rhs, x0, tspan, ps)
+        prob = ODEProblem(rhs, nothing, tspan, nothing)
 
-        ensemble_prob = EnsembleProblem(
-            base_prob, prob_func = prob_func, safetycopy = false)
-
-        sols = solve(
-            ensemble_prob, sciml_solver, ensemble_type;
-            dt = dt,
-            trajectories = nsamp,
-            saveat = saveat_times,
-            adaptive = true,
-            save_start = false
-        )
+        sols = [solve(
+                    prob,
+                    sciml_solver;
+                    u0 = xi[i],
+                    p = ps,
+                    dt = dt,
+                    saveat = saveat_times,
+                    adaptive = true,
+                    save_start = false,
+                    kwargs...
+                )
+                for i in 1:nsamp]
 
         # Compute loss
-        losses = map(1:nsamp) do i
-            CUDA.allowscalar() do
-                uref = all_u[inside..., :, i, t_indices]
-                pred = ArrayType()(sols.u[i][inside..., :, :]) # It is FUNDAMENTAL to convert to ArrayType
-            end
-
-            if size(pred) != size(uref)
+        loss = 0.0
+        for i in 1:nsamp
+            uref = all_u[inside..., :, i, t_indices]
+            pred = sols[i][inside..., :, :]
+            if size(pred) == size(uref)
+                loss += sum(
+                    sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
+                    sum(abs2, uref, dims = (1, 2, 3))
+                )
+            else
                 @warn "Shape mismatch in sample $i: $(size(pred)) vs $(size(uref))"
-                return Inf, st, (; y_pred = sols[i])
+                return Inf, st, (; y_pred = sols)
             end
-
-            sum(
-                sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
-                sum(abs2, uref, dims = (1, 2, 3))
-            )
         end
-        return sum(losses) / (nsamp*(nts - 1)), st, (; y_pred = nothing)
+
+        return loss/((nts-1)*nsamp), st, (; y_pred = nothing)
     end
 
     if !ensemble
         return _loss_function
     else
         @info "Using ensemble loss function"
-        @warn "Unfortunately only EnsembleSerial is compatile with AD: https://github.com/DEEPDIP-project/CoupledNODE.jl/issues/207"
         return _loss_ensemble
     end
 end

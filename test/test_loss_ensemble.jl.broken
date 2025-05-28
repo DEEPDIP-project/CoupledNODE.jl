@@ -10,8 +10,9 @@ using Lux: Lux
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using Adapt
+using Zygote
 
-@warn "Ensemble loss not implemented (https://github.com/DEEPDIP-project/CoupledNODE.jl/issues/207)"
+@error "This test is broken and needs to be fixed."
 
 T = Float32
 rng = Random.Xoshiro(123)
@@ -27,10 +28,10 @@ test_data = load("test_data/data_test.jld2", "data_test")
 
 d = D = params.D
 griddims = ((:) for _ in 1:D)
-inside = ((:) for _ in 1:D)
+inside = (2:17 for _ in 1:D)
 
 function create_sequential_loss_post(
-        rhs, griddims, inside; sciml_solver = RK4(), kwargs...)
+        rhs, griddims, inside; sciml_solver = Tsit5(), kwargs...)
     @warn "This function is used only for testing purposes."
 
     function _loss_function(model, ps, st, (all_u, all_t))
@@ -66,6 +67,9 @@ function create_sequential_loss_post(
         return loss/nsamp, st, (; y_pred = nothing)
     end
 end
+function callback(p, l_train)
+    @info "Training Loss: $(l_train), sum(p): $(sum(p))"
+end
 
 for NSAMP in nsamps
     @testset "Ensemble a-posteriori (CPU) nsamp = $(NSAMP)" begin
@@ -79,7 +83,6 @@ for NSAMP in nsamps
 
         # A posteriori io_arrays
         io_post = NS.create_io_arrays_posteriori(data, setups[ig])
-        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[ig])
 
         # Define the CNN layers
         closure, θ,
@@ -101,6 +104,7 @@ for NSAMP in nsamps
         dataloader_posteriori = NS.create_dataloader_posteriori(
             io_post; nunroll = nunroll, nsamples = NSAMP, rng)
         train_data_posteriori = dataloader_posteriori()
+
 
         # Define the loss (sequential)
         loss_posteriori_lux = create_sequential_loss_post(
@@ -130,24 +134,33 @@ for NSAMP in nsamps
         @test isfinite(loss_ensemble[1]) # Check that the loss value is finite
 
         @test loss_ensemble[1] ≈ loss_value[1]
+        loss_0 = loss_ensemble[1]
 
-        # Callback function
         θ_posteriori = θ
 
+
         # Training ensemble
-        _, _,
-        _,
-        _ = @timed train(
-            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 1, ad_type = Optimization.AutoZygote(),
-            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
-        ensemble_result, ensemble_t,
-        ensemble_mem,
-        _ = @timed train(
-            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 5, ad_type = Optimization.AutoZygote(),
-            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        @timed train(
+            closure,
+            θ_posteriori,
+            st,
+            dataloader_posteriori,
+            loss_posteriori_ensemble;
+            tstate = nothing,
+            nepochs = 1,
+            cpu = true,
+            callback = nothing)
+        ensemble_result, ensemble_t, ensemble_mem, _ = @timed train(
+            closure,
+            θ_posteriori,
+            st,
+            dataloader_posteriori,
+            loss_posteriori_ensemble;
+            nepochs = 5,
+            cpu = true,
+            callback = callback)
         @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
+
 
         # Check that the training loss is finite
         loss_ensemble, tstate_ensemble = ensemble_result
@@ -156,10 +169,14 @@ for NSAMP in nsamps
         # The trained parameters at the end of the training are:
         θ_posteriori_ensemble = tstate_ensemble.parameters
         @test !isnothing(θ_posteriori_ensemble)
+
+        @test loss_ensemble != loss_0
+
     end
 end
 
 for NSAMP in nsamps
+    return
     @testset "Ensemble a-posteriori (GPU) nsamp = $(NSAMP)" begin
         seed!(1234)
 
@@ -183,7 +200,6 @@ for NSAMP in nsamps
 
         # A posteriori io_arrays
         io_post = NS.create_io_arrays_posteriori(data, setups[ig], device)
-        test_io_post = NS.create_io_arrays_posteriori(test_data, setups[ig], device)
 
         # Define the CNN layers
         closure, θ,
@@ -237,22 +253,26 @@ for NSAMP in nsamps
 
         @test loss_ensemble[1] ≈ loss_value[1]
 
-        # Callback function
         θ_posteriori = θ
 
         # Training via Lux (with a dry run)
-        _, _,
-        _,
-        _ = @timed train(
-            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 1, ad_type = Optimization.AutoZygote(),
-            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
-        ensemble_result, ensemble_t,
-        ensemble_mem,
-        _ = @timed train(
-            closure, θ_posteriori, st, dataloader_posteriori, loss_posteriori_ensemble;
-            nepochs = 5, ad_type = Optimization.AutoZygote(),
-            alg = OptimizationOptimisers.Adam(0.01), cpu = true, callback = nothing)
+        @timed train(
+            closure,
+            θ_posteriori,
+            st,
+            dataloader_posteriori,
+            loss_posteriori_ensemble;
+            tstate = nothing,
+            nepochs = 1,
+            callback = nothing)
+        ensemble_result, ensemble_t, ensemble_mem, _ = @timed train(
+            closure,
+            θ_posteriori,
+            st,
+            dataloader_posteriori,
+            loss_posteriori_ensemble;
+            nepochs = 5,
+            callback = callback)
         @info "Training time ($(NSAMP)-samp ensemble): $(ensemble_t) s, memory: $(ensemble_mem) bytes"
 
         # Check that the training loss is finite

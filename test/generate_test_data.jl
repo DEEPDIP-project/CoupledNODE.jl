@@ -14,7 +14,7 @@ T = Float32
 rng = Random.Xoshiro(123)
 
 # Number of simulations to generate for each grid
-Nsim_train = 3
+Nsim_train = 4
 Nsim_test = 2
 
 # Parameters
