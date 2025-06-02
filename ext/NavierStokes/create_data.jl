@@ -50,7 +50,10 @@ function create_les_data_projected(;
     # Initial conditions
     ustart = icfunc(dns, psolver, rng)
 
-    any(u -> any(isnan, u), ustart) && @warn "Initial conditions contain NaNs"
+    while any(u -> any(isnan, u), ustart)
+        @warn "Initial conditions contain NaNs. Regenerating..."
+        ustart = icfunc(dns, psolver, rng)
+    end
 
     _dns = dns
 

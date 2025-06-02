@@ -75,10 +75,16 @@ function create_loss_post_lux(
 
         loss = sum(
             sum((pred[inside..., :, :] .- uref) .^ 2, dims = (1, 2, 3)) ./
-            sum(abs2, uref, dims = (1, 2, 3))
+            (sum(abs2, uref, dims = (1, 2, 3)) .+ eps(eltype(x)))
         ) / (nts-1)
+
         if isnan(loss) || isinf(loss)
             @warn "Loss is NaN or Inf. Returning Inf."
+            @info "max(pred - uref): $(maximum(pred[inside..., :, :] .- uref))"
+            return Inf, st, (; y_pred = nothing)
+        end
+        if isapprox(loss, 0.0)
+            @warn "Loss is approximately zero. I ignore this point cause it might be a numerical issue."
             return Inf, st, (; y_pred = nothing)
         end
 
