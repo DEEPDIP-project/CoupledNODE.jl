@@ -114,16 +114,16 @@ function create_les_data_projected(;
     u_current = u  # Initial condition
     prob = ODEProblem(rhs!, u_current, nothing, nothing)
 
+    any(u -> any(isnan, u), u_current) &&
+        @warn "Solution contains NaNs. Probably dt is too large."
+
     @info "Starting chunked DNS simulation"
 
     for (i, t_start) in enumerate(tchunk[1:(end - 1)])
-        @info "Processing chunk $(i) from $(t_start) to $(tchunk[i+1])"
         GC.gc()
         if CUDA.functional()
             CUDA.reclaim()
         end
-        any(u -> any(isnan, u), u_current) &&
-            @warn "Solution contains NaNs. Probably dt is too large."
         t_end = tchunk[i + 1]
         tspan_chunk = (t_start, t_end)
         prob = ODEProblem(rhs!, u_current, tspan_chunk, nothing)
@@ -138,6 +138,9 @@ function create_les_data_projected(;
     end
 
     @info "DNS simulation finished"
+
+    any(u -> any(isnan, u), u_current) &&
+        @warn "Solution contains NaNs. Probably dt is too large."
 
     (; u = all_ules, c = all_c, t = all_t, u0 = u0)
 end

@@ -60,18 +60,28 @@ function create_loss_post_lux(
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
             prob, sciml_solver; u0 = x, p = ps,
-            adaptive = true, dt = dt, save_start = false, saveat = saveat_times, kwargs...)
+            adaptive = true, dtmin = dt, save_start = false, saveat = saveat_times, kwargs...)
+
+        if pred.retcode != :Success
+            @warn "ODE solver did not converge. Retcode: $(pred.retcode)"
+            return Inf, st, (; y_pred = nothing)
+        end
         if size(pred)[4] != size(uref)[4]
             @warn "Instability in the loss function. The predicted and target data have different sizes."
             @info "Predicted size: $(size(pred))"
             @info "Target size: $(size(uref))"
-            return Inf, st, (; y_pred = pred)
+            return Inf, st, (; y_pred = nothing)
         end
 
         loss = sum(
             sum((pred[inside..., :, :] .- uref) .^ 2, dims = (1, 2, 3)) ./
             sum(abs2, uref, dims = (1, 2, 3))
         ) / (nts-1)
+        if isnan(loss) || isinf(loss)
+            @warn "Loss is NaN or Inf. Returning Inf."
+            return Inf, st, (; y_pred = nothing)
+        end
+
         return loss, st, (; y_pred = nothing)
     end
 

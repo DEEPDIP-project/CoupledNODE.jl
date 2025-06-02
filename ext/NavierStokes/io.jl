@@ -118,6 +118,10 @@ function load_model(conf)
         @info "Loading CNO model"
         CNO = Base.get_extension(CoupledNODE, :CNO)
         return CNO.load_cno_params(conf)
+    elseif model_type == "fno"
+        @info "Loading FNO model"
+        FNO = Base.get_extension(CoupledNODE, :fno)
+        return FNO.load_fno_params(conf)
     else
         error("Model type not supported")
     end

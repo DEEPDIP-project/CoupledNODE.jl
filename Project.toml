@@ -52,6 +52,7 @@ AttentionCNN = ["AttentionLayer"]
 CNO = ["ConvolutionalNeuralOperators"]
 CoupledNODECUDA_ext = ["cuDNN", "CUDSS"]
 NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure", "Adapt"]
+fno = ["NeuralOperators", "Adapt"]
 
 [compat]
 Adapt = "4"
@@ -95,4 +96,4 @@ NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "IncompressibleNavierStokes", "NeuralClosure", "Adapt", "cuDNN"]
+test = ["Test", "IncompressibleNavierStokes", "NeuralClosure", "Adapt", "cuDNN", "NeuralOperators"]
