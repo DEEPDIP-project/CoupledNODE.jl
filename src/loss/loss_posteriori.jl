@@ -73,10 +73,17 @@ function create_loss_post_lux(
             return Inf, st, (; y_pred = nothing)
         end
 
-        loss = sum(
-            sum((pred[inside..., :, :] .- uref) .^ 2, dims = (1, 2, 3)) ./
-            (sum(abs2, uref, dims = (1, 2, 3)) .+ eps(eltype(x)))
-        ) / (nts-1)
+        loss = eltype(x)(0)
+        for it in 1:size(uref, 4)
+            yref = uref[:, :, :, it]
+            ypred = pred[inside..., :, it]
+
+            a = sum(abs2, ypred .- yref)
+            b = sum(abs2, yref)
+
+            loss += a / b
+        end
+        loss /= (nts - 1)
 
         if isnan(loss) || isinf(loss)
             @warn "Loss is NaN or Inf. Returning Inf."
