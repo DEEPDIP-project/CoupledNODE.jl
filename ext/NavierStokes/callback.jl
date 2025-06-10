@@ -90,6 +90,7 @@ function create_callback(
             #no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, data)[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
             if l_val < callbackstate.loss_min
+                @info "saving theta"
                 callbackstate = (callbackstate..., θmin = p, loss_min = l_val)
             end
 

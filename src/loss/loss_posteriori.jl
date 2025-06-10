@@ -59,7 +59,7 @@ function create_loss_post_lux(
         end
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
-            prob, sciml_solver; u0 = x, p = ps,
+            prob, sciml_solver; u0 = x, p = ps, tspan = tspan,
             adaptive = true, dtmin = dt, save_start = false, saveat = saveat_times, kwargs...)
 
         if pred.retcode != :Success
