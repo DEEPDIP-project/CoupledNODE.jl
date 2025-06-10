@@ -83,23 +83,13 @@ function create_callback(
         push!(callbackstate.lhist_train, l_train |> cpu_device())
 
         if step % plot_every == 0
-
-            #data = dataloader(
             l_val = loss_function(model, p, st, data)[1]
             @info "[$(step)] Validation Loss: $(l_val)"
             #no_model_loss = loss_function(model, callbackstate.θmin .* 0, st, data)[1]
             @info "[$(step)] Validation Loss (no model): $(no_model_loss)"
             if l_val < callbackstate.loss_min
-                @info "saving theta"
                 callbackstate = (callbackstate..., θmin = p, loss_min = l_val)
             end
-
-            ## check the percentage of improvement
-            #pimprove = abs(l_val - no_model_loss)/no_model_loss
-            #@info "[$(step)] Validation Loss improvement: $(pimprove)"
-            #if pimprove > callbackstate.maximprove
-            #    (callbackstate = (; callbackstate..., θmin = p, maximprove = pimprove))
-            #end
 
             push!(callbackstate.lhist_val, l_val |> cpu_device())
             push!(callbackstate.lhist_nomodel, no_model_loss |> cpu_device())

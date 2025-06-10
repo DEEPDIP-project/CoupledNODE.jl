@@ -26,19 +26,6 @@ function train(model, ps, st, train_dataloader, loss_function;
     loss::Float32 = 0 #NOP TODO: check compatibiity with precision of data
     @info "Lux Training started"
     for epoch in 1:nepochs
-        #GC.gc()
-        #if CUDA.functional()
-        #    CUDA.reclaim()
-        #end
-
-        ## Check memory status
-        #status = CUDA.memory_status()
-        #@info "Memory Status: $(status)"
-        #
-        ## Get detailed memory information
-        #info = CUDA.memory_info()
-        #@info "Memory Info: $(info)"
-
         data = train_dataloader()
         _, loss,
         _, tstate = Lux.Training.single_train_step!(
