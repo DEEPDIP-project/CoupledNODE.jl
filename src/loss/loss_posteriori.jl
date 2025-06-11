@@ -63,13 +63,12 @@ function create_loss_post_lux(
             sciml_solver;
             u0 = x,
             p = ps,
-            #tspan = tspan,
+            tspan = tspan,
             adaptive = true,
             #dt = dt,
-            #dtmin = dt,
-            #save_start = false,
+            save_start = false,
             saveat = saveat_times,
-            #tstops = saveat_times
+            tstops = saveat_times,
             kwargs...
         )
 
@@ -81,6 +80,8 @@ function create_loss_post_lux(
             @warn "Instability in the loss function. The predicted and target data have different sizes."
             @info "Predicted size: $(size(pred))"
             @info "Target size: $(size(uref))"
+            @info "Pred time points: $(pred.t)"
+            @info "Target time points: $(all_t[1, 2:nts])"
             return Inf, st, (; y_pred = nothing)
         end
 
@@ -122,12 +123,12 @@ function create_loss_post_lux(
                     sciml_solver;
                     u0 = xi[i],
                     p = ps,
-                    #tspan = tspan,
+                    tspan = tspan,
                     #dt = dt,
                     saveat = saveat_times,
-                    #tstops = saveat_times,
+                    tstops = saveat_times,
                     adaptive = true,
-                    #save_start = false,
+                    save_start = false,
                     kwargs...
                 )[inside..., :, :]
                 for i in 1:nsamp]
