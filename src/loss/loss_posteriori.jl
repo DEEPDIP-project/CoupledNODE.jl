@@ -63,7 +63,6 @@ function create_loss_post_lux(
             sciml_solver;
             u0 = x,
             p = ps,
-            tspan = tspan,
             adaptive = true,
             #dt = dt,
             save_start = false,
@@ -123,7 +122,6 @@ function create_loss_post_lux(
                     sciml_solver;
                     u0 = xi[i],
                     p = ps,
-                    tspan = tspan,
                     #dt = dt,
                     saveat = saveat_times,
                     tstops = saveat_times,
