@@ -59,12 +59,21 @@ function create_loss_post_lux(
         end
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
-            prob, sciml_solver; u0 = x, p = ps,
-            adaptive = true, dtmin = dt, save_start = false, saveat = saveat_times, kwargs...)
+            prob,
+            sciml_solver;
+            u0 = x,
+            p = ps,
+            #tspan = tspan,
+            adaptive = true,
+            #dt = dt,
+            #dtmin = dt,
+            #save_start = false,
+            saveat = saveat_times            #tstops = saveat_times
+        )
 
         if pred.retcode != :Success
             @warn "ODE solver did not converge. Retcode: $(pred.retcode)"
-            return Inf, st, (; y_pred = nothing)
+            return 100000, st, (; y_pred = nothing)
         end
         if size(pred)[4] != size(uref)[4]
             @warn "Instability in the loss function. The predicted and target data have different sizes."
@@ -73,17 +82,19 @@ function create_loss_post_lux(
             return Inf, st, (; y_pred = nothing)
         end
 
-        loss = eltype(x)(0)
-        for it in 1:size(uref, 4)
-            yref = uref[:, :, :, it]
-            ypred = pred[inside..., :, it]
+        #loss = eltype(x)(0)
+        #for it in 1:size(pred, 4)
+        #    yref = uref[:, :, :, it]
+        #    ypred = pred[inside..., :, it]
 
-            a = sum(abs2, ypred .- yref)
-            b = sum(abs2, yref)
+        #    a = sum(abs2, ypred .- yref)
+        #    b = sum(abs2, yref)
 
-            loss += a / b
-        end
-        loss /= (nts - 1)
+        #    loss += a / b
+        #end
+        #loss /= (nts - 1)
+
+        loss = Lux.MSELoss()(pred[inside..., :, :], uref)
 
         if isnan(loss) || isinf(loss)
             @warn "Loss is NaN or Inf. Returning Inf."
@@ -105,11 +116,10 @@ function create_loss_post_lux(
         t_indices = 2:nts
         saveat_times = Array(all_t[1, t_indices]) # This has to be Array even for GPU solvers
 
-        x0, xi, tspan, uref, pred = nothing, nothing, nothing, nothing, nothing
+        xi, tspan, uref, pred = nothing, nothing, nothing, nothing, nothing
 
         ignore_derivatives() do
             CUDA.allowscalar() do
-                x0 = all_u[griddims..., :, 1, 1]
                 tspan = (all_t[1, 1], all_t[1, end]) # tspan is the same for all problems
                 xi = [all_u[griddims..., :, i, 1] for i in 1:nsamp]
             end
@@ -122,31 +132,33 @@ function create_loss_post_lux(
                     sciml_solver;
                     u0 = xi[i],
                     p = ps,
-                    dt = dt,
+                    #tspan = tspan,
+                    #dt = dt,
                     saveat = saveat_times,
-                    adaptive = true,
-                    save_start = false,
-                    kwargs...
-                )
+                    #tstops = saveat_times,
+                    adaptive = true                    #save_start = false,                    #kwargs...
+                )[inside..., :, :]
                 for i in 1:nsamp]
 
-        # Compute loss
-        loss = 0.0
-        for i in 1:nsamp
-            uref = all_u[inside..., :, i, t_indices]
-            pred = sols[i][inside..., :, :]
-            if size(pred) == size(uref)
-                loss += sum(
-                    sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
-                    sum(abs2, uref, dims = (1, 2, 3))
-                )
-            else
-                @warn "Shape mismatch in sample $i: $(size(pred)) vs $(size(uref))"
-                return Inf, st, (; y_pred = sols)
-            end
-        end
+        ## Compute loss
+        #loss = 0.0
+        #for i in 1:nsamp
+        #    uref = all_u[inside..., :, i, t_indices]
+        #    pred = sols[i][inside..., :, :]
+        #    if size(pred) == size(uref)
+        #        loss += sum(
+        #            sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
+        #            sum(abs2, uref, dims = (1, 2, 3))
+        #        )
+        #    else
+        #        @warn "Shape mismatch in sample $i: $(size(pred)) vs $(size(uref))"
+        #        return Inf, st, (; y_pred = sols)
+        #    end
+        #end
+        #return loss/((nts-1)*nsamp), st, (; y_pred = nothing)
 
-        return loss/((nts-1)*nsamp), st, (; y_pred = nothing)
+        loss = Lux.MSELoss()(stack(sols, dims = 4), all_u[inside..., :, :, t_indices])
+        return loss, st, (; y_pred = nothing)
     end
 
     if !ensemble

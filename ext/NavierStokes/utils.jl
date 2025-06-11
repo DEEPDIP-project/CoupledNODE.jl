@@ -33,9 +33,7 @@ function create_right_hand_side_with_closure(setup, psolver, closure, st)
             u, p, t)
         u = INS.apply_bc_u(u, t, setup)
         F = INS.momentum(u, nothing, t, setup)
-        u_lux = u[axes(u)..., 1:1] # Add batch dimension
-        u_lux = Lux.apply(closure, u_lux, p, st)[1]
-        u_lux = u_lux[axes(u)..., 1] # Remove batch dimension
+        u_lux = Lux.apply(closure, u[axes(u)..., 1:1], p, st)[1][axes(u)..., 1]
         FC = F .+ u_lux
         FC = INS.apply_bc_u(FC, t, setup; dudt = true)
         FP = INS.project(FC, setup; psolver)
