@@ -68,7 +68,9 @@ function create_loss_post_lux(
             #dt = dt,
             #dtmin = dt,
             #save_start = false,
-            saveat = saveat_times            #tstops = saveat_times
+            saveat = saveat_times,
+            #tstops = saveat_times
+            kwargs...
         )
 
         if pred.retcode != :Success
@@ -81,18 +83,6 @@ function create_loss_post_lux(
             @info "Target size: $(size(uref))"
             return Inf, st, (; y_pred = nothing)
         end
-
-        #loss = eltype(x)(0)
-        #for it in 1:size(pred, 4)
-        #    yref = uref[:, :, :, it]
-        #    ypred = pred[inside..., :, it]
-
-        #    a = sum(abs2, ypred .- yref)
-        #    b = sum(abs2, yref)
-
-        #    loss += a / b
-        #end
-        #loss /= (nts - 1)
 
         loss = Lux.MSELoss()(pred[inside..., :, :], uref)
 
@@ -136,26 +126,11 @@ function create_loss_post_lux(
                     #dt = dt,
                     saveat = saveat_times,
                     #tstops = saveat_times,
-                    adaptive = true                    #save_start = false,                    #kwargs...
+                    adaptive = true,
+                    #save_start = false,
+                    kwargs...
                 )[inside..., :, :]
                 for i in 1:nsamp]
-
-        ## Compute loss
-        #loss = 0.0
-        #for i in 1:nsamp
-        #    uref = all_u[inside..., :, i, t_indices]
-        #    pred = sols[i][inside..., :, :]
-        #    if size(pred) == size(uref)
-        #        loss += sum(
-        #            sum((pred .- uref) .^ 2, dims = (1, 2, 3)) ./
-        #            sum(abs2, uref, dims = (1, 2, 3))
-        #        )
-        #    else
-        #        @warn "Shape mismatch in sample $i: $(size(pred)) vs $(size(uref))"
-        #        return Inf, st, (; y_pred = sols)
-        #    end
-        #end
-        #return loss/((nts-1)*nsamp), st, (; y_pred = nothing)
 
         loss = Lux.MSELoss()(stack(sols, dims = 4), all_u[inside..., :, :, t_indices])
         return loss, st, (; y_pred = nothing)
