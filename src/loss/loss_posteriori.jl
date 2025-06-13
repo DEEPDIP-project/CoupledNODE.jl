@@ -35,7 +35,6 @@ This makes it compatible with the Lux ecosystem.
 """
 function create_loss_post_lux(
         rhs, griddims, inside, dt;
-        λ = nothing,
         ensemble = false,
         force_cpu = false,
         sciml_solver = Tsit5(),
@@ -100,10 +99,6 @@ function create_loss_post_lux(
             return Inf, st, (; y_pred = nothing)
         end
 
-        if λ !== nothing
-            loss += λ * norm(ps)^2
-        end
-
         return loss, st, (; y_pred = nothing)
     end
 
@@ -140,10 +135,6 @@ function create_loss_post_lux(
                 for i in 1:nsamp]
 
         loss = Lux.MSELoss()(stack(sols, dims = 4), all_u[inside..., :, :, t_indices])
-
-        if λ !== nothing
-            loss += λ * norm(ps)^2
-        end
 
         return loss, st, (; y_pred = nothing)
     end
