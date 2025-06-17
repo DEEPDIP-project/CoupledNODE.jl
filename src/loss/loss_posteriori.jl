@@ -3,8 +3,10 @@ using CUDA: CUDA
 using Random: shuffle
 using LinearAlgebra: norm
 using DifferentialEquations: ODEProblem, solve, Tsit5, RK4
+using DiffEqFlux: group_ranges
 using Lux: Lux
 using ChainRulesCore: ignore_derivatives
+using SciMLBase
 
 """
     create_loss_post_lux(rhs; sciml_solver = RK4(), kwargs...)
@@ -33,10 +35,50 @@ normalized by the sum of squared actual data values.
 - `metadata::NamedTuple`: A named tuple containing the predicted values `y_pred`.
 This makes it compatible with the Lux ecosystem.
 """
+
+_default_continuity_loss(û_end, u_0) = sum(abs, û_end - u_0)
+function mymultiple_shoot(p, ode_data, tsteps, prob::ODEProblem, loss_function::F,
+        continuity_loss::C, solver::SciMLBase.AbstractODEAlgorithm,
+        group_size::Integer; continuity_term::Real = 100, kwargs...) where {F, C}
+    datasize = size(ode_data, 4)
+
+    if group_size < 2 || group_size > datasize
+        throw(DomainError(group_size, "group_size can't be < 2 or > number of data points"))
+    end
+
+    ranges = group_ranges(datasize, group_size)
+
+    sols = [solve(
+                remake(prob; p, tspan = (tsteps[first(rg)], tsteps[last(rg)]),
+                    u0 = ode_data[:, :, :, first(rg)]),
+                solver;
+                saveat = tsteps[rg],
+                kwargs...) for rg in ranges]
+    group_predictions = CuArray.(sols)
+
+    retcodes = [sol.retcode for sol in sols]
+    all(SciMLBase.successful_retcode, retcodes) || return Inf, group_predictions
+
+    loss = 0
+    for (i, rg) in enumerate(ranges)
+        u = ode_data[:, :, :, rg]
+        û = group_predictions[i]
+        loss += loss_function(u, û)
+
+        if i > 1
+            loss += continuity_term *
+                    continuity_loss(group_predictions[i - 1][:, :, :, end], u[:, :, :, 1])
+        end
+    end
+
+    return loss, group_predictions
+end
+
 function create_loss_post_lux(
         rhs, griddims, inside, dt;
         ensemble = false,
         force_cpu = false,
+        multiple_shooting = 0,
         sciml_solver = Tsit5(),
         kwargs...)
     function ArrayType()
@@ -44,6 +86,26 @@ function create_loss_post_lux(
             return Array
         end
         return CUDA.functional() ? CUDA.CuArray : Array
+    end
+
+    function _multishooting(model, ps, st, (all_u, all_t))
+        uref, x, tspan, saveat_times = nothing, nothing, nothing, nothing
+
+        CUDA.allowscalar() do
+            uref = all_u[griddims..., :, 1, :]
+            x = all_u[griddims..., :, 1, 1]
+            saveat_times = Array(all_t[1, :])
+            tspan = (all_t[1, 1], all_t[1, end])
+        end
+
+        prob = ODEProblem(rhs, x, tspan, ps)
+
+        loss,
+        _ = mymultiple_shoot(ps, uref, saveat_times, prob, Lux.MSELoss(),
+            _default_continuity_loss, sciml_solver, multiple_shooting;
+            continuity_term = 100, adaptive = true, save_start = false)
+
+        return loss, st, (; y_pred = nothing)
     end
 
     function _loss_function(model, ps, st, (all_u, all_t))
@@ -139,7 +201,10 @@ function create_loss_post_lux(
         return loss, st, (; y_pred = nothing)
     end
 
-    if !ensemble
+    if multiple_shooting > 0
+        @info "Using multishooting loss function on $(multiple_shooting) groups of data"
+        return _multishooting
+    elseif !ensemble
         return _loss_function
     else
         @info "Using ensemble loss function"
