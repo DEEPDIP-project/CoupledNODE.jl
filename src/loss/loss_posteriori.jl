@@ -205,6 +205,7 @@ function create_loss_post_lux(
         @info "Using multishooting loss function on $(multiple_shooting) groups of data"
         return _multishooting
     elseif !ensemble
+        @info "Using single-sample loss function"
         return _loss_function
     else
         @info "Using ensemble loss function"
