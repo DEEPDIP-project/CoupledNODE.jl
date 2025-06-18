@@ -25,13 +25,11 @@ function train(model, ps, st, train_dataloader, loss_function;
     if tstate === nothing
         tstate = Lux.Training.TrainState(model, ps, st, alg)
     end
-    loss::Float32 = 0 #NOP TODO: check compatibiity with precision of data
+    T = eltype(ps)
+    loss = zero(T)
     @info "Lux Training started"
     for epoch in 1:nepochs
         data = train_dataloader()
-        #_, loss,
-        #_, tstate = Lux.Training.single_train_step!(
-        #    ad_type, loss_function, data, tstate)
         grads, loss,
         st, tstate = Lux.Training.compute_gradients(
             ad_type, loss_function, data, tstate)
