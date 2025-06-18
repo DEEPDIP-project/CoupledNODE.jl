@@ -12,7 +12,7 @@ function create_les_data_projected(;
         tburn,
         tsim,
         savefreq,
-        Δt = nothing,
+        Δt,
         method = RKMethods.RK44(; T = typeof(Re)),
         create_psolver = default_psolver,
         backend = IncompressibleNavierStokes.CPU(),
@@ -20,6 +20,7 @@ function create_les_data_projected(;
         processors = (; log = timelogger(; nupdate = 10)),
         rng,
         filenames = nothing,
+        sciml_solver = RK4(),
         kwargs...
 )
     @assert length(nles) == 1 "We only support one les at a time"
@@ -120,7 +121,7 @@ function create_les_data_projected(;
     any(u -> any(isnan, u), u_current) &&
         @warn "Solution contains NaNs. Probably dt is too large."
 
-    @info "Starting chunked DNS simulation"
+    @info "Starting chunked DNS simulation. We are using SciML with solver $(sciml_solver) and time step $(Δt)."
 
     for (i, t_start) in enumerate(tchunk[1:(end - 1)])
         GC.gc()
@@ -132,8 +133,8 @@ function create_les_data_projected(;
         prob = ODEProblem(rhs!, u_current, tspan_chunk, nothing)
 
         sol = solve(
-            prob, Tsit5(); u0 = u_current, p = nothing,
-            adaptive = true, save_end = true, callback = cb,
+            prob, sciml_solver; u0 = u_current, p = nothing,
+            adaptive = false, dt = Δt, save_end = true, callback = cb,
             tspan = tspan_chunk, tstops = tdatapoint
         )
 

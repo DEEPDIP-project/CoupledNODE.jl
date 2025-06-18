@@ -36,11 +36,11 @@ normalized by the sum of squared actual data values.
 This makes it compatible with the Lux ecosystem.
 """
 
-_default_continuity_loss(û_end, u_0) = sum(abs, û_end - u_0)
 function mymultiple_shoot(p, ode_data, tsteps, prob::ODEProblem, loss_function::F,
         continuity_loss::C, solver::SciMLBase.AbstractODEAlgorithm,
-        group_size::Integer; continuity_term::Real = 100, kwargs...) where {F, C}
-    datasize = size(ode_data, 4)
+        group_size::Integer; continuity_term::Real = 100, inside, kwargs...) where {F, C}
+    datasize = size(ode_data, ndims(ode_data))
+    griddims = ntuple(_ -> Colon(), ndims(ode_data) - 1)
 
     if group_size < 2 || group_size > datasize
         throw(DomainError(group_size, "group_size can't be < 2 or > number of data points"))
@@ -50,7 +50,7 @@ function mymultiple_shoot(p, ode_data, tsteps, prob::ODEProblem, loss_function::
 
     sols = [solve(
                 remake(prob; p, tspan = (tsteps[first(rg)], tsteps[last(rg)]),
-                    u0 = ode_data[:, :, :, first(rg)]),
+                    u0 = ode_data[griddims..., first(rg)]),
                 solver;
                 saveat = tsteps[rg],
                 kwargs...) for rg in ranges]
@@ -61,13 +61,14 @@ function mymultiple_shoot(p, ode_data, tsteps, prob::ODEProblem, loss_function::
 
     loss = 0
     for (i, rg) in enumerate(ranges)
-        u = ode_data[:, :, :, rg]
-        û = group_predictions[i]
+        u = ode_data[griddims..., rg]
+        û = group_predictions[i][griddims..., :]
         loss += loss_function(u, û)
 
         if i > 1
             loss += continuity_term *
-                    continuity_loss(group_predictions[i - 1][:, :, :, end], u[:, :, :, 1])
+                    continuity_loss(
+                group_predictions[i - 1][griddims..., end], u[griddims..., 1])
         end
     end
 
@@ -87,6 +88,8 @@ function create_loss_post_lux(
         end
         return CUDA.functional() ? CUDA.CuArray : Array
     end
+    _loss(x, y) = Lux.MSELoss()(x[inside..., :, :], y[inside..., :, :])
+    _continuity_loss(x, y) = Lux.MAELoss()(x[inside..., :], y[inside..., :])
 
     function _multishooting(model, ps, st, (all_u, all_t))
         uref, x, tspan, saveat_times = nothing, nothing, nothing, nothing
@@ -101,9 +104,9 @@ function create_loss_post_lux(
         prob = ODEProblem(rhs, x, tspan, ps)
 
         loss,
-        _ = mymultiple_shoot(ps, uref, saveat_times, prob, Lux.MSELoss(),
-            _default_continuity_loss, sciml_solver, multiple_shooting;
-            continuity_term = 100, adaptive = true, save_start = false)
+        _ = mymultiple_shoot(ps, uref, saveat_times, prob, _loss,
+            _continuity_loss, sciml_solver, multiple_shooting;
+            continuity_term = 100, adaptive = true, save_start = false, inside = inside)
 
         return loss, st, (; y_pred = nothing)
     end
@@ -202,7 +205,7 @@ function create_loss_post_lux(
     end
 
     if multiple_shooting > 0
-        @info "Using multishooting loss function on $(multiple_shooting) groups of data"
+        @info "Using multishooting loss function on overlapping intervals of size $(multiple_shooting)."
         return _multishooting
     elseif !ensemble
         @info "Using single-sample loss function"
