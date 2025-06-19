@@ -4,6 +4,7 @@ authors = ["Simone Ciarella <s.ciarella@esciencecenter.nl>, Luisa Orozco <l.oroz
 version = "0.0.3"
 
 [deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 ChainRules = "082447d4-558c-5d27-93f4-14fc19e9eca2"
@@ -34,7 +35,6 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [weakdeps]
-Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
 AttentionLayer = "3ee63b08-73c5-50c8-acc9-f395aa68c39a"
 CUDSS = "45b445bb-4962-46a0-9369-b4df9d0f772e"
 ConvolutionalNeuralOperators = "d769ba41-1544-53e8-a779-241a28c31cef"
@@ -55,8 +55,8 @@ NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralC
 AttentionCNN = ["AttentionLayer"]
 CNO = ["ConvolutionalNeuralOperators"]
 CoupledNODECUDA_ext = ["cuDNN", "CUDSS"]
-NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure", "Adapt"]
-fno = ["NeuralOperators", "Adapt"]
+NavierStokes = ["IncompressibleNavierStokes", "NeuralClosure"]
+fno = ["NeuralOperators"]
 
 [compat]
 Adapt = "4"
@@ -104,4 +104,4 @@ NeuralClosure = "099dac27-d7f2-4047-93d5-0baee36b9c25"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Test", "IncompressibleNavierStokes", "NeuralClosure", "Adapt", "cuDNN", "NeuralOperators"]
+test = ["Test", "IncompressibleNavierStokes", "NeuralClosure", "cuDNN", "NeuralOperators"]

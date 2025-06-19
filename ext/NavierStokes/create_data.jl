@@ -1,4 +1,5 @@
 using DifferentialEquations
+using JLD2
 using IncompressibleNavierStokes: right_hand_side!, apply_bc_u!, momentum!, project!
 
 function create_les_data_projected(;
@@ -75,9 +76,9 @@ function create_les_data_projected(;
         t in tdatapoint && return true
         return false
     end
-    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tdatapoint)-1))
-    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tdatapoint)-1))
-    all_t = Array{T}(undef, (length(tdatapoint)-1))
+    all_ules = Array{T}(undef, (nles[1] + 2, nles[1]+2, D, length(tdatapoint)))
+    all_c = Array{T}(undef, (nles[1]+2, nles[1]+2, D, length(tdatapoint)))
+    all_t = Array{T}(undef, (length(tdatapoint)))
     idx = Ref(1)
     Fdns = INS.create_right_hand_side(dns, psolver)
     p = scalarfield(les)
@@ -118,6 +119,9 @@ function create_les_data_projected(;
     u_current = u  # Initial condition
     prob = ODEProblem(rhs!, u_current, nothing, nothing)
 
+    # Store the data at t=0
+    filter_callback((; u = u, t = T(0)))
+
     any(u -> any(isnan, u), u_current) &&
         @warn "Solution contains NaNs. Probably dt is too large."
 
@@ -134,7 +138,7 @@ function create_les_data_projected(;
 
         sol = solve(
             prob, sciml_solver; u0 = u_current, p = nothing,
-            adaptive = false, dt = Δt, save_end = true, callback = cb,
+            adaptive = true, save_end = true, callback = cb,
             tspan = tspan_chunk, tstops = tdatapoint
         )
 

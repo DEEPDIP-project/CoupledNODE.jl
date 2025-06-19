@@ -4,6 +4,7 @@ using Zygote: Zygote
 using Optimization: Optimization
 using OptimizationOptimisers: OptimizationOptimisers
 using ChainRulesCore: ignore_derivatives
+using Adapt: adapt
 
 function train(model, ps, st, train_dataloader, loss_function;
         nepochs = 50,
@@ -12,7 +13,7 @@ function train(model, ps, st, train_dataloader, loss_function;
         cpu::Bool = false,
         λ = nothing,
         kwargs...)
-    dev = cpu ? identity : Lux.gpu_device()
+    dev = cpu ? identity : x -> adapt(CuArray, x)
     if !cpu
         ps, st = (ps, st) .|> dev
     end

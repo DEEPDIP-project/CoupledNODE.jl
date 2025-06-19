@@ -24,7 +24,7 @@ A tuple `(chain, params, state)` where
 - `state`: The state of the model.
 """
 function cnn(;
-        T = Float32,
+        T,
         D,
         data_ch,
         radii,
@@ -37,12 +37,13 @@ function cnn(;
     r, c, σ, b = radii, channels, activations, use_bias
 
     if use_cuda
-        dev = Lux.gpu_device()
+        dev = x -> adapt(CuArray, x)
     else
         dev = Lux.cpu_device()
     end
 
-    @warn "*** CNN is using the following device: $(dev) "
+    T = eltype(T(0.0))
+    @warn "*** CNN is using the following device: $(dev) and type $(T)"
 
     # Weight initializer
     glorot_uniform_T(rng::Random.AbstractRNG, dims...) = glorot_uniform(rng, T, dims...)
@@ -71,6 +72,7 @@ function cnn(;
         )...,
         decollocate
     )
+
     chain = Chain(layers...)
     params, state = Lux.setup(rng, chain)
     state = state |> dev
