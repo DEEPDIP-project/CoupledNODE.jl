@@ -48,8 +48,9 @@ Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Tullio = "bc48ee85-29a4-5162-ae0b-a64e1601d4bc"
 cuDNN = "02a925ec-e4fe-4b08-9a7e-0d78e3d38ccd"
 
-[sources]
-NeuralClosure = {rev = "main", url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"}
+[sources.NeuralClosure]
+rev = "main"
+url = "https://github.com/DEEPDIP-project/NeuralClosure.jl.git"
 
 [extensions]
 AttentionCNN = ["AttentionLayer"]
@@ -82,7 +83,7 @@ Lux = "1"
 LuxCUDA = "0.3"
 NNlib = "0.9"
 NeuralClosure = "1.0.0"
-NeuralOperators = "0.5.3"
+NeuralOperators = "0.5.3, 0.6"
 OpenSSL_jll = "3.0.13"
 Optim = "1.12.0"
 Optimization = "4"
