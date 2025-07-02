@@ -116,15 +116,10 @@ function create_loss_post_lux(
         @assert nsamp == 1 "Single-sample loss function is not supported in this context. Use ensemble loss function instead."
         nts = size(all_u, ndims(all_u))
 
-        uref, x, saveat_times, tspan,
-        prob, pred = nothing, nothing, nothing, nothing, nothing, nothing
+        uref, x,
+        saveat_times,
+        tspan = extract_reference_data(all_u, all_t, griddims, inside, nsamp, nts)
 
-        CUDA.allowscalar() do
-            uref = all_u[inside..., :, 1, 2:nts]
-            x = all_u[griddims..., :, 1, 1]
-            saveat_times = Array(all_t[1, 2:nts])
-            tspan = (all_t[1, 1], all_t[1, end])
-        end
         prob = ODEProblem(rhs, x, tspan, ps)
         pred = solve(
             prob,
@@ -148,7 +143,7 @@ function create_loss_post_lux(
             @info "Predicted size: $(size(pred))"
             @info "Target size: $(size(uref))"
             @info "Pred time points: $(pred.t)"
-            @info "Target time points: $(all_t[1, 2:nts])"
+            @info "Target time points: $(all_t[nsamp, 2:nts])"
             return Inf, st, (; y_pred = nothing)
         end
 
@@ -174,7 +169,7 @@ function create_loss_post_lux(
         t_indices = 2:nts
         saveat_times = Array(all_t[1, t_indices]) # This has to be Array even for GPU solvers
 
-        xi, tspan, uref, pred = nothing, nothing, nothing, nothing, nothing
+        xi, tspan = nothing, nothing
 
         ignore_derivatives() do
             CUDA.allowscalar() do
@@ -213,5 +208,44 @@ function create_loss_post_lux(
     else
         @info "Using ensemble loss function"
         return _loss_ensemble
+    end
+end
+
+"""
+    extract_reference_data(all_u, all_t, griddims, inside, nsamp, nts)
+
+Extract reference data and initial conditions from the input arrays.
+This function handles CUDA memory allocation and scalar operations.
+
+# Arguments
+- `all_u`: Input data array
+- `all_t`: Time array
+- `griddims`: Grid dimensions tuple
+- `inside`: Inside region selector
+- `nsamp`: Sample index
+- `nts`: Number of time steps
+
+# Returns
+- `uref`: Reference data for comparison
+- `x`: Initial condition
+- `saveat_times`: Time points for saving
+- `tspan`: Time span tuple
+"""
+function extract_reference_data(all_u, all_t, griddims, inside, nsamp, nts)
+    ignore_derivatives() do
+        uref_shape = size(all_u[inside..., :, nsamp, 2:nts])
+        uref = CUDA.zeros(Float64, uref_shape...)
+        x_shape = size(all_u[griddims..., :, nsamp, 1])
+        x = CUDA.zeros(Float64, x_shape...)
+        saveat_times = Array{eltype(all_t)}(undef, nts - 1)
+        tspan = (0.0, 1.0)  # dummy valid Float64 tuple, will be overwritten
+
+        CUDA.allowscalar() do
+            uref = all_u[inside..., :, nsamp, 2:nts]
+            x = all_u[griddims..., :, nsamp, 1]
+            saveat_times = Array(all_t[nsamp, 2:nts])
+            tspan = (all_t[nsamp, 1], all_t[nsamp, end])
+            return uref, x, saveat_times, tspan
+        end
     end
 end

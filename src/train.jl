@@ -17,7 +17,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     if !cpu
         ps, st = (ps, st) .|> dev
     end
-    @info "Training on" dev
+    @info "Training on" dev ad_type
     isnothing(λ) || @info "Using weight decay λ = $λ"
     # Retrieve the callback from kwargs, default to `nothing` if not provided
     callback = get(kwargs, :callback, nothing)
