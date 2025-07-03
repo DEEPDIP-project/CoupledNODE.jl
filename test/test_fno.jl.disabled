@@ -190,6 +190,7 @@ end
     end
 
     @testset "A-posteriori" begin
+        return
         # A posteriori io_arrays
         io_post = NS.create_io_arrays_posteriori(data, setups[ig], device)
         test_io_post = NS.create_io_arrays_posteriori(test_data, setups[ig], device)

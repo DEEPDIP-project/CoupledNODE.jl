@@ -15,7 +15,9 @@ function train(model, ps, st, train_dataloader, loss_function;
         kwargs...)
     dev = cpu ? identity : x -> adapt(CuArray, x)
     if !cpu
-        ps, st = (ps, st) .|> dev
+        #ps, st = (ps, st) .|> dev
+        ps = ps |> dev
+        st = st |> Lux.gpu_device()
     end
     @info "Training on" dev ad_type
     isnothing(λ) || @info "Using weight decay λ = $λ"
@@ -26,7 +28,7 @@ function train(model, ps, st, train_dataloader, loss_function;
     if tstate === nothing
         tstate = Lux.Training.TrainState(model, ps, st, alg)
     end
-    T = eltype(ps)
+    T = eltype(ComponentArray(ps))
     loss = zero(T)
     @info "Lux Training started"
     for epoch in 1:nepochs

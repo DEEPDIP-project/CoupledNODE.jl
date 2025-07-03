@@ -7,7 +7,7 @@ function fno_closure(;
         rng
 )
     if use_cuda
-        dev = Lux.gpu_device()
+        dev = x->adapt(CuArray, x)
     else
         dev = Lux.cpu_device()
     end
@@ -21,9 +21,22 @@ function fno_closure(;
         permuted = Val(true)
     )
     params, state = Lux.setup(rng, chain)
-    #    state = state |> dev
+    state = state |> dev
+    params = params |> dev
+    # [!BUG] FourierNeuralOperator does not support ComponentArrays, so it can not be trained a posteriori
     #params = ComponentArray(params)# |> dev
     (chain, params, state)
+end
+
+function load_seeds(conf)
+    data = conf["seeds"]
+    seeds = (;
+        dns = data["dns"],
+        θ_start = data["θ_start"],
+        prior = data["prior"],
+        post = data["post"]
+    )
+    return seeds
 end
 
 function load_fno_params(conf::Dict)
@@ -52,11 +65,11 @@ function load_fno_params(conf::Dict)
     seeds = load_seeds(conf)
 
     closure, θ_start,
-    st = nsfno.fno_closure(
+    st = fno_closure(
         T = T,
-        chs = data["channels"],
-        activation = map(eval_field, data["activation"]),
-        modes = data["modes"],
+        chs = Tuple(data["channels"]),
+        #activation = map(eval_field, data["activation"]),
+        modes = Tuple(data["modes"]),
         use_cuda = CUDA.functional() ? true : false,
         rng = eval_field(data["rng"], seeds)
     )

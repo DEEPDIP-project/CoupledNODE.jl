@@ -1,9 +1,10 @@
 module fno
 using Lux: Lux, relu
-using CUDA: CUDA
+using CUDA
 using Adapt: adapt
 using NeuralOperators
 using ComponentArrays: ComponentArray
+using Random
 
 include("model.jl")
 
