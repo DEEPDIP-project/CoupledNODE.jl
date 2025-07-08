@@ -76,6 +76,6 @@ function cnn(;
     chain = Chain(layers...)
     params, state = Lux.setup(rng, chain)
     state = state |> dev
-    params = ComponentArray(params) |> dev
+    params = T.(ComponentArray(params)) |> dev
     (chain, params, state)
 end

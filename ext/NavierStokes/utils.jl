@@ -110,12 +110,14 @@ function INS_create_io_arrays_priori(data, setups)
         (; u = reshape(u, (N .- 2)..., D, :), c = reshape(c, (N .- 2)..., D, :))
     end
 end
-function create_io_arrays_priori(data, setup, device = identity)
+function create_io_arrays_priori(data, setup, device = identity, T = nothing)
     # This is a reference function that creates the io_arrays for the a-priori
     nsample = length(data)
     (; dimension, N, Iu) = setup.grid
     nt = length(data[1].t) - 1
-    T = eltype(data[1].t[1])
+    if T === nothing
+        T = eltype(data[1].t[1])
+    end
     (; dimension, N, Iu) = setup.grid
     D = dimension()
     u = zeros(T, (N .- 2)..., D, nt + 1, nsample)
@@ -124,11 +126,11 @@ function create_io_arrays_priori(data, setup, device = identity)
     for is in 1:nsample
         copyto!(
             view(u,(ifield...),:,:,is),
-            data[is].u[Iu[1], :, :]
+            adapt(T, data[is].u[Iu[1], :, :])
         )
         copyto!(
             view(c,(ifield...),:,:,is),
-            data[is].c[Iu[1], :, :]
+            adapt(T, data[is].c[Iu[1], :, :])
         )
     end
     (; u = device(reshape(u, (N .- 2)..., D, :)), c = device(reshape(c, (N .- 2)..., D, :)))
@@ -146,10 +148,12 @@ Main differences between this function and NeuralClosure.create_io_arrays
 A named tuple with fields `u` and `t`.
 `u` is a matrix without padding and shape (nless..., D, sample, t)
 """
-function create_io_arrays_posteriori(data, setup, device = identity)
+function create_io_arrays_posteriori(data, setup, device = identity, T = nothing)
     nsample = length(data)
     nt = length(data[1].t) - 1
-    T = eltype(data[1].t[1])
+    if T === nothing
+        T = eltype(data[1].t[1])
+    end
     (; dimension, N) = setup.grid
     D = dimension()
     u = zeros(T, N..., D, nsample, nt + 1)
@@ -158,11 +162,11 @@ function create_io_arrays_posteriori(data, setup, device = identity)
     for is in 1:nsample
         copyto!(
             view(u,(ifield...),:,is,:),
-            data[is].u[ifield..., :, :]
+            adapt(T, data[is].u[ifield..., :, :])
         )
         copyto!(
             view(t, is, :),
-            data[is].t[:]
+            adapt(T, data[is].t[:])
         )
     end
     (; u = device(u), t = t)
