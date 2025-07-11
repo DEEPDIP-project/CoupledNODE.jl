@@ -49,12 +49,13 @@ function create_callback(
         plot_every = 10,
         average_window = 25,
         device = identity,
-        figfile = nothing)
+        figfile = nothing,
+        is_fno = false)
     if callbackstate === nothing
         # Initialize the callback state
         # To store data coming from CUDA device, we have to serialize them to CPU
         callbackstate = (;
-            θmin = θ, maximprove = eltype(θ)(0), loss_min = eltype(θ)(Inf), lhist_val = [],
+            θmin = θ, maximprove = 0, loss_min = Inf, lhist_val = [],
             lhist_train = [], lhist_nomodel = [])
     end
     if nunroll === nothing && batch_size === nothing
@@ -70,7 +71,11 @@ function create_callback(
     end
     # Take data only once
     data = dataloader()
-    no_model_loss = loss_function(model, device(callbackstate.θmin .* 0), st, data)[1]
+    if is_fno
+        no_model_loss = 0
+    else
+        no_model_loss = loss_function(model, device(callbackstate.θmin .* 0), st, data)[1]
+    end
 
     function rolling_average(y)
         return [mean(@view y[max(1, i - average_window):i]) for i in 1:length(y)]
